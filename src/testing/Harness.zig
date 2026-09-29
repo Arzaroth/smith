@@ -55,6 +55,9 @@ pub fn init(h: *Harness, routes: []const Mock.Route, opts: Options) !void {
     try h.env.put("GIT_COMMITTER_NAME", "Test");
     try h.env.put("GIT_COMMITTER_EMAIL", "test@example.com");
     try h.env.put("SMITH_BROWSER", "true");
+    try h.env.put("TMPDIR", h.root);
+    try h.env.put("SMITH_EDITOR", "true");
+    try h.env.put("GIT_CEILING_DIRECTORIES", std.fs.path.dirname(h.root) orelse h.root);
 
     if (opts.config) {
         try h.tmp.dir.createDirPath(io, "config");
@@ -76,6 +79,8 @@ pub fn init(h: *Harness, routes: []const Mock.Route, opts: Options) !void {
         .err = &h.err.writer,
         .now = now,
         .http = &h.http,
+        .cwd = h.root,
+        .stdin_data = "",
     };
 }
 

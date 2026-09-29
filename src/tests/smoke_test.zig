@@ -24,3 +24,12 @@ test "repo view -R reaches the mock" {
     try h.expectOut("3 stars");
     try std.testing.expectEqualStrings("/api/v1/repos/owner/repo", h.mock.requests.items[0].target);
 }
+
+test "a command outside a clone cannot see the checkout the tests run from" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.expectRun(1, &.{ "repo", "view" });
+    try h.expectErr("not in a git repository with remotes");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.requests.items.len);
+}

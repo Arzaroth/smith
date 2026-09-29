@@ -84,6 +84,7 @@ fn stdinReader(ctx: *Ctx) !*Io.File.Reader {
 
 /// Like `prompt`, with terminal echo turned off while the user types.
 pub fn promptSecret(ctx: *Ctx, label: []const u8) ![]const u8 {
+    if (ctx.stdin_data != null) return ctx.prompt(label);
     const fd = ctx.stdin.handle;
     const saved = std.posix.tcgetattr(fd) catch return ctx.prompt(label);
     var silent = saved;
