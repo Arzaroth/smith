@@ -6,6 +6,23 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Boolean flags take `=true` and `=false` as in gh: `repo edit
+  --enable-wiki=false`.
+- `issue view` and `pr view` show the milestone.
+
+### Fixed
+
+- `milestone create --due` meant the end of that day in UTC, so a Forgejo
+  east of UTC stored the next day; it is now the end of the day where you
+  are, and due dates show as local days.
+- `pr merge` waits while Forgejo is still checking the branch (right after a
+  push or `pr update-branch`) instead of failing with "try again later".
+- `pr merge -d` fast-forwards the base branch it switches to.
+- `secret delete` and `variable delete` ask first and take `--yes`, like
+  every other deletion.
+
 ## [0.3.1] - 2026-09-29
 
 ### Added

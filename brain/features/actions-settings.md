@@ -21,6 +21,8 @@
 - `secret set` reads the value from `--body`, else a no-echo prompt on a
   terminal, else stdin (trailing newline dropped). Values cannot be read back.
   `--body` puts the value in the process list, so its help steers to stdin.
+- `secret delete` and `variable delete` ask first on a terminal and need
+  `--yes` without one, like every other deletion.
 - `variable set` tries `PUT` (update) and falls back to `POST` (create) on a
   404; `variable get` prints the value.
 

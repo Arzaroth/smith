@@ -57,8 +57,10 @@ is looked for first, then the most recently updated closed or merged one.
   branch on the server and, after an actual merge, the pull request's local
   branch: the one smith checked out for it, or a same-repository branch of
   the head's name tracking it, never a fork's namesake (switching to the
-  base first, created from its remote if needed). 405 and 409 get their own
-  messages.
+  base first, created from its remote if needed, and fast-forwarding it to
+  the merge). 405 and 409 get their own messages; a 405 saying "try again
+  later" (Forgejo still checking the branch after a push or an update) is
+  retried once a second for ten seconds.
 - **checks** reads the combined commit status, so any CI that posts statuses
   shows, Forgejo Actions included; relative target URLs are made absolute.
   Exit 1 if something failed, 8 if something is pending, 0 otherwise. Piped,

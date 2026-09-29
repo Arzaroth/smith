@@ -9,9 +9,12 @@ case-insensitively.
 
 **milestone** (`/repos/{o}/{r}/milestones`): `list` (`-s open|closed|all`,
 with progress as closed/total), `view`, `create <title>` (`--due
-YYYY-MM-DD`, stored as the end of that day in UTC, `-d`), `edit`, `close`,
+YYYY-MM-DD`, stored as the end of that day in the local zone, `-d`), `edit`, `close`,
 `reopen`, `delete`. A milestone is named by title or id: Forgejo's
-`/milestones/{id}` accepts either.
+`/milestones/{id}` accepts either. Due dates show as the local day they fall on, whatever
+zone Forgejo answers in (it uses its own); the offset comes from
+`src/localtime.zig`, see
+[../architecture/output.md](../architecture/output.md).
 
 `issue list`, `issue create`, `issue edit` and `pr create` take
 `-m/--milestone`, resolved to an id through the same endpoint before
