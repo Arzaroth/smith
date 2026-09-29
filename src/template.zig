@@ -47,15 +47,16 @@ const Parser = struct {
     pos: usize = 0,
     /// Set when the action that ended a block was `else` or `end`.
     stop: enum { none, @"else", end } = .none,
+    trim_next: bool = false,
+    depth: u8 = 0,
 
     fn nodes(p: *Parser, in_block: bool) Error![]const Node {
         var list: std.ArrayList(Node) = .empty;
-        var trim_next = false;
         while (p.pos < p.src.len) {
             const open = std.mem.indexOfPos(u8, p.src, p.pos, "{{") orelse p.src.len;
             var text = p.src[p.pos..open];
-            if (trim_next) text = std.mem.trimStart(u8, text, " \t\r\n");
-            trim_next = false;
+            if (p.trim_next) text = std.mem.trimStart(u8, text, " \t\r\n");
+            p.trim_next = false;
             if (open == p.src.len) {
                 if (text.len > 0) try list.append(p.alloc, .{ .text = text });
                 p.pos = open;
@@ -71,7 +72,7 @@ const Parser = struct {
             var inner_end = close;
             if (inner_end > inner_start and p.src[inner_end - 1] == '-') {
                 inner_end -= 1;
-                trim_next = true;
+                p.trim_next = true;
             }
             p.pos = close + 2;
             const words = try tokenize(p.alloc, p.src[inner_start..inner_end]);
@@ -85,6 +86,9 @@ const Parser = struct {
             if (std.mem.eql(u8, head, "range") or std.mem.eql(u8, head, "if")) {
                 if (words.len < 2) return error.TemplateSyntax;
                 try validate(words[1..]);
+                if (p.depth == 32) return error.TemplateSyntax;
+                p.depth += 1;
+                defer p.depth -= 1;
                 var block: Node.Block = .{ .expr = words[1..], .body = try p.nodes(true) };
                 if (p.stop == .@"else") block.otherwise = try p.nodes(true);
                 if (p.stop != .end) return error.TemplateSyntax;
