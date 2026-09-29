@@ -36,6 +36,9 @@ the Secret Service keyring were exercised on git.arzaroth.com on 2026-09-29; the
      already knows such answers have no body (a DELETE's 204 stalls every
      kept-alive request after it). Found after the upstream search; look
      for an existing report first.
+- **`pr view` of a merged pull request** still says "wants to merge", and
+  once its branch is deleted the head shows as `refs/pull/<n>/head`
+  (Forgejo's ref then); gh says "merged" and keeps the branch name.
 - **`--template` leftovers**: `define`/`template`/`block`, gh's `regexMatch`
   (needs a regex engine), `html`/`js`/`urlquery`; tables are not cut to the
   terminal width. `truncate` and `tablerow` count codepoints where gh counts
