@@ -11,7 +11,9 @@ pub const root: cli.Command = .{
     .name = "smith",
     .summary = "Work with Forgejo from the command line.",
     .flags = &.{.{ .long = "version", .short = 'V', .help = "Show the version" }},
-    .subs = &.{},
+    .subs = &.{
+        @import("cmd/auth.zig").command,
+    },
     .run = runRoot,
 };
 
