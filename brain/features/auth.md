@@ -4,7 +4,8 @@
 |---|---|---|
 | `auth login` | Logs in to a host, then stores the token | discovery (below), then per route; `GET /user`, `GET /repos/search?limit=1` |
 | `auth status` | Checks every stored token | `GET /user` per host |
-| `auth logout` | Forgets a host | none |
+| `auth switch` | Changes the default host or the active account | none |
+| `auth logout` | Forgets an account | none |
 | `auth token` | Prints the token in use | none |
 
 ## Login routes
@@ -50,13 +51,25 @@ then remembered. Forgejo accepts any loopback port for public clients.
 | OAuth with PKCE | `/.well-known/openid-configuration` |
 | Built-in clients | `/login/oauth/access_token` with a made-up code: `invalid_client` means unknown, any other error means known |
 
-## Other commands
+## Several hosts and accounts
 
-- **status** exits 1 if any token is missing or rejected; tokens are shown as
-  their first four characters unless `--show-token`; a browser login says so.
-- **logout** only forgets the host locally; a token created by the password
-  route stays valid until revoked under Settings > Applications.
-- `SMITH_TOKEN` replaces the stored token and disables refreshing.
+Each login is an account, keyed by host and user
+([../architecture/config.md](../architecture/config.md#accounts)).
+
+- **switch** (`--hostname`, `--user`): `--hostname` makes that host the
+  default; `--user` makes that account the active one; neither flips to the
+  next account on the default host. Refuses when there is nothing to change.
+- **logout** removes the active account of `--hostname` (default: the default
+  host), or `--user`'s; another account on the host becomes active. It only
+  forgets the login locally: a token made by the password route stays valid
+  until revoked under Settings > Applications, which logout says.
+- **token** prints the active account's token, or `--user`'s.
+- **status** groups accounts under their host, marks the default host and,
+  for a host with several accounts, which one is active; exits 1 if any
+  token is missing or rejected; tokens are shown as their first four
+  characters unless `--show-token`; a browser login says so.
+- `SMITH_TOKEN` replaces the token of the default host only, and
+  `SMITH_TOKEN_<HOST>` that of one host; either turns refreshing off.
 
 ## Sources
 

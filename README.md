@@ -55,7 +55,7 @@ smith run watch [<id>]
 smith run cancel <id>
 
 smith repo clone [HOST/|HOST:]OWNER/REPO | view | list
-smith auth login | status | logout | token
+smith auth login | status | switch | logout | token
 smith api <endpoint> [-X METHOD] [-f key=value] [-F key=typed] [--paginate]
 smith browse [<n> | <path>[:<line>]] [--settings] [--actions]
 smith completion bash|zsh|fish
@@ -77,12 +77,27 @@ the API objects as Forgejo sent them, for `jq`.
 
 | Variable | Effect |
 |---|---|
-| `SMITH_TOKEN` | Token to use instead of the stored one |
+| `SMITH_TOKEN` | Token for the default host (only that one) |
+| `SMITH_TOKEN_<HOST>` | Token for one host, e.g. `SMITH_TOKEN_GIT_EXAMPLE_COM` |
 | `SMITH_HOST` | Default host when not in a clone |
 | `SMITH_CONFIG_DIR` | Where `hosts.zon` lives |
 | `SMITH_EDITOR`, `VISUAL`, `EDITOR` | Editor for bodies |
 | `SMITH_BROWSER`, `BROWSER` | Browser for `--web` |
 | `NO_COLOR`, `CLICOLOR_FORCE` | Colour off, colour on |
+
+## Several hosts and accounts
+
+Log in to as many instances as you like; inside a clone, the remotes decide
+which one a command talks to. Outside one, smith uses the default host: the
+first you logged in to, until `smith auth switch --hostname other.example`.
+
+Logging in to the same host as another user adds an account rather than
+replacing the first. `smith auth switch` flips between them (`--user` picks
+one), `smith auth status` shows which is active, and `auth logout` / `auth
+token` take `--user`.
+
+`SMITH_TOKEN` is only ever sent to the default host, so a token cannot leak
+to another instance; `SMITH_TOKEN_<HOST>` sets one for a specific host.
 
 ## Shell completion
 

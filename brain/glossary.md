@@ -15,3 +15,7 @@
   (AGit flow, or a deleted head branch); checked out from
   `refs/pull/<n>/head`.
 - **Mock**: the in-process Forgejo stand-in the tests talk to.
+- **Account**: a login on a host, keyed by host and user; a host can have
+  several, one of them active.
+- **Default host**: the host used outside a clone: `SMITH_HOST`, else
+  `default_host`, else the only one.

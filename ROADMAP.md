@@ -32,9 +32,10 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
       `Link` headers, since the Actions endpoints do not send them; std's
       redirect handling off, same-host redirects followed by smith (std 0.16
       leaks the token across hosts and never sends privileged headers).
-- [x] Repo resolution: `-R [host/]owner/repo`, else the git remotes
+- [x] Repo resolution: `-R [host/]owner/repo` or `host:owner/repo`, else the git remotes
       (`upstream` before `origin`, then any), each read both as configured and
-      after `insteadOf`, mapping `ssh_host` back to the API host.
+      after `insteadOf`, mapping `ssh_host` back to the API host; an
+      unconfigured https remote only if it answers as a Forgejo.
 - [x] Output: aligned tables and colour on a TTY only, tab-separated when
       piped, `NO_COLOR`/`CLICOLOR_FORCE`; relative times; `--json` dumps the
       API objects verbatim; `--web` opens the page. git's own output goes to
@@ -53,7 +54,10 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
       chosen from what the instance offers; `--with-token` on stdin for
       scripts. Decided: borrow the built-in public client (`tea`, then
       `git-credential-oauth`), else a smith app registered once per host.
-      `auth status`, `auth logout`, `auth token`. Capabilities probed at
+      `auth status`, `auth switch`, `auth logout`, `auth token`, several hosts
+      and several accounts per host (one active). Decided: `SMITH_TOKEN`
+      reaches the default host only, `SMITH_TOKEN_<HOST>` any one host.
+      Capabilities probed at
       login: Forgejo or Gitea and version, OAuth with PKCE, built-in clients,
       page size, and `ssh_host` from a repo's `ssh_url`.
 - [x] `repo clone <owner/repo|repo|url> [dir] [-- <git flags>]`: protocol from

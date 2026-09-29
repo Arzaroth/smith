@@ -99,3 +99,18 @@ Instances differ by version, fork (Forgejo or Gitea) and configuration. What
 smith depends on is learnt at login from unauthenticated endpoints, including
 whether a built-in OAuth client exists, told apart by the token endpoint's
 `invalid_client` versus any other error for a made-up code.
+
+## Environment tokens are aimed at one host (2026-09-29)
+
+`SMITH_TOKEN` used to replace the token of whatever host a command resolved
+to, so with two hosts configured, or a clone pointing somewhere unexpected,
+a token meant for one instance could be sent to another. It now reaches only
+the default host; `SMITH_TOKEN_<HOST>` targets any other. gh splits the same
+way (`GH_TOKEN` for github.com, `GH_ENTERPRISE_TOKEN` for `GH_HOST`).
+
+## Accounts rather than hosts (2026-09-29)
+
+The config holds one entry per *(host, user)* with one active per host,
+rather than a nested map of hosts to accounts: every existing reader keeps
+seeing a flat list and `Config.find` keeps returning one entry per host, so
+only `auth` had to learn about accounts.

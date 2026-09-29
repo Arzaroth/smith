@@ -9,6 +9,10 @@ Which host and `OWNER/REPO` a command acts on (`repo.resolve`):
    `name` or `ssh_host`) wins. An https remote on an unknown host is the
    fallback, so public instances work without logging in; an unknown SSH host
    is not, since its web hostname cannot be guessed.
+3. An https remote on an unconfigured host is used only if the host answers
+   `/api/v1/version` (asked anonymously and quietly); a GitHub or GitLab
+   remote is skipped. When nothing qualifies, the error lists each remote
+   host and why it was skipped.
 
 Each remote is read twice (`git.remotes`): the URL git fetches from (after
 `insteadOf`) and the URL as configured, and either may identify the forge.

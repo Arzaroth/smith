@@ -16,11 +16,17 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Login looks at what the instance offers first: Forgejo or Gitea and which
   version, browser sign-in, its page size, and the SSH hostname it advertises,
   so SSH remotes map back to the right host.
-- `smith auth status`, `logout` and `token`. Logins are kept in
-  `~/.config/smith/hosts.zon` with mode 0600; `SMITH_TOKEN` and `SMITH_HOST`
-  override the file.
+- `smith auth status`, `switch`, `logout` and `token`. Logins are kept in
+  `~/.config/smith/hosts.zon` with mode 0600, as many hosts as you like and
+  several accounts per host: `auth switch` changes the default host or the
+  active account.
+- `SMITH_TOKEN` is used for the default host only, so it never reaches
+  another instance; `SMITH_TOKEN_<HOST>` sets a token for one host, and
+  `SMITH_HOST` picks the default.
 - smith works out the host and repository from the clone's git remotes
-  (`upstream` first, then `origin`), or from `-R [HOST/]OWNER/REPO`.
+  (`upstream` first, then `origin`), or from `-R [HOST/]OWNER/REPO`. A remote
+  on a forge that is not Forgejo, such as a GitHub mirror, is skipped, and
+  the error says which remotes were checked.
 - `smith repo clone`, `view` and `list`, taking `OWNER/REPO`, `HOST/OWNER/REPO`
   or `HOST:OWNER/REPO` (the SSH hostname works too). Cloning a fork adds an `upstream`
   remote for its parent.
