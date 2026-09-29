@@ -6,10 +6,13 @@
 //! `$x.name`), a parenthesised pipeline (`(index .labels 0).name`), a string
 //! (`"a\tb"`, `` `raw` ``), character, number, `true`, `false` or `nil`.
 //! `{{$x := PIPE}}` declares a variable until the end of the enclosing
-//! block, `{{$x = PIPE}}` assigns one. `if` and `range PIPE` (arrays) take
-//! `else` and `end`; `range $v := PIPE` and `range $i, $v := PIPE` bind the
-//! element and its index. `{{/* comments */}}` are dropped, `{{-` and `-}}`
-//! trim the whitespace next to them. Functions: `len`, `join SEP LIST`
+//! block, `{{$x = PIPE}}` assigns one. `if` and `with` (which moves `.` to
+//! the value) take `else if` / `else with` chains, `else` and `end`. `range`
+//! walks an array, an object's values by sorted key, or `0..n` for a number,
+//! runs its `else` when there is nothing to walk, and stops at `break` or
+//! skips ahead at `continue`; `range $v := PIPE` binds the element,
+//! `range $i, $v := PIPE` the index or key too. `{{/* comments */}}` are
+//! dropped, `{{-` and `-}}` trim the whitespace next to them. Functions: `len`, `join SEP LIST`
 //! (gh's) and `timeago`.
 //!
 //! A missing field renders as nothing. Errors name their position, Go-style:
@@ -206,4 +209,36 @@ test "parse errors name their position" {
 test "execution errors name their position" {
     try expectFail("{{range .}}{{end}}", "\"s\"", "template: 1:9: range can't iterate over s");
     try expectFail("ok {{len .}}", "true", "template: 1:6: error calling len: len of type bool");
+}
+
+test "with and else chains" {
+    try expectRender("{{with .user}}{{.login}}{{end}}", "{\"user\":{\"login\":\"u\"}}", "u");
+    try expectRender("{{with .user}}{{.login}}{{else}}nobody{{end}}", "{}", "nobody");
+    try expectRender("{{with $u := .user}}{{$u.login}}{{end}}", "{\"user\":{\"login\":\"u\"}}", "u");
+    const chain = "{{if .a}}a{{else if .b}}b{{else if .c}}c{{else}}none{{end}}";
+    try expectRender(chain, "{\"b\":1,\"c\":1}", "b");
+    try expectRender(chain, "{\"c\":1}", "c");
+    try expectRender(chain, "{}", "none");
+    try expectRender("{{with .a}}{{.}}{{else with .b}}{{.}}!{{end}}", "{\"b\":2}", "2!");
+    try expectRender("{{if $x := .a}}{{$x}}{{else if .b}}{{$x}}-{{end}}", "{\"b\":1}", "-");
+    try expectFail("{{with .a}}{{else if .b}}{{end}}", "{}", "template: 1:19: unexpected \"if\" in else");
+    try expectFail("{{if .a}}", "{}", "template: 1:10: unexpected EOF: {{if}} has no {{end}}");
+}
+
+test "range over objects, numbers and nothing" {
+    try expectRender("{{range $k, $v := .}}{{$k}}={{$v}} {{end}}", "{\"b\":2,\"a\":1}", "a=1 b=2 ");
+    try expectRender("{{range .}}{{.}}{{end}}", "{\"b\":2,\"a\":1}", "12");
+    try expectRender("{{range 3}}{{.}}{{end}}", "{}", "012");
+    try expectRender("{{range .missing}}x{{else}}empty{{end}}", "{}", "empty");
+    try expectRender("{{range .}}x{{else}}empty{{end}}", "{}", "empty");
+    try expectFail("{{range $i, $v := 3}}{{end}}", "{}", "template: 1:9: can't use 3 to iterate over more than one variable");
+    try expectFail("{{range $a, $b, $c := .}}{{end}}", "{}", "template: 1:13: too many declarations in range");
+}
+
+test "break and continue" {
+    try expectRender("{{range .}}{{if .stop}}{{break}}{{end}}{{.n}}{{end}}", "[{\"n\":1},{\"n\":2,\"stop\":true},{\"n\":3}]", "1");
+    try expectRender("{{range .}}{{if .skip}}{{continue}}{{end}}{{.n}}{{end}}", "[{\"n\":1},{\"n\":2,\"skip\":true},{\"n\":3}]", "13");
+    try expectRender("{{range .}}{{range .}}{{break}}{{end}}{{.}}{{end}}", "[[1],[2]]", "[1][2]");
+    try expectFail("{{break}}", "{}", "template: 1:3: {{break}} outside {{range}}");
+    try expectFail("{{if .}}{{continue}}{{end}}", "{}", "template: 1:11: {{continue}} outside {{range}}");
 }

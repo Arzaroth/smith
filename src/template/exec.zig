@@ -23,34 +23,46 @@ pub const Exec = struct {
 
     const Var = struct { name: []const u8, value: Value };
 
+    const Flow = Error || error{ Break, Continue };
+
     pub fn run(e: *Exec, nodes: []const Node, data: Value) Error!void {
         try e.vars.append(e.alloc, .{ .name = "$", .value = data });
-        try e.walk(nodes, data);
+        e.walk(nodes, data) catch |err| switch (err) {
+            error.Break, error.Continue => unreachable,
+            else => |x| return x,
+        };
     }
 
     pub fn fail(e: *Exec, pos: usize, comptime fmt: []const u8, args: anytype) Error {
         return e.diag.failExec(e.alloc, e.src, pos, fmt, args);
     }
 
-    fn walk(e: *Exec, nodes: []const Node, dot: Value) Error!void {
+    fn walk(e: *Exec, nodes: []const Node, dot: Value) Flow!void {
         for (nodes) |n| switch (n) {
             .text => |t| try e.w.writeAll(t),
             .action => |p| {
                 const v = try e.pipe(p, dot);
                 if (p.decl.len == 0) try write(e.w, v);
             },
-            .@"if" => |c| {
-                const mark = e.vars.items.len;
-                defer e.vars.shrinkRetainingCapacity(mark);
-                for (c.clauses) |clause| {
-                    if (truthy(try e.pipe(clause.pipe, dot))) break try e.walk(clause.body, dot);
-                } else try e.walk(c.otherwise, dot);
-            },
+            .@"if" => |c| try e.cond(c, dot, false),
+            .with => |c| try e.cond(c, dot, true),
             .range => |r| try e.range(r, dot),
+            .@"break" => return error.Break,
+            .@"continue" => return error.Continue,
         };
     }
 
-    fn range(e: *Exec, r: parse.Range, dot: Value) Error!void {
+    fn cond(e: *Exec, c: parse.Cond, dot: Value, with: bool) Flow!void {
+        const mark = e.vars.items.len;
+        defer e.vars.shrinkRetainingCapacity(mark);
+        for (c.clauses) |clause| {
+            const v = try e.pipe(clause.pipe, dot);
+            if (truthy(v)) return e.walk(clause.body, if (with) v else dot);
+        }
+        try e.walk(c.otherwise, dot);
+    }
+
+    fn range(e: *Exec, r: parse.Range, dot: Value) Flow!void {
         const v = try e.value(r.pipe, dot);
         const mark = e.vars.items.len;
         defer e.vars.shrinkRetainingCapacity(mark);
@@ -58,14 +70,40 @@ pub const Exec = struct {
             .array => |a| {
                 if (a.items.len == 0) return e.walk(r.otherwise, dot);
                 for (a.items, 0..) |item, i| {
-                    e.vars.shrinkRetainingCapacity(mark);
-                    try e.declare(r.pipe, &.{ .{ .integer = @intCast(i) }, item });
-                    try e.walk(r.body, item);
+                    if (!try e.iteration(r, mark, .{ .integer = @intCast(i) }, item)) break;
+                }
+            },
+            .object => |o| {
+                if (o.count() == 0) return e.walk(r.otherwise, dot);
+                const keys = try e.alloc.dupe([]const u8, o.keys());
+                std.mem.sort([]const u8, keys, {}, lessThan);
+                for (keys) |k| {
+                    if (!try e.iteration(r, mark, .{ .string = k }, o.get(k).?)) break;
+                }
+            },
+            .integer => |n| {
+                if (r.pipe.decl.len > 1) return e.fail(r.pipe.pos, "can't use {d} to iterate over more than one variable", .{n});
+                if (n <= 0) return e.walk(r.otherwise, dot);
+                var i: i64 = 0;
+                while (i < n) : (i += 1) {
+                    if (!try e.iteration(r, mark, .{ .integer = i }, .{ .integer = i })) break;
                 }
             },
             .null => try e.walk(r.otherwise, dot),
             else => return e.fail(r.pipe.pos, "range can't iterate over {f}", .{fmtValue(v)}),
         }
+    }
+
+    /// Runs one pass of a range body; false once it hits `break`.
+    fn iteration(e: *Exec, r: parse.Range, mark: usize, key: Value, item: Value) Flow!bool {
+        e.vars.shrinkRetainingCapacity(mark);
+        try e.declare(r.pipe, &.{ key, item });
+        e.walk(r.body, item) catch |err| switch (err) {
+            error.Break => return false,
+            error.Continue => {},
+            else => |x| return x,
+        };
+        return true;
     }
 
     /// Binds a range's variables: one gets the element, two the key and the element.
@@ -128,6 +166,10 @@ pub const Exec = struct {
         return v;
     }
 };
+
+fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+    return std.mem.lessThan(u8, a, b);
+}
 
 pub fn truthy(v: Value) bool {
     return switch (v) {

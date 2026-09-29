@@ -13,7 +13,10 @@ pub const Node = union(enum) {
     text: []const u8,
     action: Pipe,
     @"if": Cond,
+    with: Cond,
     range: Range,
+    @"break": usize,
+    @"continue": usize,
 };
 
 pub const Cond = struct {
@@ -68,6 +71,7 @@ pub const Parser = struct {
     i: usize = 0,
     vars: std.ArrayList([]const u8) = .empty,
     depth: u8 = 0,
+    loops: u8 = 0,
 
     const Stop = enum { eof, end, @"else" };
 
@@ -122,9 +126,15 @@ pub const Parser = struct {
                         if (stop == .end) try p.expectClose("end");
                         return .{ .nodes = try nodes.toOwnedSlice(p.alloc), .stop = stop, .pos = head.pos };
                     }
-                    if (keyword(head, "if")) {
+                    if (keyword(head, "if") or keyword(head, "with")) {
                         _ = p.next();
-                        try nodes.append(p.alloc, .{ .@"if" = try p.cond(head) });
+                        const c = try p.cond(head);
+                        try nodes.append(p.alloc, if (head.text[0] == 'i') .{ .@"if" = c } else .{ .with = c });
+                    } else if (keyword(head, "break") or keyword(head, "continue")) {
+                        _ = p.next();
+                        if (p.loops == 0) return p.fail(head.pos, "{{{{{s}}}}} outside {{{{range}}}}", .{head.text});
+                        try p.expectClose(head.text);
+                        try nodes.append(p.alloc, if (head.text[0] == 'b') .{ .@"break" = head.pos } else .{ .@"continue" = head.pos });
                     } else if (keyword(head, "range")) {
                         _ = p.next();
                         try nodes.append(p.alloc, .{ .range = try p.range(head) });
@@ -155,18 +165,28 @@ pub const Parser = struct {
         defer p.depth -= 1;
         const mark = p.vars.items.len;
         defer p.vars.shrinkRetainingCapacity(mark);
-        const pipe = try p.pipeline(head.text, .close, false);
-        var l = try p.block(head);
-        const clauses = try p.alloc.alloc(Clause, 1);
-        clauses[0] = .{ .pipe = pipe, .body = l.nodes };
-        var c: Cond = .{ .clauses = clauses };
-        if (l.stop == .@"else") {
-            try p.expectClose("else");
-            l = try p.block(head);
-            if (l.stop != .end) return p.fail(l.pos, "expected end; found {{{{else}}}}", .{});
-            c.otherwise = l.nodes;
+        var clauses: std.ArrayList(Clause) = .empty;
+        var otherwise: []const Node = &.{};
+        while (true) {
+            const pipe = try p.pipeline(head.text, .close, false);
+            const l = try p.block(head);
+            try clauses.append(p.alloc, .{ .pipe = pipe, .body = l.nodes });
+            if (l.stop == .end) break;
+            if (keyword(p.peek(), head.text)) {
+                _ = p.next();
+                continue;
+            }
+            otherwise = try p.elseBlock(head);
+            break;
         }
-        return c;
+        return .{ .clauses = try clauses.toOwnedSlice(p.alloc), .otherwise = otherwise };
+    }
+
+    fn elseBlock(p: *Parser, head: Token) Error![]const Node {
+        try p.expectClose("else");
+        const l = try p.block(head);
+        if (l.stop != .end) return p.fail(l.pos, "expected end; found {{{{else}}}}", .{});
+        return l.nodes;
     }
 
     fn range(p: *Parser, head: Token) Error!Range {
@@ -175,14 +195,11 @@ pub const Parser = struct {
         const mark = p.vars.items.len;
         defer p.vars.shrinkRetainingCapacity(mark);
         var r: Range = .{ .pipe = try p.pipeline("range", .close, true), .body = undefined };
-        var l = try p.block(head);
+        p.loops += 1;
+        const l = try p.block(head);
+        p.loops -= 1;
         r.body = l.nodes;
-        if (l.stop == .@"else") {
-            try p.expectClose("else");
-            l = try p.block(head);
-            if (l.stop != .end) return p.fail(l.pos, "expected end; found {{{{else}}}}", .{});
-            r.otherwise = l.nodes;
-        }
+        if (l.stop == .@"else") r.otherwise = try p.elseBlock(head);
         return r;
     }
 
