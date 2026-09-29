@@ -364,10 +364,14 @@ pub fn printJson(ctx: *Ctx, v: anytype) !void {
     const text = try json.Stringify.valueAlloc(ctx.alloc, v, .{});
     if (ctx.template) |src| {
         const value = try json.parseFromSliceLeaky(json.Value, ctx.alloc, text, .{});
-        const t = template.Template.parse(ctx.alloc, src) catch return ctx.fail("invalid --template: {s}", .{src});
+        var diag: template.Diagnostic = .{};
+        const t = template.Template.parse(ctx.alloc, src, &diag) catch |e| switch (e) {
+            error.TemplateSyntax, error.TemplateExec => return ctx.fail("invalid --template: {s}", .{src}),
+            else => |x| return x,
+        };
         var aw: Io.Writer.Allocating = .init(ctx.alloc);
-        t.render(ctx.alloc, &aw.writer, value, ctx.now) catch |e| switch (e) {
-            error.TemplateSyntax => return ctx.fail("invalid --template: {s}", .{src}),
+        t.render(ctx.alloc, &aw.writer, value, .{ .now = ctx.now }, &diag) catch |e| switch (e) {
+            error.TemplateSyntax, error.TemplateExec => return ctx.fail("invalid --template: {s}", .{src}),
             else => |x| return x,
         };
         return writeFiltered(ctx, aw.written());
