@@ -88,6 +88,12 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
       attached to a Forgejo release and mirrored to GitHub.
 ## P2 - gh parity
 
+- [ ] System keyring for tokens, like gh: Secret Service on Linux, Keychain
+      on macOS; `hosts.zon` keeps only host, user and protocol. Falls back to
+      the 0600 file with a warning when no keyring answers, or on
+      `auth login --insecure-storage`. Open question: talk D-Bus directly or
+      shell out to `secret-tool` / `security` (simpler, keeps the binary
+      static, adds a runtime dependency).
 - [ ] `pr review` (`--approve`, `--request-changes`, `--comment`),
       `pr status` (mine, review requested, current branch), `pr update`
       (merge or rebase base into head).
@@ -105,8 +111,6 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
 
 ## Later
 
-- System keyring for tokens (Secret Service over D-Bus, macOS Keychain),
-  keeping the 0600 file as the fallback.
 - `$PAGER` for long output (`pr diff`, `run view --log`).
 - OAuth2 device flow login, if Forgejo gains it.
 - `pr checkout` into a new worktree.
