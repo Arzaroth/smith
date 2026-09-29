@@ -22,9 +22,14 @@
 - **Decoding**: responses are parsed into `std.json.Value` first; `--json`
   prints those as sent, and `api.decode` maps them onto the structs in
   `types.zig`, ignoring unknown fields.
-- **Pagination**: `listValues` requests `page`/`limit` (at most the host's `page_size`, 50 by default)
-  until it has `limit` items or a page comes back short. `field` unwraps
-  endpoints that nest the array (`workflow_runs`).
+- **Bodies read only when there is one**: HEAD, 204 and 304 answers carry
+  none, and reading one anyway would wait on the kept-alive connection.
+- **Pagination**: `listValues` requests `page`/`limit` (at most the host's
+  `page_size`, 50 by default) until it has `limit` items or a page comes
+  back short. A short first page on a host whose page size is unknown
+  triggers one look at `/settings/api` before it is taken as the end.
+  `field` unwraps endpoints that nest the array (`workflow_runs`).
+  `/issues/{n}/comments` ignores paging and is read in one request.
 
 ## Sources
 

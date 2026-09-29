@@ -30,3 +30,13 @@ Feature backlog with design notes lives in [ROADMAP.md](ROADMAP.md).
 - **Smoke-test the browser and password logins on git.arzaroth.com** with a
   real account: only the start of the browser flow and a wrong password were
   tried live.
+
+## Deferred from the MVP review
+
+- **A submit / cancel step for `pr create` and `issue create`** on a
+  terminal, and exit code 2 on cancel, as gh does; today an empty editor
+  buffer still submits.
+- **Runs in `blocked` or `unknown` state** count as pending, so `run watch`
+  waits on them indefinitely; decide whether to stop and say so.
+- **The mock always closes connections**, so keep-alive behaviour (the 204
+  bug the review found) is only covered by the code path, not a test.

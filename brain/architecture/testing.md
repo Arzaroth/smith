@@ -11,8 +11,11 @@
     substring and a use count (`times`, for polling), with an optional
     `Location`. It records every request (target, body, authorization) for
     assertions; one request per connection.
-  - `testing/Harness.zig` gives each test a temporary directory used as
-    `HOME` and config dir, a `hosts.zon` pointing at the mock, a fixed "now"
+  - `testing/Harness.zig` gives each test a temporary directory used as the
+    git working directory (with `GIT_CEILING_DIRECTORIES` so git never climbs
+    into the checkout the tests run from), `TMPDIR`,
+    `HOME` and config dir; an empty stdin; `SMITH_EDITOR=true`; a
+    `hosts.zon` pointing at the mock, a fixed "now"
     (2026-09-29T12:00:00Z), a git identity, `GIT_CONFIG_NOSYSTEM`, and
     `SMITH_BROWSER=true`. `clone()` makes a repo whose origin is the mock;
     output is captured in memory; `stdin_data` stands in for stdin.

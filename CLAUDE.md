@@ -50,6 +50,9 @@ mock server started inside the test, git runs in temporary repositories, and
   build runner's protocol pipe, and a stray write hangs `zig build test`
   with no output. A silent hang means exactly that; bisect with
   `zig build test -Dtest-filter=<name>`.
+- Every harness command runs git in the temporary directory, with
+  `GIT_CEILING_DIRECTORIES` stopping git from climbing into the checkout
+  the tests run from; never set `ctx.cwd` to null in a test.
 
 ## Conventions
 

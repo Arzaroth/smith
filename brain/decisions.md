@@ -114,3 +114,27 @@ The config holds one entry per *(host, user)* with one active per host,
 rather than a nested map of hosts to accounts: every existing reader keeps
 seeing a flat list and `Config.find` keeps returning one entry per host, so
 only `auth` had to learn about accounts.
+
+## Hostile servers are in the threat model (2026-09-29)
+
+smith talks to instances the user may not control, reached from a clone's
+remotes or a `-R` typo, so the max review of the MVP treated server data as
+untrusted: a name from the API never reaches git where it could read as an
+option (`--`, and refusing names that start with `-`), environment tokens go
+only to exactly-named trusted https hosts, `--web` opens only http(s) URLs,
+and control characters are stripped before server text reaches the
+terminal.
+
+## A fork's branch never lands on ours (2026-09-29)
+
+`pr checkout` of a fork whose branch is called `main` used to fast-forward
+the user's `main` onto the fork, and `-d` could delete a same-named branch
+of the user's own. Checkouts now fall back to `pr-<n>` when the name is
+taken, smith marks the branches it makes (`branch.<name>.smith-pr`), and `-d`
+only deletes those, or a same-repository branch tracking the head.
+
+## Piped output follows gh's machine format (2026-09-29)
+
+Tables piped to another program print plain numbers, whole text, raw
+timestamps and the state that colour carries on a terminal, so scripts
+written against gh's piped output port over.

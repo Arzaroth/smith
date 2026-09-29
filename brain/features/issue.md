@@ -14,7 +14,8 @@
   before anything is written.
 - Bodies come from `--body`, `--body-file` (`-` for stdin), else the editor on
   a terminal (`SMITH_EDITOR`, `VISUAL`, `EDITOR`, `vi`), else empty. A title
-  is prompted for on a terminal and required otherwise.
+  is prompted for on a terminal; without one, `--title` and `--body` are
+  both required, as in gh.
 - Closing an already closed issue warns and does nothing.
 - The issue endpoints also back pull request comments, labels and assignees
   ([pr.md](pr.md)); the shared code is `cmd/common.zig`.

@@ -13,7 +13,8 @@ exists everywhere once it is declared.
 - **Dispatch** (`app.run`): walks the leading words down the tree
   (`cli.resolve`), prints help for a group, rejects unknown subcommands, then
   parses and calls `run`. A command returns its exit code.
-- **Exit codes**: 0 ok, 1 failure or usage error, 8 checks still pending
+- **Exit codes**: 0 ok, 1 failure or usage error, 4 authentication failed
+  (a 401, `error.AuthRequired`), 8 checks still pending
   (`pr checks`, `run view --exit-status`), following gh.
 - **Errors**: `Ctx.fail` prints the message and returns `error.Reported`,
   which `app.run` maps to exit 1. Anything else unexpected prints

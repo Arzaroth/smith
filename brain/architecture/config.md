@@ -47,17 +47,24 @@ then `default_host` (set by the first login, changed by `auth switch
 ## Tokens from the environment
 
 `withEnv` decides, per host, whether an environment token replaces the
-stored one:
+stored one. Only a host that is configured in `hosts.zon`, or is the
+default host, can receive one, its name must match exactly (port included),
+and over plain http only when the configured entry says http:
 
 1. `SMITH_TOKEN_<HOST>` for that host: the host name upper-cased with every
    non-alphanumeric character turned into `_` (`SMITH_TOKEN_GIT_EXAMPLE_COM`,
-   `SMITH_TOKEN_127_0_0_1_3000`).
-2. Else `SMITH_TOKEN`, but only for the default host as defined above. A
-   clone whose remotes point elsewhere never receives it; a 401 there says
-   so and names the variables that would work.
+   `SMITH_TOKEN_127_0_0_1_3000`). Lookalike names can map to the same
+   variable (`git-example.com`), which is why the host must be a trusted one.
+2. Else `SMITH_TOKEN`, only for the default host. A clone whose remotes point
+   elsewhere never receives it; a 401 there says so and names the variables
+   that would work.
 
 An environment token turns refreshing off for that invocation.
 `SMITH_CONFIG_DIR` moves the file.
+
+The file is written to a temporary file with a random name, created
+exclusively with mode 0600 (a planted file or symlink makes the write fail
+rather than be followed), then renamed over `hosts.zon`.
 
 ## Sources
 

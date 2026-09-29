@@ -46,3 +46,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - `--json` on list and view commands prints the API objects as Forgejo sent
   them; `--web` opens the page instead.
 - `smith --help` and `smith --version`.
+- Piped output follows gh's machine format: plain numbers, whole text,
+  timestamps and a state column; exit code 4 when authentication failed.
+- Built for servers you do not control: nothing a server sends can become a
+  git option or a terminal escape sequence, environment tokens only go to
+  exactly-named https hosts you configured, and `--web` only opens web
+  addresses.

@@ -68,7 +68,11 @@ the API objects as Forgejo sent them, for `jq`.
 - `pr checks` reads commit statuses, so any CI that posts them shows up, not
   only Forgejo Actions. It exits 1 when a check failed and 8 while one is
   pending.
-- `pr checkout` handles pull requests from forks through `refs/pull/<n>/head`.
+- `pr checkout` handles pull requests from forks through `refs/pull/<n>/head`,
+  as `pr-<n>` when the fork's branch is named like one of yours.
+- Piped, lists print plain numbers, whole text, timestamps and a state
+  column, like gh's machine format. Exit codes follow gh: 1 on failure, 4
+  when authentication failed, 8 while checks are pending.
 
 ## Configuration
 
@@ -77,7 +81,7 @@ the API objects as Forgejo sent them, for `jq`.
 
 | Variable | Effect |
 |---|---|
-| `SMITH_TOKEN` | Token for the default host (only that one) |
+| `SMITH_TOKEN` | Token for the default host only (its exact name, https unless configured) |
 | `SMITH_TOKEN_<HOST>` | Token for one host, e.g. `SMITH_TOKEN_GIT_EXAMPLE_COM` |
 | `SMITH_HOST` | Default host when not in a clone |
 | `SMITH_CONFIG_DIR` | Where `hosts.zon` lives |
