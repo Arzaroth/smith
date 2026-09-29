@@ -900,14 +900,21 @@ fn statusCmd(ctx: *Ctx, args: *const cli.Args) !u8 {
     };
     const values = try client.listValues(try r.path(ctx.alloc, "/pulls?state=open&sort=recentupdate", .{}), 500, null);
     const branch = git.currentBranch(ctx) catch null;
+    var head_owner: []const u8 = r.owner;
+    var head_ref = branch;
+    if (branch) |b| if (pushedAs(ctx, b) catch null) |p| {
+        head_owner = p.owner;
+        head_ref = p.branch;
+    };
 
     var current: ?std.json.Value = null;
     var mine: std.ArrayList(std.json.Value) = .empty;
     var requested: std.ArrayList(std.json.Value) = .empty;
     for (values) |v| {
         const pr = try api.decode(types.PullRequest, ctx, v);
-        if (branch) |b| if (std.mem.eql(u8, pr.head.ref, b)) {
-            current = v;
+        if (current == null) if (head_ref) |b| if (std.mem.eql(u8, pr.head.ref, b)) {
+            const o = if (pr.head.repo) |hr| (if (hr.owner) |x| x.login else "") else "";
+            if (std.ascii.eqlIgnoreCase(o, head_owner)) current = v;
         };
         if (pr.user) |u| if (std.ascii.eqlIgnoreCase(u.login, me)) try mine.append(ctx.alloc, v);
         for (pr.requested_reviewers orelse &.{}) |rv| if (std.ascii.eqlIgnoreCase(rv.login, me)) {

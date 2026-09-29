@@ -62,21 +62,23 @@ test "run download unpacks each artifact into a directory and skips expired ones
     try h.expectRun(1, &.{ "run", "download", "41", "-R", "owner/repo", "-n", "nothing*", "-D", try h.path("out") });
 }
 
-test "workflow list takes the first workflow directory that exists; run dispatches on the current branch" {
+test "workflow list takes the first workflow directory that exists; run dispatches on the default branch" {
     var h: Harness = undefined;
     try h.init(&.{
         .{ .path = "/api/v1/repos/owner/repo/contents/.forgejo/workflows", .status = 404, .body = "{}" },
         .{ .path = "/api/v1/repos/owner/repo/contents/.gitea/workflows", .status = 404, .body = "{}" },
         .{ .path = "/api/v1/repos/owner/repo/contents/.github/workflows", .body = "[{\"name\":\"ci.yml\",\"path\":\".github/workflows/ci.yml\",\"type\":\"file\"},{\"name\":\"README\",\"path\":\"x\",\"type\":\"file\"}]" },
         .{ .method = .POST, .path = actions ++ "/workflows/deploy.yml/dispatches", .status = 201, .body = "{\"id\":77,\"run_number\":3}" },
+        .{ .path = "/api/v1/repos/owner/repo", .body = fx.repo },
     }, .{});
     defer h.deinit();
     try h.clone("work", "owner", "repo");
     try h.git(&.{ "-C", "work", "switch", "-q", "-c", "release" });
     try h.expectRun(0, &.{ "workflow", "list" });
     try std.testing.expectEqualStrings("ci.yml\t.github/workflows/ci.yml\n", h.stdout());
-    try h.expectRun(0, &.{ "workflow", "run", ".forgejo/workflows/deploy.yml", "-f", "env=prod" });
-    try std.testing.expectEqualStrings("{\"ref\":\"release\",\"inputs\":{\"env\":\"prod\"},\"return_run_info\":true}", h.mock.lastBody(.POST, actions ++ "/workflows/deploy.yml/dispatches").?);
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "notes.txt", .data = "from a file" });
+    try h.expectRun(0, &.{ "workflow", "run", ".forgejo/workflows/deploy.yml", "-f", "env=@prod", "-F", try std.fmt.allocPrint(h.arena.allocator(), "notes=@{s}", .{try h.path("notes.txt")}) });
+    try std.testing.expectEqualStrings("{\"ref\":\"main\",\"inputs\":{\"env\":\"@prod\",\"notes\":\"from a file\"},\"return_run_info\":true}", h.mock.lastBody(.POST, actions ++ "/workflows/deploy.yml/dispatches").?);
     try h.expectErr("smith run watch 77");
 }
 

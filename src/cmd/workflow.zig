@@ -2,7 +2,6 @@ const std = @import("std");
 const cli = @import("../cli.zig");
 const Ctx = @import("../Ctx.zig");
 const api = @import("../api.zig");
-const git = @import("../git.zig");
 const repo = @import("../repo.zig");
 const term = @import("../term.zig");
 const types = @import("../types.zig");
@@ -24,8 +23,9 @@ pub const command: cli.Command = .{
             .min_args = 1,
             .max_args = 1,
             .flags = &.{
-                .{ .long = "ref", .short = 'r', .value = "branch", .help = "Branch or tag to run on (default: the current branch, else the default branch)" },
-                .{ .long = "field", .short = 'f', .value = "key=value", .help = "Workflow input (repeatable)" },
+                .{ .long = "ref", .short = 'r', .value = "branch", .help = "Branch or tag to run on (default: the default branch)" },
+                .{ .long = "field", .short = 'F', .value = "key=value", .help = "Workflow input; @file reads the value from a file (repeatable)" },
+                .{ .long = "raw-field", .short = 'f', .value = "key=value", .help = "Workflow input taken literally (repeatable)" },
                 cli.repo_flag,
             },
             .run = run,
@@ -77,15 +77,19 @@ fn run(ctx: *Ctx, args: *const cli.Args) !u8 {
     const r = try repo.resolve(ctx, args);
     var client = try r.client(ctx);
     const file = std.fs.path.basename(args.arg(0).?);
-    const ref = args.get("ref") orelse (git.currentBranch(ctx) catch null) orelse blk: {
+    const ref = args.get("ref") orelse blk: {
         const info = try api.decode(types.Repository, ctx, try client.getValue(try r.path(ctx.alloc, "", .{})));
         break :blk info.default_branch orelse "main";
     };
     var inputs: std.json.ObjectMap = .empty;
     for (args.names, args.values) |n, v| {
-        if (!std.mem.eql(u8, n, "field")) continue;
+        const raw = std.mem.eql(u8, n, "raw-field");
+        if (!raw and !std.mem.eql(u8, n, "field")) continue;
         const eq = std.mem.indexOfScalar(u8, v, '=') orelse return ctx.fail("invalid field \"{s}\"; expected key=value", .{v});
-        try inputs.put(ctx.alloc, v[0..eq], .{ .string = v[eq + 1 ..] });
+        var value = v[eq + 1 ..];
+        if (!raw and std.mem.startsWith(u8, value, "@")) value = std.Io.Dir.cwd().readFileAlloc(ctx.io, value[1..], ctx.alloc, .limited(1024 * 1024)) catch |e|
+            return ctx.fail("cannot read {s}: {t}", .{ value[1..], e });
+        try inputs.put(ctx.alloc, v[0..eq], .{ .string = value });
     }
     const Dispatch = struct { ref: []const u8, inputs: std.json.Value, return_run_info: bool };
     const resp = try client.sendValue(.POST, try r.path(ctx.alloc, "/actions/workflows/{s}/dispatches", .{try api.escape(ctx.alloc, file)}), Dispatch{

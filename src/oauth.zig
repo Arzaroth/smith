@@ -58,7 +58,8 @@ pub fn login(ctx: *Ctx, host: config.Host, client_id: []const u8) !config.Host {
     defer server.deinit(ctx.io);
     const redirect_uri = try std.fmt.allocPrint(ctx.alloc, "http://127.0.0.1:{d}/", .{server.socket.address.getPort()});
     const wait: i64 = if (ctx.getenv("SMITH_LOGIN_TIMEOUT")) |t| std.fmt.parseInt(i64, t, 10) catch 300 else 300;
-    var timer = try ctx.io.concurrent(expire, .{ ctx.io, &server, wait });
+    var expired: std.atomic.Value(bool) = .init(false);
+    var timer = try ctx.io.concurrent(expire, .{ ctx.io, &server, &expired, wait });
     defer timer.cancel(ctx.io);
 
     const url = try std.fmt.allocPrint(ctx.alloc, "{s}/login/oauth/authorize?client_id={s}&redirect_uri={s}&response_type=code&code_challenge={s}&code_challenge_method=S256&state={s}", .{
@@ -72,7 +73,7 @@ pub fn login(ctx: *Ctx, host: config.Host, client_id: []const u8) !config.Host {
     try ctx.err.flush();
     if (!try ctx.launchBrowser(url)) try ctx.err.writeAll("! could not start a browser; open the address above yourself\n");
 
-    const code = try waitForCode(ctx, &server, state, host.name);
+    const code = try waitForCode(ctx, &server, &expired, state, host.name);
     const tokens = exchange(ctx, host, &.{
         .{ "grant_type", "authorization_code" },
         .{ "client_id", client_id },
@@ -89,13 +90,15 @@ pub fn login(ctx: *Ctx, host: config.Host, client_id: []const u8) !config.Host {
     return h;
 }
 
-fn waitForCode(ctx: *Ctx, server: *Io.net.Server, state: []const u8, host_name: []const u8) ![]const u8 {
+fn waitForCode(ctx: *Ctx, server: *Io.net.Server, expired: *const std.atomic.Value(bool), state: []const u8, host_name: []const u8) ![]const u8 {
+    const too_late = "no sign-in came back from the browser in time; try again, or use --password";
     while (true) {
         const stream = server.accept(ctx.io) catch |e| switch (e) {
-            error.SocketNotListening => return ctx.fail("no sign-in came back from the browser in time; try again, or use --password", .{}),
+            error.SocketNotListening => return ctx.fail(too_late, .{}),
             else => return ctx.fail("waiting for the login redirect failed: {t}", .{e}),
         };
         defer stream.close(ctx.io);
+        if (expired.load(.acquire)) return ctx.fail(too_late, .{});
         var read_buf: [16 * 1024]u8 = undefined;
         var write_buf: [4096]u8 = undefined;
         var reader = stream.reader(ctx.io, &read_buf);
@@ -199,10 +202,15 @@ pub fn param(ctx: *Ctx, query: []const u8, name: []const u8) !?[]const u8 {
     return null;
 }
 
-/// Stops the wait for the redirect after `seconds`, by shutting the listening
-/// socket, which is how std lets another task end a blocking accept.
-fn expire(io: Io, server: *Io.net.Server, seconds: i64) void {
+/// Stops the wait for the redirect after `seconds`. Shutting the listening
+/// socket ends a blocking accept on Linux only; elsewhere a connection of its
+/// own wakes it.
+fn expire(io: Io, server: *Io.net.Server, expired: *std.atomic.Value(bool), seconds: i64) void {
     io.sleep(.fromSeconds(seconds), .awake) catch return;
+    expired.store(true, .release);
     const s: Io.net.Stream = .{ .socket = server.socket };
-    s.shutdown(io, .both) catch {};
+    s.shutdown(io, .both) catch {
+        const wake = server.socket.address.connect(io, .{ .mode = .stream }) catch return;
+        wake.close(io);
+    };
 }

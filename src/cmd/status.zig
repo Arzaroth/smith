@@ -25,7 +25,10 @@ const sections = [_]struct { title: []const u8, key: []const u8, type: []const u
 
 fn run(ctx: *Ctx, args: *const cli.Args) !u8 {
     var c = try search.client(ctx, args);
-    if (c.host.token == null) return ctx.fail("status needs a login; run `smith auth login`", .{});
+    if (c.host.token == null) {
+        try ctx.err.print("status needs a login; run `smith auth login --hostname {s}`\n", .{c.host.name});
+        return error.AuthRequired;
+    }
     const limit = try args.int("limit", 10);
     var results: [sections.len][]const std.json.Value = undefined;
     for (sections, 0..) |s, i| {
