@@ -13,6 +13,7 @@ pub const root: cli.Command = .{
     .flags = &.{.{ .long = "version", .short = 'V', .help = "Show the version" }},
     .subs = &.{
         @import("cmd/auth.zig").command,
+        @import("cmd/repo.zig").command,
     },
     .run = runRoot,
 };
