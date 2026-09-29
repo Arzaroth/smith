@@ -120,6 +120,7 @@ test "variables: set creates when missing and updates otherwise, get prints the 
         .{ .method = .PUT, .path = actions ++ "/variables/REGION", .status = 204, .body = "" },
         .{ .path = actions ++ "/variables/REGION", .body = "{\"name\":\"REGION\",\"data\":\"eu\"}" },
         .{ .path = "/api/v1/user/actions/variables", .body = "[{\"name\":\"A\",\"data\":\"1\"}]" },
+        .{ .method = .DELETE, .path = "/api/v1/user/actions/variables/A", .status = 204 },
     }, .{});
     defer h.deinit();
     try h.expectRun(0, &.{ "variable", "set", "REGION", "-b", "eu", "-R", "owner/repo" });
@@ -133,4 +134,6 @@ test "variables: set creates when missing and updates otherwise, get prints the 
     try std.testing.expectEqualStrings("A\t1\n", h.stdout());
     try h.expectRun(1, &.{ "variable", "delete", "A", "--user" });
     try h.expectErr("--yes");
+    try h.expectRun(0, &.{ "variable", "delete", "A", "--user", "--yes" });
+    try std.testing.expectEqual(@as(usize, 1), h.mock.count(.DELETE, "/api/v1/user/actions/variables/A"));
 }

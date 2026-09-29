@@ -118,3 +118,52 @@ test "due dates are days in the local zone, whatever zone Forgejo answers in" {
     try h.expectOut("winter\t0/0 closed (0%)\tdue 2026-12-31\topen\n");
     try h.expectOut("summer\t0/0 closed (0%)\tdue 2026-07-14\topen\n");
 }
+
+/// A TZif v2 file with one standard time type, no transitions, and `footer`
+/// as its POSIX rule: every date falls past the (absent) transitions.
+fn zoneFile(h: *Harness, name: []const u8, footer: []const u8) ![]const u8 {
+    var out: std.Io.Writer.Allocating = .init(h.arena.allocator());
+    const w = &out.writer;
+    for (0..2) |_| {
+        try w.writeAll("TZif2");
+        try w.splatByteAll(0, 15);
+        for ([_]u32{ 0, 0, 0, 0, 1, 4 }) |n| try w.writeInt(u32, n, .big);
+        try w.writeInt(i32, 3600, .big);
+        try w.writeAll(&.{ 0, 0 });
+        try w.writeAll("CET\x00");
+    }
+    try w.print("\n{s}\n", .{footer});
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = name, .data = out.written() });
+    return h.path(name);
+}
+
+test "due dates follow a zone file's rule footer, and the local day, not the UTC one" {
+    var h: Harness = undefined;
+    const late = "{\"id\":7,\"title\":\"late\",\"state\":\"open\",\"open_issues\":0,\"closed_issues\":0,\"due_on\":\"2026-07-14T23:30:00Z\"}";
+    try h.init(&.{
+        .{ .path = milestones, .body = "[" ++ late ++ "]" },
+        .{ .method = .POST, .path = milestones, .status = 201, .body = late },
+    }, .{});
+    defer h.deinit();
+    const zone = try zoneFile(&h, "Paris", "CET-1CEST,M3.5.0,M10.5.0/3");
+    try h.env.put("TZ", try std.fmt.allocPrint(h.arena.allocator(), ":{s}", .{zone}));
+    try h.expectRun(0, &.{ "milestone", "list", "-R", "owner/repo" });
+    try h.expectOut("late\t0/0 closed (0%)\tdue 2026-07-15\topen\n");
+    try h.expectRun(0, &.{ "milestone", "create", "late", "--due", "2026-07-14", "-R", "owner/repo" });
+    try std.testing.expect(std.mem.indexOf(u8, h.mock.lastBody(.POST, milestones).?, "\"due_on\":\"2026-07-14T21:59:59Z\"") != null);
+
+    try h.env.put("TZ", "<-02>2<-01>,M3.5.0/-1,M10.5.0/0");
+    try h.expectRun(0, &.{ "milestone", "create", "late", "--due", "2026-10-24", "-R", "owner/repo" });
+    try std.testing.expect(std.mem.indexOf(u8, h.mock.lastBody(.POST, milestones).?, "\"due_on\":\"2026-10-25T01:59:59Z\"") != null);
+    try h.env.put("TZ", "EST5EDT");
+    try h.expectRun(0, &.{ "milestone", "create", "late", "--due", "2026-07-14", "-R", "owner/repo" });
+    try std.testing.expect(std.mem.indexOf(u8, h.mock.lastBody(.POST, milestones).?, "\"due_on\":\"2026-07-15T03:59:59Z\"") != null);
+
+    try h.expectRun(1, &.{ "milestone", "create", "x", "--due", "2026-02-31", "-R", "owner/repo" });
+    try h.expectErr("--due takes a date as YYYY-MM-DD");
+    try h.env.put("TZ", "EST5");
+    try h.expectRun(1, &.{ "milestone", "create", "x", "--due", "9999-12-31", "-R", "owner/repo" });
+    try h.expectErr("out of range");
+    try h.env.put("TZ", "AAA-9999999999999999");
+    try h.expectRun(0, &.{ "milestone", "list", "-R", "owner/repo" });
+}

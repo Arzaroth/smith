@@ -285,3 +285,27 @@ test "list filters forks, sources, visibility and archived ones while it pages" 
     try h.expectRun(1, &.{ "repo", "list", "--fork", "--source" });
     try h.expectRun(1, &.{ "repo", "list", "--visibility", "secret" });
 }
+
+test "list filters archived ones, language, topics and internal, also for an organization" {
+    var h: Harness = undefined;
+    const archived = comptime blk: {
+        const s: []const u8 = fx.repo;
+        const i = std.mem.indexOf(u8, s, "\"archived\":false").?;
+        break :blk s[0..i] ++ "\"archived\":true,\"internal\":true,\"language\":\"Zig\",\"topics\":[\"cli\",\"forge\"]" ++ s[i + "\"archived\":false".len ..];
+    };
+    try h.init(&.{
+        .{ .path = "/api/v1/users/team/repos", .status = 404, .body = "{}" },
+        .{ .path = "/api/v1/orgs/team/repos", .body = "[" ++ fx.repo ++ "," ++ archived ++ "]" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "repo", "list", "team", "--archived" });
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, h.stdout(), "\n"));
+    try h.expectOut("public, archived");
+    try h.expectRun(0, &.{ "repo", "list", "team", "--no-archived" });
+    try std.testing.expect(std.mem.indexOf(u8, h.stdout(), "archived") == null);
+    try h.expectRun(0, &.{ "repo", "list", "team", "-l", "zig", "--topic", "CLI", "--visibility", "internal" });
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, h.stdout(), "\n"));
+    try h.expectRun(0, &.{ "repo", "list", "team", "--topic", "cli", "--topic", "missing" });
+    try h.expectErr("No repositories found");
+    try h.expectRun(1, &.{ "repo", "list", "team", "--archived", "--no-archived" });
+}

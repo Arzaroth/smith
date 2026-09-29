@@ -448,6 +448,14 @@ pub fn glob(pattern: []const u8, name: []const u8) bool {
     return p == pattern.len;
 }
 
+test "parseTime refuses impossible dates and times" {
+    try testing.expect(parseTime("2026-02-31T00:00:00Z") == null);
+    try testing.expect(parseTime("2025-02-29T00:00:00Z") == null);
+    try testing.expect(parseTime("2024-02-29T00:00:00Z") != null);
+    try testing.expect(parseTime("2026-01-01T24:00:00Z") == null);
+    try testing.expect(parseTime("2026-01-01T00:60:00Z") == null);
+}
+
 test size {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();

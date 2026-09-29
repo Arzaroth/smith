@@ -560,3 +560,22 @@ test "views show the milestone" {
     try h.expectRun(0, &.{ "pr", "view", "12", "-R", "owner/repo" });
     try h.expectOut("Milestone: v1.0\n");
 }
+
+test "merge retries a busy 405 a few times, and a plain 405 not at all" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = pulls ++ "/12", .body = fx.pr_same },
+        .{ .path = pulls ++ "/13", .body = fx.pr_fork },
+        .{ .path = "/api/v1/repos/owner/repo", .body = fx.repo },
+        .{ .method = .POST, .path = pulls ++ "/12/merge", .status = 405, .body = "{\"message\":\"Please try again later\"}" },
+        .{ .method = .POST, .path = pulls ++ "/13/merge", .status = 405, .body = "{\"message\":\"Not all required status checks successful\"}" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(1, &.{ "pr", "merge", "12", "-R", "owner/repo", "--merge" });
+    try h.expectErr("it has conflicts, or Forgejo is still checking it");
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, h.stderr(), "retrying"));
+    try std.testing.expectEqual(@as(usize, 6), h.mock.count(.POST, pulls ++ "/12/merge"));
+    try h.expectRun(1, &.{ "pr", "merge", "13", "-R", "owner/repo", "--merge" });
+    try h.expectErr("Not all required status checks successful");
+    try std.testing.expectEqual(@as(usize, 1), h.mock.count(.POST, pulls ++ "/13/merge"));
+}

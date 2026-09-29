@@ -384,6 +384,24 @@ test "boolean flags take =true and =false, and --enable-x=false means --disable-
     try testing.expect(on.has("enable-wiki") and !on.has("disable-wiki"));
 }
 
+test "booleans take pflag's spellings and -d=false, and the last one wins" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    for ([_][]const u8{ "--draft=1", "--draft=t", "--draft=TRUE", "-d=True" }) |on| try testing.expect((try testParse(a, &.{on})).has("draft"));
+    for ([_][]const u8{ "--draft=0", "--draft=F", "-d=false" }) |off| try testing.expect(!(try testParse(a, &.{off})).has("draft"));
+    try testing.expect(!(try testParse(a, &.{ "--draft", "--draft=false" })).has("draft"));
+    try testing.expect((try testParse(a, &.{ "--draft=false", "-d" })).has("draft"));
+    const release_edit: Command = .{ .name = "edit", .summary = "", .flags = &.{
+        .{ .long = "draft", .help = "" },
+        .{ .long = "publish", .help = "" },
+    } };
+    var buf: [256]u8 = undefined;
+    var w: Writer = .fixed(&buf);
+    const published = try parse(a, &release_edit, &.{"--draft=false"}, &w);
+    try testing.expect(published.has("publish") and !published.has("draft"));
+}
+
 test "parse rejects unknown flags and extra arguments" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
