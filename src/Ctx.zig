@@ -26,6 +26,9 @@ cwd: ?[]const u8 = null,
 /// Stands in for standard input when set.
 stdin_data: ?[]const u8 = null,
 stdin_reader: ?*Io.File.Reader = null,
+/// `--jq` and `--template`, applied by `api.printJson`.
+jq: ?[]const u8 = null,
+template: ?[]const u8 = null,
 
 /// `Reported`: the message is printed, exit 1. `AuthRequired`: likewise, but
 /// exit 4, as gh does when authentication is what failed.
@@ -160,4 +163,13 @@ pub fn nonce(ctx: *Ctx) ![]const u8 {
     var b: [12]u8 = undefined;
     ctx.io.random(&b);
     return std.fmt.allocPrint(ctx.alloc, "{x}", .{&b});
+}
+
+/// Asks a yes/no question on a terminal; without one, only `assumed` (the
+/// command's `--yes`) says yes, and saying nothing is refusing.
+pub fn confirm(ctx: *Ctx, question: []const u8, assumed: bool) !bool {
+    if (assumed) return true;
+    if (!ctx.interactive()) return ctx.fail("{s} Pass --yes to confirm when not running interactively.", .{question});
+    const answer = try ctx.prompt(try std.fmt.allocPrint(ctx.alloc, "{s} [y/N]", .{question}));
+    return answer.len > 0 and (answer[0] == 'y' or answer[0] == 'Y');
 }

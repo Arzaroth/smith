@@ -65,7 +65,7 @@ fn dispatch(ctx: *Ctx, argv: []const []const u8) !u8 {
         return if (asked) 0 else 1;
     }
 
-    const args = cli.parse(ctx.alloc, cmd, r.rest, ctx.err) catch |e| switch (e) {
+    var args = cli.parse(ctx.alloc, cmd, r.rest, ctx.err) catch |e| switch (e) {
         error.Help => {
             try cli.writeHelp(ctx.out, r.path);
             return 0;
@@ -76,6 +76,9 @@ fn dispatch(ctx: *Ctx, argv: []const []const u8) !u8 {
         },
         else => |x| return x,
     };
+    ctx.jq = args.get("jq");
+    ctx.template = args.get("template");
+    if ((ctx.jq != null or ctx.template != null) and !args.has("json")) args = try args.with(ctx.alloc, "json", "");
     return cmd.run.?(ctx, &args) catch |e| switch (e) {
         error.Usage => {
             try ctx.err.print("Run '{s} --help' for usage.\n", .{help_path});

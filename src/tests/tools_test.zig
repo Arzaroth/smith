@@ -45,16 +45,21 @@ test "api --paginate joins the pages" {
     try std.testing.expectEqual(@as(usize, 51), v.array.items.len);
 }
 
-test "the client follows a redirect on the same host with the token, and no other" {
+test "redirects keep the token on the same host and drop it anywhere else" {
     var h: Harness = undefined;
     var buf: [128]u8 = undefined;
+    var buf2: [128]u8 = undefined;
     try h.init(&.{}, .{});
     defer h.deinit();
+    var storage: Harness.Mock = undefined;
+    try storage.start(std.testing.io, &.{.{ .path = "/bucket/asset", .body = fx.repo }});
+    defer storage.stop();
     const same = try std.fmt.bufPrint(&buf, "{s}/api/v1/repos/owner/renamed", .{try h.base()});
+    const away = try std.fmt.bufPrint(&buf2, "http://127.0.0.1:{d}/bucket/asset", .{storage.port});
     const routes = try h.arena.allocator().dupe(Harness.Mock.Route, &.{
         .{ .path = "/api/v1/repos/owner/old", .status = 301, .content_type = "text/plain", .location = same },
         .{ .path = "/api/v1/repos/owner/renamed", .body = fx.repo },
-        .{ .path = "/api/v1/repos/owner/away", .status = 302, .content_type = "text/plain", .location = "http://evil.test/steal" },
+        .{ .path = "/api/v1/repos/owner/away", .status = 302, .content_type = "text/plain", .location = away },
     });
     h.mock.routes = routes;
     h.mock.used = try h.arena.allocator().alloc(u32, routes.len);
@@ -64,8 +69,26 @@ test "the client follows a redirect on the same host with the token, and no othe
     try h.expectOut("owner/repo");
     try std.testing.expectEqualStrings("token t0ken", h.mock.requests.items[1].authorization.?);
 
-    try h.expectRun(1, &.{ "repo", "view", "owner/away" });
-    try h.expectErr("redirects to another host");
+    try h.expectRun(0, &.{ "repo", "view", "owner/away" });
+    try h.expectOut("owner/repo");
+    try std.testing.expect(storage.requests.items[0].authorization == null);
+}
+
+test "--template and --jq shape the JSON of any command that has --json" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .path = "/api/v1/repos/owner/repo/issues", .body = fx.issue_list }}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo", "-t", "{{range .}}#{{.number}} {{.title}} ({{join \", \" .labels}}){{\"\\n\"}}{{end}}" });
+    try std.testing.expectEqualStrings("#7 Crash on start ({\"id\":1,\"name\":\"bug\",\"color\":\"ee0701\"})\n", h.stdout());
+    try h.expectRun(1, &.{ "issue", "list", "-R", "owner/repo", "--template", "{{range .}}" });
+    try h.expectErr("invalid --template");
+
+    const probe = std.process.run(h.arena.allocator(), std.testing.io, .{ .argv = &.{ "jq", "--version" }, .environ_map = &h.env }) catch return;
+    if (probe.term != .exited or probe.term.exited != 0) return;
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo", "-q", ".[].user.login" });
+    try std.testing.expectEqualStrings("alice\n", h.stdout());
+    try h.expectRun(0, &.{ "issue", "list", "--help" });
+    try h.expectOut("-q, --jq expression");
 }
 
 test "browse prints the URLs it would open" {

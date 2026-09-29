@@ -58,6 +58,7 @@ test {
     refAll(@import("types.zig"));
     refAll(@import("caps.zig"));
     refAll(@import("oauth.zig"));
+    refAll(@import("template.zig"));
     refAll(app);
 }
 

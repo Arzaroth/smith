@@ -78,6 +78,14 @@ pub const Args = struct {
         return n.?;
     }
 
+    /// A copy with one more flag set.
+    pub fn with(a: *const Args, alloc: Allocator, long: []const u8, value: []const u8) !Args {
+        var b = a.*;
+        b.names = try std.mem.concat(alloc, []const u8, &.{ a.names, &.{long} });
+        b.values = try std.mem.concat(alloc, []const u8, &.{ a.values, &.{value} });
+        return b;
+    }
+
     pub fn arg(a: *const Args, i: usize) ?[]const u8 {
         return if (i < a.positionals.len) a.positionals[i] else null;
     }
@@ -194,13 +202,26 @@ fn isNumber(a: []const u8) bool {
     return true;
 }
 
+pub const jq_flag: Flag = .{ .long = "jq", .short = 'q', .value = "expression", .help = "Filter the JSON with a jq expression (needs jq)" };
+pub const template_flag: Flag = .{ .long = "template", .short = 't', .value = "string", .help = "Format the JSON with a Go-style template" };
+pub const yes_flag: Flag = .{ .long = "yes", .short = 'y', .help = "Do not ask for confirmation" };
+
+/// Flags a command gets without declaring them: `--jq` and `--template`
+/// come with `--json`.
+pub fn implicitFlags(cmd: *const Command) []const Flag {
+    for (cmd.flags) |f| if (std.mem.eql(u8, f.long, "json")) return &.{ jq_flag, template_flag };
+    return &.{};
+}
+
 fn findLong(cmd: *const Command, name: []const u8) ?Flag {
     for (cmd.flags) |f| if (std.mem.eql(u8, f.long, name)) return f;
+    for (implicitFlags(cmd)) |f| if (std.mem.eql(u8, f.long, name)) return f;
     return null;
 }
 
 fn findShort(cmd: *const Command, c: u8) ?Flag {
     for (cmd.flags) |f| if (f.short == c) return f;
+    for (implicitFlags(cmd)) |f| if (f.short == c) return f;
     return null;
 }
 
@@ -233,15 +254,17 @@ pub fn writeHelp(w: *Writer, path: []const *const Command) Writer.Error!void {
 
     try w.writeAll("\nFLAGS\n");
     var width: usize = "-h, --help".len;
-    for (cmd.flags) |f| width = @max(width, flagLabelLen(f));
-    for (cmd.flags) |f| {
+    for ([_][]const Flag{ cmd.flags, implicitFlags(cmd) }) |group| for (group) |f| {
+        width = @max(width, flagLabelLen(f));
+    };
+    for ([_][]const Flag{ cmd.flags, implicitFlags(cmd) }) |group| for (group) |f| {
         try w.writeAll("  ");
         if (f.short) |s| try w.print("-{c}, ", .{s}) else try w.writeAll("    ");
         try w.print("--{s}", .{f.long});
         if (f.value) |v| try w.print(" {s}", .{v});
         try w.splatByteAll(' ', width - flagLabelLen(f) + 3);
         try w.print("{s}\n", .{f.help});
-    }
+    };
     try w.writeAll("  -h, --help");
     try w.splatByteAll(' ', width - "-h, --help".len + 3);
     try w.writeAll("Show help for this command\n");

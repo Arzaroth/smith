@@ -8,6 +8,7 @@ const Ctx = @import("Ctx.zig");
 const config = @import("config.zig");
 const Host = config.Host;
 const oauth = @import("oauth.zig");
+const template = @import("template.zig");
 
 pub const Client = struct {
     ctx: *Ctx,
@@ -56,8 +57,9 @@ pub const Client = struct {
         try headers.appendSlice(ctx.alloc, opts.extra_headers);
         // std 0.16 never sends `privileged_headers` and keeps the overridable
         // authorization header across redirects to any host, so redirects
-        // are followed here, and only within the same host.
-        const auth: std.http.Client.Request.Headers.Value = if (opts.authorization) |a|
+        // are followed here: with the token within the host, without it
+        // anywhere else (release assets and artifacts live in object storage).
+        var auth: std.http.Client.Request.Headers.Value = if (opts.authorization) |a|
             (if (a.len == 0) .omit else .{ .override = a })
         else if (c.host.token) |t|
             .{ .override = try std.fmt.allocPrint(ctx.alloc, "token {s}", .{t}) }
@@ -81,10 +83,10 @@ pub const Client = struct {
 
             var response = req.receiveHead(&.{}) catch |e| return ctx.fail("no response from {s}: {t}", .{ c.host.name, e });
             const status = @intFromEnum(response.head.status);
-            if (opts.body == null and (status == 301 or status == 302 or status == 307 or status == 308)) {
+            if (opts.body == null and (status == 301 or status == 302 or status == 303 or status == 307 or status == 308)) {
                 const location = response.head.location orelse return ctx.fail("HTTP {d} from {s} without a location", .{ status, url });
                 const next = try resolveRedirect(ctx.alloc, uri, location);
-                if (!sameHost(uri, next)) return ctx.fail("{s} redirects to another host ({s}); not following it with the token", .{ c.host.name, location });
+                if (!sameHost(uri, next)) auth = .omit;
                 redirects += 1;
                 if (redirects > 3) return ctx.fail("too many redirects from {s}", .{url});
                 uri = next;
@@ -169,6 +171,22 @@ pub const Client = struct {
         }
         if (message) |m| return ctx.fail("{s} (HTTP {d}, {t} {s})", .{ m, r.status, method, path });
         return ctx.fail("HTTP {d} from {t} {s}", .{ r.status, method, path });
+    }
+
+    /// Uploads a file as the `attachment` field of a multipart form.
+    pub fn upload(c: *Client, path: []const u8, filename: []const u8, data: []const u8) !Response {
+        const ctx = c.ctx;
+        var nonce: [12]u8 = undefined;
+        ctx.io.random(&nonce);
+        const boundary = try std.fmt.allocPrint(ctx.alloc, "smith-{x}", .{&nonce});
+        var body: std.ArrayList(u8) = .empty;
+        try body.print(ctx.alloc, "--{s}\r\nContent-Disposition: form-data; name=\"attachment\"; filename=\"{s}\"\r\nContent-Type: application/octet-stream\r\n\r\n", .{ boundary, filename });
+        try body.appendSlice(ctx.alloc, data);
+        try body.print(ctx.alloc, "\r\n--{s}--\r\n", .{boundary});
+        return c.call(.POST, path, .{
+            .body = body.items,
+            .content_type = try std.fmt.allocPrint(ctx.alloc, "multipart/form-data; boundary={s}", .{boundary}),
+        });
     }
 
     pub fn getValue(c: *Client, path: []const u8) !json.Value {
@@ -256,9 +274,52 @@ pub fn decodeAll(comptime T: type, ctx: *Ctx, vs: []const json.Value) ![]T {
     return out;
 }
 
+/// Prints JSON, or what `--jq` or `--template` make of it.
 pub fn printJson(ctx: *Ctx, v: anytype) !void {
-    try json.Stringify.value(v, .{ .whitespace = .indent_2 }, ctx.out);
-    try ctx.out.writeByte('\n');
+    if (ctx.jq == null and ctx.template == null) {
+        try json.Stringify.value(v, .{ .whitespace = .indent_2 }, ctx.out);
+        try ctx.out.writeByte('\n');
+        return;
+    }
+    const text = try json.Stringify.valueAlloc(ctx.alloc, v, .{});
+    if (ctx.template) |src| {
+        const value = try json.parseFromSliceLeaky(json.Value, ctx.alloc, text, .{});
+        const t = template.Template.parse(ctx.alloc, src) catch return ctx.fail("invalid --template: {s}", .{src});
+        t.render(ctx.alloc, ctx.out, value, ctx.now) catch |e| switch (e) {
+            error.TemplateSyntax => return ctx.fail("invalid --template: {s}", .{src}),
+            else => |x| return x,
+        };
+        return;
+    }
+    try jqFilter(ctx, text, ctx.jq.?);
+}
+
+/// Runs the system jq over `text`, like gh's --jq: strings come out raw.
+fn jqFilter(ctx: *Ctx, text: []const u8, expr: []const u8) !void {
+    try ctx.out.flush();
+    var child = std.process.spawn(ctx.io, .{
+        .argv = &.{ "jq", "-r", expr },
+        .stdin = .pipe,
+        .stdout = .pipe,
+        .environ_map = ctx.env,
+    }) catch |e| switch (e) {
+        error.FileNotFound => return ctx.fail("--jq needs jq installed (https://jqlang.org); --template works without it", .{}),
+        else => return ctx.fail("cannot run jq: {t}", .{e}),
+    };
+    {
+        var buf: [4096]u8 = undefined;
+        var w = child.stdin.?.writerStreaming(ctx.io, &buf);
+        w.interface.writeAll(text) catch {};
+        w.interface.flush() catch {};
+        child.stdin.?.close(ctx.io);
+        child.stdin = null;
+    }
+    var buf: [4096]u8 = undefined;
+    var r = child.stdout.?.readerStreaming(ctx.io, &buf);
+    const out = try r.interface.allocRemaining(ctx.alloc, .limited(256 * 1024 * 1024));
+    const term = try child.wait(ctx.io);
+    try ctx.out.writeAll(out);
+    if (term != .exited or term.exited != 0) return ctx.fail("jq rejected the expression: {s}", .{expr});
 }
 
 /// Percent-encodes a query or path component.

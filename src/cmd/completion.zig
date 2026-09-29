@@ -69,10 +69,12 @@ fn bashEntry(w: *Writer, path: []const u8, cmd: *const cli.Command) Writer.Error
     try w.print("_smith_subs[\"{s}\"]=\"", .{path});
     for (cmd.subs, 0..) |s, i| try w.print("{s}{s}", .{ if (i > 0) " " else "", s.name });
     try w.print("\"\n_smith_flags[\"{s}\"]=\"", .{path});
-    for (cmd.flags, 0..) |f, i| {
-        try w.print("{s}--{s}", .{ if (i > 0) " " else "", f.long });
+    var first = true;
+    for ([_][]const cli.Flag{ cmd.flags, cli.implicitFlags(cmd) }) |group| for (group) |f| {
+        try w.print("{s}--{s}", .{ if (first) "" else " ", f.long });
         if (f.short) |s| try w.print(" -{c}", .{s});
-    }
+        first = false;
+    };
     try w.writeAll("\"\n");
 }
 
@@ -118,14 +120,14 @@ fn fishEntry(w: *Writer, path: []const u8, cmd: *const cli.Command) Writer.Error
         try fishQuoted(w, s.summary);
         try w.writeAll("'\n");
     }
-    for (cmd.flags) |f| {
+    for ([_][]const cli.Flag{ cmd.flags, cli.implicitFlags(cmd) }) |group| for (group) |f| {
         try w.print("complete -c smith -n 'test \"(__smith_path)\" = \"{s}\"' -l {s}", .{ p, f.long });
         if (f.short) |s| try w.print(" -s {c}", .{s});
         if (f.value != null) try w.writeAll(" -r");
         try w.writeAll(" -d '");
         try fishQuoted(w, f.help);
         try w.writeAll("'\n");
-    }
+    };
 }
 
 fn fishQuoted(w: *Writer, s: []const u8) !void {
