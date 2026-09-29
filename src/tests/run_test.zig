@@ -79,6 +79,21 @@ test "watch polls until the run finishes" {
     try std.testing.expectEqual(@as(usize, 3), h.mock.count(.GET, runs ++ "/42"));
 }
 
+test "watch stops on a run that needs approval or whose status is unknown" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = runs ++ "/43", .body = fx.run_blocked },
+        .{ .path = runs ++ "/44", .body = fx.run_unknown },
+        .{ .path = runs ++ "/43/jobs", .body = "[]" },
+        .{ .path = runs ++ "/44/jobs", .body = "[]" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(8, &.{ "run", "watch", "43", "-R", "owner/repo", "-i", "0" });
+    try h.expectErr("needs approval");
+    try h.expectRun(1, &.{ "run", "watch", "44", "-R", "owner/repo", "-i", "0" });
+    try h.expectErr("does not know the status of run 44");
+}
+
 test "cancel posts for a running run and refuses a finished one" {
     var h: Harness = undefined;
     try h.init(&.{
