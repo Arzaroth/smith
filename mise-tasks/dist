@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Cross-compile release archives into dist/: Linux (static musl) and macOS, x86_64 and aarch64"
+set -euo pipefail
+
+version="$(sed -n 's/^    \.version = "\([^"]*\)",$/\1/p' build.zig.zon)"
+targets=(x86_64-linux-musl aarch64-linux-musl x86_64-macos aarch64-macos)
+
+rm -rf dist
+mkdir -p dist
+for target in "${targets[@]}"; do
+  prefix="dist/build/${target}"
+  zig build -Doptimize=ReleaseSafe -Dtarget="${target}" --prefix "${prefix}"
+  name="smith-${version}-${target}"
+  mkdir -p "dist/${name}"
+  cp "${prefix}/bin/smith" README.md LICENSE CHANGELOG.md "dist/${name}/"
+  tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+  rm -rf "dist/${name}"
+done
+rm -rf dist/build
+(cd dist && sha256sum -- *.tar.gz > SHA256SUMS)
+ls -l dist
