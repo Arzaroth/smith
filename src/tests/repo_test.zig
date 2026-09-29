@@ -193,6 +193,7 @@ test "sync picks sync_fork for a fork and mirror-sync for a mirror" {
     const mirror_json = try std.mem.replaceOwned(u8, h.arena.allocator(), fx.repo, "\"fork\":false", "\"mirror\":true");
     try setRoutes(&h, &.{
         .{ .path = "/api/v1/repos/me/f", .body = fork_json },
+        .{ .path = "/api/v1/repos/me/f/sync_fork/dev", .body = "{\"allowed\":true,\"commits_behind\":2}" },
         .{ .method = .POST, .path = "/api/v1/repos/me/f/sync_fork/dev", .body = "" },
         .{ .path = "/api/v1/repos/me/m", .body = mirror_json },
         .{ .method = .POST, .path = "/api/v1/repos/me/m/mirror-sync", .body = "" },

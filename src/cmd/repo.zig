@@ -107,7 +107,16 @@ pub const command: cli.Command = .{
             .summary = "List the repositories of a user or organization.",
             .usage = "[<owner>]",
             .max_args = 1,
-            .flags = &.{ cli.limit_flag, cli.json_flag, .{ .long = "hostname", .value = "string", .help = "The Forgejo host to list from" } },
+            .flags = &.{
+                .{ .long = "fork", .help = "Only forks" },
+                .{ .long = "source", .help = "Only repositories that are not forks" },
+                .{ .long = "visibility", .value = "public|private", .help = "Only public or only private repositories" },
+                .{ .long = "archived", .help = "Only archived repositories" },
+                .{ .long = "no-archived", .help = "Leave archived repositories out" },
+                cli.limit_flag,
+                cli.json_flag,
+                .{ .long = "hostname", .value = "string", .help = "The Forgejo host to list from" },
+            },
             .run = list,
         },
     },
@@ -186,20 +195,45 @@ fn view(ctx: *Ctx, args: *const cli.Args) !u8 {
     return 0;
 }
 
+const RepoFilter = struct {
+    ctx: *Ctx,
+    fork: ?bool,
+    private: ?bool,
+    archived: ?bool,
+
+    pub fn keep(f: RepoFilter, v: std.json.Value) !bool {
+        const r = try api.decode(types.Repository, f.ctx, v);
+        if (f.fork) |want| if (r.fork != want) return false;
+        if (f.private) |want| if (r.private != want) return false;
+        if (f.archived) |want| if (r.archived != want) return false;
+        return true;
+    }
+};
+
 fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
     const cfg = try config.load(ctx);
     const host = try repo.hostFor(ctx, cfg, args.get("hostname"));
     var client = try api.Client.init(ctx, host);
     const limit = try args.int("limit", 30);
+    if (args.has("fork") and args.has("source")) return ctx.fail("choose one of --fork and --source", .{});
+    if (args.has("archived") and args.has("no-archived")) return ctx.fail("choose one of --archived and --no-archived", .{});
+    const visibility = args.get("visibility");
+    if (visibility) |v| if (!std.mem.eql(u8, v, "public") and !std.mem.eql(u8, v, "private")) return ctx.fail("--visibility must be public or private", .{});
+    const wanted: RepoFilter = .{
+        .ctx = ctx,
+        .fork = if (args.has("fork")) true else if (args.has("source")) false else null,
+        .private = if (visibility) |v| std.mem.eql(u8, v, "private") else null,
+        .archived = if (args.has("archived")) true else if (args.has("no-archived")) false else null,
+    };
 
     const values = if (args.arg(0)) |owner| blk: {
         const user_path = try std.fmt.allocPrint(ctx.alloc, "/users/{s}/repos", .{try api.escape(ctx.alloc, owner)});
         const probe = try client.raw(.GET, try std.fmt.allocPrint(ctx.alloc, "{s}?limit=1", .{user_path}), .{});
         if (probe.status == 404) {
-            break :blk try client.listValues(try std.fmt.allocPrint(ctx.alloc, "/orgs/{s}/repos", .{try api.escape(ctx.alloc, owner)}), limit, null);
+            break :blk try client.listMatching(try std.fmt.allocPrint(ctx.alloc, "/orgs/{s}/repos", .{try api.escape(ctx.alloc, owner)}), limit, null, wanted);
         }
-        break :blk try client.listValues(user_path, limit, null);
-    } else try client.listValues("/user/repos", limit, null);
+        break :blk try client.listMatching(user_path, limit, null, wanted);
+    } else try client.listMatching("/user/repos", limit, null, wanted);
 
     if (args.has("json")) {
         try api.printJson(ctx, values);
@@ -212,7 +246,7 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
     }
     var table: term.Table = .{};
     for (repos) |r| {
-        const kind = if (r.private) "private" else if (r.fork) "fork" else if (r.archived) "archived" else "public";
+        const kind = try std.fmt.allocPrint(ctx.alloc, "{s}{s}{s}", .{ if (r.private) "private" else "public", if (r.fork) ", fork" else "", if (r.archived) ", archived" else "" });
         try table.add(ctx.alloc, &.{
             .{ .text = r.full_name, .color = .bold },
             .{ .text = try term.fit(ctx, r.description orelse "", 50) },
@@ -391,8 +425,17 @@ fn sync(ctx: *Ctx, args: *const cli.Args) !u8 {
         try t.path(ctx.alloc, "/sync_fork/{s}", .{try api.escape(ctx.alloc, b)})
     else
         try t.path(ctx.alloc, "/sync_fork", .{});
+    const branch = args.get("branch") orelse info.default_branch orelse "";
+    const parent = if (info.parent) |p| p.full_name else "its parent";
+    const Behind = struct { allowed: bool = false, commits_behind: i64 = 0 };
+    const state = try api.decode(Behind, ctx, try client.getValue(path));
+    if (state.commits_behind == 0) {
+        try ctx.err.print("✓ {s} {s} is already up to date with {s}\n", .{ info.full_name, branch, parent });
+        return 0;
+    }
+    if (!state.allowed) return ctx.fail("{s} {s} has commits of its own, so Forgejo cannot sync it from {s}; merge them by hand", .{ info.full_name, branch, parent });
     _ = try client.call(.POST, path, .{});
-    try ctx.err.print("✓ Synced {s} {s} from {s}\n", .{ info.full_name, args.get("branch") orelse info.default_branch orelse "", if (info.parent) |p| p.full_name else "its parent" });
+    try ctx.err.print("✓ Synced {s} {s} from {s} ({d} commits)\n", .{ info.full_name, branch, parent, state.commits_behind });
     return 0;
 }
 
