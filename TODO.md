@@ -16,12 +16,6 @@ live on git.arzaroth.com and codeberg.org.
   start of the browser flow and a wrong password were tried live.
 - **The keyring with the real Secret Service** (KDE Wallet or GNOME Keyring
   here) and on a Mac. Tests only drive a fake secret-tool.
-- **The release workflow on Forgejo**: v0.2.0 built its archives there but
-  could not publish (`cannot reach server:3000: TlsInitializationFailed`,
-  the runner reaches Forgejo over plain http). The workflow now writes smith
-  a config entry for that host; check the next tag publishes, and whether
-  the job token may create releases (if not, add a `RELEASE_TOKEN` secret
-  with `smith secret set RELEASE_TOKEN`). GitHub published v0.2.0 fine.
 
 ## Development
 
