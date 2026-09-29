@@ -50,10 +50,16 @@ fn runRoot(ctx: *Ctx, args: *const cli.Args) !u8 {
 
 /// Runs one invocation (`argv` without the program name) and returns the exit code.
 pub fn run(ctx: *Ctx, argv: []const []const u8) u8 {
-    const code = dispatch(ctx, argv) catch |e| switch (e) {
+    const code: u8 = dispatch(ctx, argv) catch |e| switch (e) {
         error.Reported => 1,
         error.AuthRequired => 4,
         error.Usage => 1,
+        error.WriteFailed => blk: {
+            if (ctx.paged != null) break :blk 0;
+            const closed = if (ctx.stdout_file) |f| (if (f.err) |why| why == error.BrokenPipe else false) else false;
+            if (!closed) ctx.err.print("smith: cannot write the output\n", .{}) catch {};
+            break :blk 1;
+        },
         else => blk: {
             ctx.err.print("smith: {t}\n", .{e}) catch {};
             break :blk 1;

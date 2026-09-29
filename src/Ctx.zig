@@ -15,6 +15,8 @@ env: *const std.process.Environ.Map,
 out: *Writer,
 err: *Writer,
 stdin: Io.File = .stdin(),
+/// The writer behind `out` in a real process, for why a write failed.
+stdout_file: ?*Io.File.Writer = null,
 stdout_tty: bool = false,
 stdin_tty: bool = false,
 color: bool = false,

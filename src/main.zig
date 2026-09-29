@@ -26,6 +26,7 @@ pub fn main(init: std.process.Init) !u8 {
         .io = io,
         .env = init.environ_map,
         .out = &stdout_writer.interface,
+        .stdout_file = &stdout_writer,
         .err = if (stderr_tty) &scrubber.interface else &stderr_writer.interface,
         .stdout_tty = stdout_tty,
         .stdin_tty = Io.File.stdin().isTty(io) catch false,
