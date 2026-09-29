@@ -29,6 +29,9 @@ stdin_reader: ?*Io.File.Reader = null,
 /// `--jq` and `--template`, applied by `api.printJson`.
 jq: ?[]const u8 = null,
 template: ?[]const u8 = null,
+/// Preferences from config.zon (`smith config`).
+editor: ?[]const u8 = null,
+browser: ?[]const u8 = null,
 
 /// `Reported`: the message is printed, exit 1. `AuthRequired`: likewise, but
 /// exit 4, as gh does when authentication is what failed.
@@ -104,7 +107,7 @@ pub fn promptSecret(ctx: *Ctx, label: []const u8) ![]const u8 {
 
 /// Opens `initial` in the user's editor and returns what they saved.
 pub fn editText(ctx: *Ctx, name: []const u8, initial: []const u8) ![]const u8 {
-    const editor = ctx.getenv("SMITH_EDITOR") orelse ctx.getenv("VISUAL") orelse ctx.getenv("EDITOR") orelse "vi";
+    const editor = ctx.getenv("SMITH_EDITOR") orelse ctx.editor orelse ctx.getenv("VISUAL") orelse ctx.getenv("EDITOR") orelse "vi";
     const dir = ctx.getenv("TMPDIR") orelse "/tmp";
     const path = try std.fmt.allocPrint(ctx.alloc, "{s}/smith-{s}-{s}", .{ dir, try ctx.nonce(), name });
     const cwd = Io.Dir.cwd();
@@ -128,14 +131,14 @@ pub fn openBrowser(ctx: *Ctx, url: []const u8) !void {
 }
 
 fn browserOpener(ctx: *const Ctx) []const u8 {
-    return ctx.getenv("SMITH_BROWSER") orelse ctx.getenv("BROWSER") orelse
+    return ctx.getenv("SMITH_BROWSER") orelse ctx.browser orelse ctx.getenv("BROWSER") orelse
         if (builtin.os.tag == .macos) "open" else "xdg-open";
 }
 
 /// Whether `openBrowser` has a chance: an opener was named, or there is a
 /// desktop session to open one in.
 pub fn canOpenBrowser(ctx: *const Ctx) bool {
-    if (ctx.getenv("SMITH_BROWSER") != null or ctx.getenv("BROWSER") != null) return true;
+    if (ctx.getenv("SMITH_BROWSER") != null or ctx.browser != null or ctx.getenv("BROWSER") != null) return true;
     if (builtin.os.tag == .macos) return true;
     return ctx.getenv("DISPLAY") != null or ctx.getenv("WAYLAND_DISPLAY") != null;
 }

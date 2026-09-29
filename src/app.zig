@@ -4,6 +4,7 @@ const std = @import("std");
 const build_options = @import("build_options");
 const cli = @import("cli.zig");
 const Ctx = @import("Ctx.zig");
+const settings = @import("settings.zig");
 
 pub const version = build_options.version;
 
@@ -29,6 +30,8 @@ pub const root: cli.Command = .{
         @import("cmd/key.zig").ssh_command,
         @import("cmd/key.zig").gpg_command,
         @import("cmd/key.zig").org_command,
+        @import("cmd/settings.zig").alias_command,
+        @import("cmd/settings.zig").config_command,
         @import("cmd/api.zig").command,
         @import("cmd/browse.zig").command,
         @import("cmd/completion.zig").command,
@@ -61,7 +64,17 @@ pub fn run(ctx: *Ctx, argv: []const []const u8) u8 {
     return code;
 }
 
-fn dispatch(ctx: *Ctx, argv: []const []const u8) !u8 {
+fn dispatch(ctx: *Ctx, argv_in: []const []const u8) !u8 {
+    const prefs = try settings.load(ctx);
+    ctx.editor = prefs.editor;
+    ctx.browser = prefs.browser;
+    var argv = argv_in;
+    if (argv.len > 0 and argv[0].len > 0 and argv[0][0] != '-' and !isCommand(argv[0])) {
+        if (prefs.alias(argv[0])) |a| {
+            if (a.expansion[0] == '!') return shellAlias(ctx, a.expansion[1..], argv[1..]);
+            argv = try settings.expand(ctx.alloc, a.expansion, argv[1..]);
+        }
+    }
     const r = try cli.resolve(ctx.alloc, &root, argv);
     const cmd = r.path[r.path.len - 1];
     const help_path = try helpPath(ctx, r.path);
@@ -104,4 +117,25 @@ fn helpPath(ctx: *Ctx, path: []const *const cli.Command) ![]const u8 {
     var names: std.ArrayList([]const u8) = .empty;
     for (path) |c| try names.append(ctx.alloc, c.name);
     return std.mem.join(ctx.alloc, " ", names.items);
+}
+
+fn isCommand(name: []const u8) bool {
+    for (root.subs) |c| if (std.mem.eql(u8, c.name, name)) return true;
+    return false;
+}
+
+/// Runs a `!` alias with sh, its arguments as $1, $2…
+fn shellAlias(ctx: *Ctx, script: []const u8, args: []const []const u8) !u8 {
+    var argv: std.ArrayList([]const u8) = .empty;
+    try argv.appendSlice(ctx.alloc, &.{ "sh", "-c", script, "smith-alias" });
+    try argv.appendSlice(ctx.alloc, args);
+    try ctx.out.flush();
+    try ctx.err.flush();
+    var child = std.process.spawn(ctx.io, .{ .argv = argv.items, .environ_map = ctx.env }) catch |e|
+        return ctx.fail("cannot run sh: {t}", .{e});
+    const term = try child.wait(ctx.io);
+    return switch (term) {
+        .exited => |code| code,
+        else => 1,
+    };
 }

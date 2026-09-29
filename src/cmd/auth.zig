@@ -83,8 +83,11 @@ fn login(ctx: *Ctx, args: *const cli.Args) !u8 {
         if (!std.mem.eql(u8, s, "https") and !std.mem.eql(u8, s, "http")) return ctx.fail("--scheme must be https or http", .{});
         host.scheme = s;
     }
-    if (args.get("git-protocol")) |p| host.git_protocol = std.meta.stringToEnum(config.Protocol, p) orelse
-        return ctx.fail("--git-protocol must be ssh or https", .{});
+    if (args.get("git-protocol")) |p| {
+        host.git_protocol = std.meta.stringToEnum(config.Protocol, p) orelse return ctx.fail("--git-protocol must be ssh or https", .{});
+    } else if (known == null) {
+        if ((try @import("../settings.zig").load(ctx)).git_protocol) |p| host.git_protocol = p;
+    }
     if (args.get("ssh-host")) |s| host.ssh_host = s;
 
     if (!args.has("with-token") and !args.has("password") and !args.has("web") and !ctx.interactive())
