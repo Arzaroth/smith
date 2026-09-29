@@ -10,3 +10,8 @@
 - **Checks**: the combined commit status of a commit, which any CI can post,
   Forgejo Actions included.
 - **Gate**: `mise run check`; must be green before a merge or release.
+- **Draft**: a pull request whose title starts with `WIP: `.
+- **Headless pull request**: one whose head is a ref rather than a branch
+  (AGit flow, or a deleted head branch); checked out from
+  `refs/pull/<n>/head`.
+- **Mock**: the in-process Forgejo stand-in the tests talk to.

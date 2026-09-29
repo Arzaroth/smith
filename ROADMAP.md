@@ -15,70 +15,80 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
 ## P0 - Foundation
 
 - [x] Zig 0.16 project, mise toolchain and tasks, `--help`/`--version`, gate
-      (`mise run check`: fmt, tests, ReleaseSafe build).
-- [ ] Argument parsing: nested `<command> <subcommand>`, long and short flags,
-      `--flag=value`, repeated flags, `--` passthrough, per-command `--help`.
-      Decided: hand-written over the standard library, no dependency (the
-      command tree is static and small enough to declare as data).
-- [ ] Host config at `$XDG_CONFIG_HOME/smith/hosts.zon`, mode 0600, one entry
-      per host: `token`, `user`, `git_protocol` (ssh|https), `ssh_host`
-      (the SSH hostname when it differs from the web one, e.g. `box.` vs
-      `git.`), `scheme` (https default, http allowed for LAN instances and
-      tests). `SMITH_TOKEN` and `SMITH_HOST` override. Open question: ZON or
-      JSON for the file (ZON reads nicer, JSON is what every other tool can
-      edit).
-- [ ] HTTP client over `std.http.Client`: token auth header, JSON decode into
-      structs that ignore unknown fields, API error bodies surfaced as
-      `smith: <message> (HTTP 404)`, `Link`/`X-Total-Count` pagination.
-- [ ] Repo resolution: `-R [host/]owner/repo`, else parse git remotes
-      (`upstream` before `origin`, then any), mapping `ssh_host` back to the
-      API host. Handles `git@h:o/r.git`, `ssh://git@h[:port]/o/r.git`,
-      `https://h/o/r(.git)`.
-- [ ] Output: aligned tables and colour on a TTY only, honouring `NO_COLOR`;
-      relative times ("3 hours ago"); `--json` dumps the API objects verbatim;
-      `--web` opens the page with `xdg-open`/`open`.
-- [ ] Test harness: a local HTTP mock server in the test binary, temporary
-      git repos, no network and no real `$HOME`.
-- [ ] CI (`.github/workflows/ci.yml`): `mise run check`, on Forgejo Actions
+      (`mise run check`: fmt, shellcheck, tests, ReleaseSafe build).
+- [x] Argument parsing: nested `<command> <subcommand>`, long and short flags,
+      `--flag=value`, clustered short flags, repeatable and comma-separated
+      values, `--` passthrough, per-command `--help`. Decided: hand-written
+      over the standard library, no dependency; the command tree is data,
+      and help and completion are generated from it.
+- [x] Host config at `$XDG_CONFIG_HOME/smith/hosts.zon`, mode 0600, one entry
+      per host: `token`, `user`, `git_protocol` (ssh|https), `ssh_host`,
+      `scheme` (https default, http for LAN instances and tests).
+      `SMITH_TOKEN`, `SMITH_HOST` and `SMITH_CONFIG_DIR` override. Decided:
+      ZON, since `std.zon` reads and writes it with no dependency.
+- [x] HTTP client over `std.http.Client`: token header, JSON decoded into
+      structs that ignore unknown fields, API error messages surfaced, a 401
+      pointing at `auth login`. Decided: page/limit pagination rather than
+      `Link` headers, since the Actions endpoints do not send them; std's
+      redirect handling off, same-host redirects followed by smith (std 0.16
+      leaks the token across hosts and never sends privileged headers).
+- [x] Repo resolution: `-R [host/]owner/repo`, else the git remotes
+      (`upstream` before `origin`, then any), each read both as configured and
+      after `insteadOf`, mapping `ssh_host` back to the API host.
+- [x] Output: aligned tables and colour on a TTY only, tab-separated when
+      piped, `NO_COLOR`/`CLICOLOR_FORCE`; relative times; `--json` dumps the
+      API objects verbatim; `--web` opens the page. git's own output goes to
+      stderr.
+- [x] Test harness: a mock Forgejo served in the test binary, temporary git
+      repos (with a bare repo behind `insteadOf` for `pr checkout`), no
+      network and no real `$HOME`.
+- [x] CI (`.github/workflows/ci.yml`): `mise run check`, on Forgejo Actions
       and on GitHub Actions through the mirror.
 
 ## P1 - MVP: clone, pull requests, issues, pipelines
 
-- [ ] `auth login` (token pasted or `--with-token` on stdin, checked against
-      `/api/v1/version` and `/api/v1/user`; a token without `read:user` still
-      works, the user is then asked for), `auth status`, `auth logout`,
+- [x] `auth login` (token pasted without echo or `--with-token` on stdin,
+      checked against `/api/v1/version` and `/api/v1/user`; a token without
+      `read:user` is kept without a username), `auth status`, `auth logout`,
       `auth token`. `ssh_host` discovered from a repo's `ssh_url` at login.
-- [ ] `repo clone <owner/repo|repo|url> [dir] [-- <git flags>]`: protocol from
+- [x] `repo clone <owner/repo|repo|url> [dir] [-- <git flags>]`: protocol from
       config; a fork gets an `upstream` remote, like gh. `repo view [--web]`,
       `repo list [owner]`.
-- [ ] `pr list` (`--state open|closed|merged|all`, `--author`, `--label`,
-      `--base`, `--head`, `-L`), `pr view [<n>|<branch>] [--comments]`, `pr diff`.
-- [ ] `pr create` (`--title`, `--body`, `--body-file`, `--fill`, `--base`,
+- [x] `pr list` (`--state open|closed|merged|all`, `--author`, `--label`,
+      `--base`, `-L`), `pr view [<n>|<branch>] [--comments]`, `pr diff`
+      (`--patch`, `--name-only`). Open question: `--head`, which Forgejo's
+      list endpoint cannot filter on.
+- [x] `pr create` (`--title`, `--body`, `--body-file`, `--fill`, `--base`,
       `--head`, `--draft`, `--label`, `--assignee`, `--reviewer`, `--web`).
       Decided: `--draft` is Forgejo's `WIP:` title prefix, since the API has no
       draft flag. Title prompted and body opened in `$EDITOR` on a TTY only.
-- [ ] `pr checkout <n>`: same-repo head tracks `<remote>/<branch>`; a fork's
-      head is fetched from `refs/pull/<n>/head`.
-- [ ] `pr merge <n>` (`--merge|--squash|--rebase|--rebase-merge|--ff-only`,
-      `--delete-branch`, `--auto` = `merge_when_checks_succeed`),
-      `pr close`, `pr reopen`, `pr comment`, `pr ready` (drops `WIP:`).
-- [ ] `pr checks <n> [--watch]`: the head commit's combined status. Decided:
+      The branch must be pushed; a branch pushed to a fork opens as
+      `owner:branch`.
+- [x] `pr checkout <n>`: same-repo head tracks `<remote>/<branch>`; a fork's
+      or headless pull request's head is fetched from `refs/pull/<n>/head`.
+- [x] `pr merge <n>` (`--merge|--squash|--rebase|--rebase-merge|--ff-only`,
+      default the repository's style, `--delete-branch`, `--auto` =
+      `merge_when_checks_succeed`, `--admin`), `pr close`, `pr reopen`,
+      `pr comment`, `pr ready` (drops `WIP:`), `pr edit`.
+- [x] `pr checks <n> [--watch]`: the head commit's combined status. Decided:
       read commit statuses rather than Actions runs, so Woodpecker, Drone and
-      other external CI show up too.
-- [ ] `issue list` (`--state`, `--label`, `--assignee`, `--author`,
-      `--search`, `-L`), `issue view [--comments]`, `issue create`,
-      `issue close`, `issue reopen`, `issue comment`, `issue edit`.
-- [ ] `run list` (`--branch`, `--status`, `--event`, `-L`), `run view <id>`
-      (jobs and their status), `run view --log [--job <id>]`, `run watch <id>`,
+      other external CI show up too. Exit 1 on failure, 8 while pending.
+- [x] `issue list` (`--state`, `--label`, `--assignee`, `--author`,
+      `--mention`, `--search`, `-L`), `issue view [--comments]`,
+      `issue create`, `issue close`, `issue reopen`, `issue comment`,
+      `issue edit`.
+- [x] `run list` (`--branch`, `--status`, `--event`, `--workflow`,
+      `--commit`, `-L`), `run view [<id>]` (jobs and their status),
+      `run view --log|--log-failed [--job <id>]`, `run watch [<id>]`,
       `run cancel <id>`. Forgejo Actions only (`/actions/runs`).
-- [ ] `browse [<path>|<n>]`, `api <path>` passthrough (`-X`, `-f`/`-F`,
-      `--paginate`, `-H`), `completion <bash|zsh|fish>`.
+- [x] `browse [<path>|<n>]`, `api <path>` passthrough (`-X`, `-f`/`-F`,
+      `--input`, `--paginate`, `-H`, `{owner}`/`{repo}`),
+      `completion <bash|zsh|fish>`.
 - [ ] Release pipeline: static binaries for x86_64/aarch64 Linux and macOS,
       attached to a Forgejo release and mirrored to GitHub.
-
 ## P2 - gh parity
 
-- [ ] `pr review` (`--approve`, `--request-changes`, `--comment`), `pr edit`,
+- [ ] `pr review` (`--approve`, `--request-changes`, `--comment`),
       `pr status` (mine, review requested, current branch), `pr update`
       (merge or rebase base into head).
 - [ ] `repo create`, `repo fork [--clone]`, `repo delete`, `repo edit`,

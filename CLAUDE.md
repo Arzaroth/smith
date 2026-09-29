@@ -24,14 +24,32 @@ Before using a std API, read it in the pinned toolchain's source
 
 - `main` takes `std.process.Init`; I/O goes through `init.io` and buffered
   `Io.File.Writer`s, which must be flushed.
-- Tests use `std.testing.allocator`, which fails a test on a leak; every
-  allocation has an owner and an `errdefer` on the failure path.
+- Commands allocate from the invocation's arena (`ctx.alloc`) and free
+  nothing individually; code outside it (the mock, pure helpers under test)
+  owns its memory and uses `errdefer`.
+- Zig analyses only what is referenced: a function nothing calls is never
+  compiled, errors included. `main.zig`'s test block walks every module
+  (`refAll`) so `zig build test` compiles all of it.
+- Known std 0.16 traps, all worked around in `api.zig`: the HTTP client
+  never sends `privileged_headers`, keeps the authorization header across a
+  redirect to another host, and asserts when a POST is sent without a body.
+  `refAllDeclsRecursive` is gone; `json.ObjectMap` is unmanaged (`.empty`,
+  allocator per call).
 
 ## Tests
 
 Tests never touch the network or the developer's real config: HTTP goes to a
 mock server started inside the test, git runs in temporary repositories, and
-`HOME`/`XDG_CONFIG_HOME` point at a temporary directory.
+`HOME` and the config directory point at a temporary directory
+(`src/testing/Harness.zig`, see `brain/architecture/testing.md`).
+
+- A new command gets invocation tests in `src/tests/`, registered in
+  `main.zig`'s test block: the mock routes it calls, the request bodies it
+  sends, and its output and exit code.
+- Child processes must never write to the test binary's stdout: it is the
+  build runner's protocol pipe, and a stray write hangs `zig build test`
+  with no output. A silent hang means exactly that; bisect with
+  `zig build test -Dtest-filter=<name>`.
 
 ## Conventions
 

@@ -3,18 +3,20 @@
 Deferred work, queued behind feature development.
 Feature backlog with design notes lives in [ROADMAP.md](ROADMAP.md).
 
-## Hosting
-
-- **Cancel Forgejo run 1.** It was queued from the first workflow
-  (`runs-on: docker`, a label no runner carries) and sits in `waiting`
-  forever: `POST /api/v1/repos/Arzaroth/smith/actions/runs/142/cancel`.
-
 ## Development
 
-- **An API token for smoke tests**, scopes `read:user`, `write:repository`,
-  `write:issue`, so the MVP can be exercised against the real instance and
-  not only the mock server.
-- **Zig 0.16 `std.http.Client` + TLS against the real host**: confirm it
-  negotiates with git.arzaroth.com before the client layer is built on it.
-  If it cannot, the fallback is linking libcurl, which costs the static
-  binary.
+- **Smoke-test the write paths against the real instance.** Every write
+  (create, comment, merge, close, cancel, login) is covered against the mock
+  only; reads were exercised live on git.arzaroth.com and codeberg.org. Needs
+  a token with `read:user`, `write:repository` and `write:issue`, and a
+  scratch repository to open and merge pull requests in.
+- **Strip the release binary.** ReleaseSafe is 10.9 MB with debug info;
+  `strip` in `build.zig` for release builds should bring it down to a few MB.
+- **`pr list -s merged` can come back short.** Forgejo has no merged filter,
+  so smith fetches up to four times the limit of closed pull requests and
+  keeps the merged ones; a repository with many closed-unmerged ones returns
+  fewer than `-L`.
+- **Report the std 0.16 HTTP client bugs upstream**: `privileged_headers`
+  are never written by `sendHead`, and the overridable authorization header
+  is kept across a redirect to another host (`lib/std/http/Client.zig`).
+  smith works around both in `api.zig`.
