@@ -304,6 +304,7 @@ fn download(ctx: *Ctx, args: *const cli.Args) !u8 {
     const names = try args.all(ctx.alloc, "name");
     const dir = args.get("dir") orelse ".";
     const cwd = std.Io.Dir.cwd();
+    cwd.createDirPath(ctx.io, dir) catch |e| return ctx.fail("cannot create {s}: {t}", .{ dir, e });
     var count: usize = 0;
     for (artifacts) |a| {
         if (names.len > 0) {
@@ -315,12 +316,14 @@ fn download(ctx: *Ctx, args: *const cli.Args) !u8 {
             try ctx.err.print("! {s} has expired\n", .{a.name});
             continue;
         }
-        const resp = try client.call(.GET, try r.path(ctx.alloc, "/actions/artifacts/{d}/zip", .{a.id}), .{ .accept = "*/*" });
-        const dest = try std.fs.path.join(ctx.alloc, &.{ dir, a.name });
-        cwd.createDirPath(ctx.io, dest) catch |e| return ctx.fail("cannot create {s}: {t}", .{ dest, e });
-        const zip_path = try std.fmt.allocPrint(ctx.alloc, "{s}.zip.part", .{dest});
-        cwd.writeFile(ctx.io, .{ .sub_path = zip_path, .data = resp.body }) catch |e| return ctx.fail("cannot write {s}: {t}", .{ zip_path, e });
+        const dest = try std.fs.path.join(ctx.alloc, &.{ dir, try common.fileName(ctx, a.name) });
+        if (cwd.access(ctx.io, dest, .{})) |_| {
+            return ctx.fail("{s} already exists; remove it or pass another --dir", .{dest});
+        } else |_| {}
+        const zip_path = try std.fmt.allocPrint(ctx.alloc, "{s}.{s}.zip", .{ dest, try ctx.nonce() });
+        _ = try client.download(try r.path(ctx.alloc, "/actions/artifacts/{d}/zip", .{a.id}), zip_path, false);
         defer cwd.deleteFile(ctx.io, zip_path) catch {};
+        cwd.createDirPath(ctx.io, dest) catch |e| return ctx.fail("cannot create {s}: {t}", .{ dest, e });
         var zip_file = try cwd.openFile(ctx.io, zip_path, .{});
         defer zip_file.close(ctx.io);
         var buf: [16 * 1024]u8 = undefined;

@@ -247,14 +247,15 @@ fn create(ctx: *Ctx, args: *const cli.Args) !u8 {
 
 fn uploadFile(ctx: *Ctx, client: *api.Client, r: repo.Repo, rel: types.Release, path: []const u8, clobber: bool) !void {
     const name = std.fs.path.basename(path);
+    var file = Io.Dir.cwd().openFile(ctx.io, path, .{}) catch |e| return ctx.fail("cannot read {s}: {t}", .{ path, e });
+    defer file.close(ctx.io);
+    const size = (file.stat(ctx.io) catch |e| return ctx.fail("cannot read {s}: {t}", .{ path, e })).size;
     for (rel.assets orelse &.{}) |a| if (std.mem.eql(u8, a.name, name)) {
         if (!clobber) return ctx.fail("{s} already has an asset named {s}; pass --clobber to replace it", .{ rel.tag_name, name });
         _ = try client.call(.DELETE, try r.path(ctx.alloc, "/releases/{d}/assets/{d}", .{ rel.id, a.id }), .{});
     };
-    const data = Io.Dir.cwd().readFileAlloc(ctx.io, path, ctx.alloc, .limited(2 * 1024 * 1024 * 1024)) catch |e|
-        return ctx.fail("cannot read {s}: {t}", .{ path, e });
-    _ = try client.upload(try r.path(ctx.alloc, "/releases/{d}/assets?name={s}", .{ rel.id, try api.escape(ctx.alloc, name) }), name, data);
-    try ctx.err.print("✓ Uploaded {s} ({s})\n", .{ name, try term.size(ctx.alloc, @intCast(data.len)) });
+    _ = try client.uploadFile(try r.path(ctx.alloc, "/releases/{d}/assets?name={s}", .{ rel.id, try api.escape(ctx.alloc, name) }), name, file, size);
+    try ctx.err.print("✓ Uploaded {s} ({s})\n", .{ name, try term.size(ctx.alloc, @intCast(size)) });
 }
 
 fn upload(ctx: *Ctx, args: *const cli.Args) !u8 {
@@ -279,14 +280,9 @@ fn download(ctx: *Ctx, args: *const cli.Args) !u8 {
                 if (term.glob(p, a.name)) break;
             } else continue;
         }
-        const target = try std.fs.path.join(ctx.alloc, &.{ dir, a.name });
-        if (!args.has("clobber")) if (Io.Dir.cwd().access(ctx.io, target, .{})) |_| {
-            return ctx.fail("{s} already exists; pass --clobber to overwrite it", .{target});
-        } else |_| {};
-        const resp = try client.call(.GET, a.browser_download_url, .{ .accept = "*/*" });
-        Io.Dir.cwd().writeFile(ctx.io, .{ .sub_path = target, .data = resp.body }) catch |e|
-            return ctx.fail("cannot write {s}: {t}", .{ target, e });
-        try ctx.err.print("✓ Downloaded {s} ({s})\n", .{ target, try term.size(ctx.alloc, @intCast(resp.body.len)) });
+        const target = try std.fs.path.join(ctx.alloc, &.{ dir, try common.fileName(ctx, a.name) });
+        const size = try client.download(a.browser_download_url, target, args.has("clobber"));
+        try ctx.err.print("✓ Downloaded {s} ({s})\n", .{ target, try term.size(ctx.alloc, @intCast(size)) });
         count += 1;
     }
     if (count == 0) return ctx.fail("no assets to download in {s}", .{rel.tag_name});

@@ -316,7 +316,7 @@ fn create(ctx: *Ctx, args: *const cli.Args) !u8 {
         try ctx.err.print("✓ Added remote {s}\n", .{remote});
         if (args.has("push")) try git.run(ctx, &.{ "-C", src, "push", "-u", "--", remote, "HEAD" });
     } else if (args.has("clone")) {
-        try git.run(ctx, &.{ "clone", url, created.name });
+        try git.run(ctx, &.{ "clone", "--", url, try cloneDir(ctx, created.name) });
     }
     return 0;
 }
@@ -343,9 +343,10 @@ fn fork(ctx: *Ctx, args: *const cli.Args) !u8 {
         try git.run(ctx, &.{ "remote", "add", "--", "origin", url });
         try ctx.err.print("✓ Added remote origin for {s}\n", .{f.full_name});
     } else if (args.has("clone")) {
-        try git.run(ctx, &.{ "clone", url, f.name });
+        const dir = try cloneDir(ctx, f.name);
+        try git.run(ctx, &.{ "clone", "--", url, dir });
         const parent_url = cloneUrl(try api.decode(types.Repository, ctx, try client.getValue(try t.path(ctx.alloc, "", .{}))), t.host.git_protocol) orelse return 0;
-        try git.run(ctx, &.{ "-C", f.name, "remote", "add", "-f", "--", "upstream", parent_url });
+        try git.run(ctx, &.{ "-C", dir, "remote", "add", "-f", "--", "upstream", parent_url });
         try ctx.err.print("✓ Added remote upstream for {s}/{s}\n", .{ t.owner, t.name });
     }
     return 0;

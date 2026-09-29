@@ -33,6 +33,12 @@ pub const Client = struct {
 
     pub const Method = std.http.Method;
 
+    pub const Upload = struct {
+        prefix: []const u8,
+        file: Io.File,
+        size: u64,
+        suffix: []const u8,
+    };
     pub const RequestOptions = struct {
         body: ?[]const u8 = null,
         accept: []const u8 = "application/json",
@@ -40,31 +46,40 @@ pub const Client = struct {
         extra_headers: []const std.http.Header = &.{},
         /// Replaces the host's token as the authorization header; `""` sends none.
         authorization: ?[]const u8 = null,
+        /// Streams a successful body here instead of keeping it in memory.
+        sink: ?*Io.Writer = null,
+        /// Streams the request body from this file instead of `body`: the
+        /// multipart prefix, the file, then the suffix.
+        upload: ?Upload = null,
     };
 
     /// Sends a request and returns whatever came back, error statuses included.
     /// `path` is relative to `/api/v1` unless it is an absolute URL.
     pub fn raw(c: *Client, method: Method, path: []const u8, opts: RequestOptions) !Response {
         const ctx = c.ctx;
-        const url = if (std.mem.startsWith(u8, path, "http://") or std.mem.startsWith(u8, path, "https://"))
-            path
-        else
-            try std.fmt.allocPrint(ctx.alloc, "{s}{s}", .{ c.base, path });
+        const absolute = std.mem.startsWith(u8, path, "http://") or std.mem.startsWith(u8, path, "https://");
+        const url = if (absolute) path else try std.fmt.allocPrint(ctx.alloc, "{s}{s}", .{ c.base, path });
         var uri = std.Uri.parse(url) catch return ctx.fail("invalid URL: {s}", .{url});
 
         var headers: std.ArrayList(std.http.Header) = .empty;
         try headers.append(ctx.alloc, .{ .name = "accept", .value = opts.accept });
         try headers.appendSlice(ctx.alloc, opts.extra_headers);
         // std 0.16 never sends `privileged_headers` and keeps the overridable
-        // authorization header across redirects to any host, so redirects
-        // are followed here: with the token within the host, without it
-        // anywhere else (release assets and artifacts live in object storage).
+        // authorization header across redirects to any host, so the token
+        // is attached here only while the URL stays on the API's scheme, host
+        // and port: an absolute URL from the server (a release asset) or a
+        // redirect elsewhere (object storage) goes without it.
         var auth: std.http.Client.Request.Headers.Value = if (opts.authorization) |a|
             (if (a.len == 0) .omit else .{ .override = a })
         else if (c.host.token) |t|
             .{ .override = try std.fmt.allocPrint(ctx.alloc, "token {s}", .{t}) }
         else
             .omit;
+        if (absolute and opts.authorization == null) {
+            const base = std.Uri.parse(c.base) catch unreachable;
+            if (!sameHost(base, uri)) auth = .omit;
+        }
+        const has_body = opts.body != null or opts.upload != null;
 
         var redirects: u8 = 0;
         while (true) {
@@ -72,18 +87,18 @@ pub const Client = struct {
                 .headers = .{
                     .user_agent = .{ .override = "smith" },
                     .authorization = auth,
-                    .content_type = if (opts.body != null) .{ .override = opts.content_type } else .default,
+                    .content_type = if (has_body) .{ .override = opts.content_type } else .default,
                 },
                 .extra_headers = headers.items,
                 .redirect_behavior = .unhandled,
             }) catch |e| return ctx.fail("cannot reach {s}: {t}", .{ c.host.name, e });
             defer req.deinit();
 
-            send(&req, opts.body) catch |e| return ctx.fail("cannot reach {s}: {t}", .{ c.host.name, e });
+            send(ctx, &req, opts) catch |e| return ctx.fail("cannot reach {s}: {t}", .{ c.host.name, e });
 
             var response = req.receiveHead(&.{}) catch |e| return ctx.fail("no response from {s}: {t}", .{ c.host.name, e });
             const status = @intFromEnum(response.head.status);
-            if (opts.body == null and (status == 301 or status == 302 or status == 303 or status == 307 or status == 308)) {
+            if (!has_body and (status == 301 or status == 302 or status == 303 or status == 307 or status == 308)) {
                 const location = response.head.location orelse return ctx.fail("HTTP {d} from {s} without a location", .{ status, url });
                 const next = try resolveRedirect(ctx.alloc, uri, location);
                 if (!sameHost(uri, next)) auth = .omit;
@@ -92,7 +107,7 @@ pub const Client = struct {
                 uri = next;
                 continue;
             }
-            return readResponse(ctx, c.host.name, &response);
+            return readResponse(ctx, c.host.name, &response, opts.sink);
         }
     }
 
@@ -111,13 +126,14 @@ pub const Client = struct {
         return std.ascii.eqlIgnoreCase(ha.bytes, hb.bytes) and a.port == b.port and std.mem.eql(u8, a.scheme, b.scheme);
     }
 
-    fn readResponse(ctx: *Ctx, host_name: []const u8, response: *std.http.Client.Response) !Response {
+    fn readResponse(ctx: *Ctx, host_name: []const u8, response: *std.http.Client.Response, sink: ?*Io.Writer) !Response {
         const status = @intFromEnum(response.head.status);
         // No body follows these, and without a length std would read the
         // kept-alive connection until the server drops it.
         if (response.request.method == .HEAD or status == 204 or status == 304 or status < 200)
             return .{ .status = status, .body = "" };
         var body: Io.Writer.Allocating = .init(ctx.alloc);
+        const out = if (sink != null and status >= 200 and status < 300) sink.? else &body.writer;
         var transfer: [64]u8 = undefined;
         var decompress: std.http.Decompress = undefined;
         const decompress_buf = try ctx.alloc.alloc(u8, switch (response.head.content_encoding) {
@@ -126,7 +142,7 @@ pub const Client = struct {
             else => std.compress.flate.max_window_len,
         });
         const reader = response.readerDecompressing(&transfer, &decompress, decompress_buf);
-        _ = reader.streamRemaining(&body.writer) catch |e| switch (e) {
+        _ = reader.streamRemaining(out) catch |e| switch (e) {
             error.ReadFailed => {
                 if (response.bodyErr()) |why| return ctx.fail("reading the response from {s} failed: {t}", .{ host_name, why });
                 return ctx.fail("reading the response from {s} failed (connection or decompression error)", .{host_name});
@@ -136,8 +152,21 @@ pub const Client = struct {
         return .{ .status = status, .body = body.written() };
     }
 
-    fn send(req: *std.http.Client.Request, body: ?[]const u8) !void {
-        if (body orelse if (req.method.requestHasBody()) @as([]const u8, "") else null) |b| {
+    fn send(ctx: *Ctx, req: *std.http.Client.Request, opts: RequestOptions) !void {
+        if (opts.upload) |u| {
+            req.transfer_encoding = .{ .content_length = u.prefix.len + u.size + u.suffix.len };
+            var wbuf: [16 * 1024]u8 = undefined;
+            var bw = try req.sendBodyUnflushed(&wbuf);
+            try bw.writer.writeAll(u.prefix);
+            var rbuf: [16 * 1024]u8 = undefined;
+            var fr = u.file.reader(ctx.io, &rbuf);
+            try fr.interface.streamExact64(&bw.writer, u.size);
+            try bw.writer.writeAll(u.suffix);
+            try bw.end();
+            try req.connection.?.flush();
+            return;
+        }
+        if (opts.body orelse if (req.method.requestHasBody()) @as([]const u8, "") else null) |b| {
             req.transfer_encoding = .{ .content_length = b.len };
             var bw = try req.sendBodyUnflushed(&.{});
             try bw.writer.writeAll(b);
@@ -173,20 +202,51 @@ pub const Client = struct {
         return ctx.fail("HTTP {d} from {t} {s}", .{ r.status, method, path });
     }
 
-    /// Uploads a file as the `attachment` field of a multipart form.
-    pub fn upload(c: *Client, path: []const u8, filename: []const u8, data: []const u8) !Response {
+    /// Uploads a file as the `attachment` field of a multipart form,
+    /// streaming it rather than holding it in memory.
+    pub fn uploadFile(c: *Client, path: []const u8, filename: []const u8, file: Io.File, size: u64) !Response {
         const ctx = c.ctx;
-        var nonce: [12]u8 = undefined;
-        ctx.io.random(&nonce);
-        const boundary = try std.fmt.allocPrint(ctx.alloc, "smith-{x}", .{&nonce});
-        var body: std.ArrayList(u8) = .empty;
-        try body.print(ctx.alloc, "--{s}\r\nContent-Disposition: form-data; name=\"attachment\"; filename=\"{s}\"\r\nContent-Type: application/octet-stream\r\n\r\n", .{ boundary, filename });
-        try body.appendSlice(ctx.alloc, data);
-        try body.print(ctx.alloc, "\r\n--{s}--\r\n", .{boundary});
+        const boundary = try std.fmt.allocPrint(ctx.alloc, "smith-{s}", .{try ctx.nonce()});
+        const safe = try ctx.alloc.dupe(u8, filename);
+        for (safe) |*ch| if (ch.* == '"' or ch.* == '\r' or ch.* == '\n' or ch.* == '\\') {
+            ch.* = '_';
+        };
         return c.call(.POST, path, .{
-            .body = body.items,
+            .upload = .{
+                .prefix = try std.fmt.allocPrint(ctx.alloc, "--{s}\r\nContent-Disposition: form-data; name=\"attachment\"; filename=\"{s}\"\r\nContent-Type: application/octet-stream\r\n\r\n", .{ boundary, safe }),
+                .file = file,
+                .size = size,
+                .suffix = try std.fmt.allocPrint(ctx.alloc, "\r\n--{s}--\r\n", .{boundary}),
+            },
             .content_type = try std.fmt.allocPrint(ctx.alloc, "multipart/form-data; boundary={s}", .{boundary}),
         });
+    }
+
+    /// Downloads `url` into `target`, streaming it through a temporary file
+    /// renamed into place, so a failed download leaves nothing behind.
+    /// Returns the number of bytes written.
+    pub fn download(c: *Client, url: []const u8, target: []const u8, clobber: bool) !u64 {
+        const ctx = c.ctx;
+        const cwd = Io.Dir.cwd();
+        if (!clobber) if (cwd.access(ctx.io, target, .{})) |_| {
+            return ctx.fail("{s} already exists; pass --clobber to overwrite it", .{target});
+        } else |_| {};
+        const tmp = try std.fmt.allocPrint(ctx.alloc, "{s}.{s}.part", .{ target, try ctx.nonce() });
+        var file = cwd.createFile(ctx.io, tmp, .{ .exclusive = true }) catch |e| return ctx.fail("cannot write {s}: {t}", .{ tmp, e });
+        var keep = false;
+        defer if (!keep) cwd.deleteFile(ctx.io, tmp) catch {};
+        {
+            defer file.close(ctx.io);
+            var buf: [64 * 1024]u8 = undefined;
+            var fw = file.writer(ctx.io, &buf);
+            const r = try c.raw(.GET, url, .{ .accept = "*/*", .sink = &fw.interface });
+            if (!r.ok()) return c.failStatus(.GET, url, r);
+            fw.interface.flush() catch |e| return ctx.fail("cannot write {s}: {t}", .{ tmp, e });
+        }
+        cwd.rename(tmp, cwd, target, ctx.io) catch |e| return ctx.fail("cannot write {s}: {t}", .{ target, e });
+        keep = true;
+        const size = (cwd.statFile(ctx.io, target, .{}) catch return 0).size;
+        return size;
     }
 
     pub fn getValue(c: *Client, path: []const u8) !json.Value {

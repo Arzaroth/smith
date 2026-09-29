@@ -191,3 +191,12 @@ pub fn milestoneId(ctx: *Ctx, client: *api.Client, r: repo.Repo, name: ?[]const 
     if (!resp.ok()) return client.failStatus(.GET, "/milestones", resp);
     return (try api.decode(types.Milestone, ctx, try client.parseValue(resp.body))).id;
 }
+
+/// A server-supplied name made safe to create in a local directory, or an
+/// error when it is not a plain file name.
+pub fn fileName(ctx: *Ctx, name: []const u8) ![]const u8 {
+    const bad = name.len == 0 or name[0] == '-' or std.mem.eql(u8, name, ".") or std.mem.eql(u8, name, "..") or
+        std.mem.indexOfAny(u8, name, "/\\\x00") != null;
+    if (bad) return ctx.fail("refusing to write a file named \"{s}\"", .{try term.clean(ctx.alloc, name, false)});
+    return name;
+}
