@@ -11,6 +11,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Boolean flags take `=true` and `=false` as in gh: `repo edit
   --enable-wiki=false`.
 - `issue view` and `pr view` show the milestone.
+- `repo list` takes gh's `--fork`, `--source`, `--visibility`, `--archived`
+  and `--no-archived`.
 
 ### Fixed
 
@@ -22,6 +24,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - `pr merge -d` fast-forwards the base branch it switches to.
 - `secret delete` and `variable delete` ask first and take `--yes`, like
   every other deletion.
+- `repo sync` on a fork that is already up to date says so instead of
+  failing with Forgejo's "You can't sync this branch".
 
 ## [0.3.1] - 2026-09-29
 

@@ -5,11 +5,11 @@ Feature backlog with design notes lives in [ROADMAP.md](ROADMAP.md).
 
 ## Try for real
 
-The writes, the browser login with its token refresh, and the Secret Service
-keyring were exercised on git.arzaroth.com on 2026-09-29; these were not:
+The writes (a fork included), the browser login with its token refresh, and
+the Secret Service keyring were exercised on git.arzaroth.com on 2026-09-29; these were not:
 
-- **`repo fork`** (needs a repository of another owner, or an organization)
-  and **`gpg-key add/delete`**.
+- **`gpg-key add/delete`**, and **`repo sync` of a fork that is behind** (the
+  up-to-date case was tried on a fork of vyol/trading_bot).
 - **The password login with TOTP** with a real account; only a wrong
   password was tried live.
 - **The keyring on a Mac** (`security`); Linux's Secret Service works.

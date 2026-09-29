@@ -25,9 +25,14 @@
   `--default-branch`, `--visibility`, `--merge-style`,
   `--delete-branch-on-merge`, `--template`, and `--enable-X` / `--disable-X`
   for issues, wiki, pull-requests, actions, releases, projects, packages.
-- **sync**: a pull mirror gets `POST .../mirror-sync`; a fork gets `POST
-  .../sync_fork` (or `/sync_fork/{branch}` with `-b`); anything else is an
-  error.
+- **sync**: a pull mirror gets `POST .../mirror-sync`; a fork first reads
+  `GET .../sync_fork` (or `/sync_fork/{branch}` with `-b`): nothing to do
+  when `commits_behind` is 0, an error when Forgejo does not allow it (the
+  fork has commits of its own), else the same path with `POST`. Anything
+  else is an error.
+- **list** takes gh's `--fork`, `--source`, `--visibility public|private`,
+  `--archived` and `--no-archived`, filtered while paging
+  (`Client.listMatching`), since the endpoints cannot filter on them.
 - **archive** / **unarchive**: `PATCH {archived}`, after a confirmation.
 - **delete**: `DELETE /repos/{o}/{r}`; on a terminal the full name must be
   typed back, otherwise `--yes` is required.
