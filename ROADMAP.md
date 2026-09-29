@@ -134,10 +134,12 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
       git_protocol) in `config.zon`.
 - [x] `--jq` on every `--json` (through the system jq), `--template` (a
       built-in Go-template subset).
+- [x] gh's remaining config and alias surface: `pager` and `prompt` keys,
+      `config -h HOST`, `alias import`, `alias set NAME -`, `alias delete
+      --all`; issue and pull request creation ends with submit or cancel.
 
 ## Later
 
-- `$PAGER` for long output (`pr diff`, `run view --log`).
 - OAuth2 device flow login, if Forgejo gains it.
 - `pr checkout` into a new worktree.
 - `auth logout` revoking a password-route token (needs the password again).
@@ -149,5 +151,8 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
   equivalent.
 - `gist`: Forgejo has no gists.
 - `project`: Forgejo projects have no API.
+- `release edit --latest` promoting an older release: Forgejo shows the
+  newest full release as latest and has no field or endpoint to choose
+  another, so `--latest` only clears the pre-release flag.
 - `run rerun`: Forgejo's API has no rerun endpoint (the web UI's is not part
   of the API).
