@@ -125,3 +125,27 @@ test "edit publishes a draft and renames it" {
     try std.testing.expectEqualStrings("{\"name\":\"Renamed\",\"draft\":false}", h.mock.lastBody(.PATCH, releases ++ "/9").?);
     try h.expectRun(1, &.{ "release", "edit", "v1.0.0", "-R", "owner/repo", "--publish", "--draft" });
 }
+
+test "download keeps the token from assets on another host and refuses names that leave the directory" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    const a = h.arena.allocator();
+    const elsewhere = try std.mem.replaceOwned(u8, a, try h.base(), "127.0.0.1", "localhost");
+    const external = try std.mem.replaceOwned(u8, a, fx.release, "BASE", elsewhere);
+    const escaping = try std.mem.replaceOwned(u8, a, try releaseJson(&h), "\"SHA256SUMS\"", "\"../SHA256SUMS\"");
+    try setRoutes(&h, &.{
+        .{ .path = releases ++ "/tags/v1.0.0", .body = external },
+        .{ .path = releases ++ "/tags/v2.0.0", .body = escaping },
+        .{ .path = "/attachments/1", .body = "tarball", .content_type = "application/octet-stream" },
+        .{ .path = "/attachments/2", .body = "sums", .content_type = "text/plain" },
+    });
+    try h.expectRun(0, &.{ "release", "download", "v1.0.0", "-R", "owner/repo", "-p", "*.tar.gz", "-D", try h.path("out") });
+    for (h.mock.requests.items) |r| {
+        const auth = r.header("authorization");
+        if (std.mem.startsWith(u8, r.target, "/attachments/")) try std.testing.expect(auth == null) else try std.testing.expect(auth != null);
+    }
+    try h.expectRun(1, &.{ "release", "download", "v2.0.0", "-R", "owner/repo", "-D", try h.path("in") });
+    try h.expectErr("refusing to write a file named \"../SHA256SUMS\"");
+    try std.testing.expectError(error.FileNotFound, h.tmp.dir.access(std.testing.io, "SHA256SUMS", .{}));
+}

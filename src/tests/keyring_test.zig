@@ -122,3 +122,15 @@ test "a renewed browser login goes back to the keyring" {
     try std.testing.expectEqualStrings("fresh", back.token.?);
     try std.testing.expectEqualStrings("rt-2", back.refresh_token.?);
 }
+
+test "a token missing from the keyring is reported, not silently dropped" {
+    var h: Harness = undefined;
+    try h.init(&routes, .{ .config = false });
+    defer h.deinit();
+    try useFakeKeyring(&h);
+    try login(&h, "gone-soon", &.{});
+    try h.tmp.dir.deleteTree(std.testing.io, "keyring");
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo" });
+    try h.expectErr("no token for 127.0.0.1");
+    try h.expectErr("in the system keyring");
+}

@@ -269,6 +269,21 @@ test "syntax errors are reported" {
     try testing.expectError(error.TemplateSyntax, Template.parse(a, "{{bogus}}"));
 }
 
+test "trim markers reach across block boundaries" {
+    try expectRender("{{range . -}}\n  {{.n}}\n{{end}}", "[{\"n\":1},{\"n\":2}]", "1\n2\n");
+    try expectRender("{{range .}}{{.n}}{{end -}}\nX", "[{\"n\":1},{\"n\":2}]", "12X");
+    try expectRender("{{if .a -}}\n yes {{- else -}}\n no{{end}}", "{\"a\":false}", "no");
+}
+
+test "nesting is capped" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const deep = try std.mem.concat(a, u8, &.{ "{{if .}}" ** 40, "{{end}}" ** 40 });
+    try testing.expectError(error.TemplateSyntax, Template.parse(a, deep));
+    _ = try Template.parse(a, "{{if .}}" ** 30 ++ "{{end}}" ** 30);
+}
+
 fn validate(words: []const []const u8) Error!void {
     const head = words[0];
     const arity: usize = if (std.mem.eql(u8, head, "len") or std.mem.eql(u8, head, "timeago"))

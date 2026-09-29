@@ -33,7 +33,7 @@ fn headOwner(comptime repo_id: []const u8) []const u8 {
     return if (std.mem.eql(u8, repo_id, "1")) "owner" else "alice";
 }
 
-fn pull(comptime number: []const u8, comptime title: []const u8, comptime head: []const u8, comptime head_repo_id: []const u8, comptime state: []const u8, comptime merged: []const u8) []const u8 {
+pub fn pull(comptime number: []const u8, comptime title: []const u8, comptime head: []const u8, comptime head_repo_id: []const u8, comptime state: []const u8, comptime merged: []const u8) []const u8 {
     return "{\"id\":2" ++ number ++ ",\"number\":" ++ number ++ ",\"title\":\"" ++ title ++ "\",\"body\":\"Does things.\",\"state\":\"" ++ state ++
         "\",\"user\":{\"login\":\"alice\"},\"html_url\":\"http://forge.test/owner/repo/pulls/" ++ number ++
         "\",\"head\":{\"ref\":\"" ++ head ++ "\",\"sha\":\"abc123\",\"repo\":{\"id\":" ++ head_repo_id ++

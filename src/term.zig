@@ -401,4 +401,7 @@ test glob {
     try testing.expect(glob("smith-?-*", "smith-1-linux"));
     try testing.expect(!glob("*.zip", "smith.tar.gz"));
     try testing.expect(glob("*", ""));
+    try testing.expect(glob("a*b*c", "axxbyyc"));
+    try testing.expect(!glob("a*b*c", "axxbyy"));
+    try testing.expect(!glob("*a*a*a*a*a*a*a*a*a*a*a*a*b", "a" ** 64));
 }

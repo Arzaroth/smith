@@ -73,3 +73,46 @@ test "a ! alias runs with sh and passes its arguments" {
     try h.expectRun(3, &.{ "say", "a", "b" });
     try std.testing.expectEqualStrings("a-b\n", try h.tmp.dir.readFileAlloc(std.testing.io, "said", h.arena.allocator(), .limited(64)));
 }
+
+test "alias set refuses empty expansions and open quotes, and replaces only with --clobber" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.expectRun(1, &.{ "alias", "set", "e", "" });
+    try h.expectErr("the expansion is empty");
+    try h.expectRun(1, &.{ "alias", "set", "e", "!" });
+    try h.expectRun(1, &.{ "alias", "set", "q", "issue list --label 'bug" });
+    try h.expectErr("unterminated quote");
+    try h.expectRun(0, &.{ "alias", "set", "co", "pr checkout" });
+    try h.expectRun(1, &.{ "alias", "set", "co", "pr view" });
+    try h.expectErr("pass --clobber");
+    try h.expectRun(0, &.{ "alias", "set", "co", "pr view", "--clobber" });
+    try h.expectRun(0, &.{ "alias", "set", "hi", "echo hi", "--shell" });
+    try h.expectRun(0, &.{ "alias", "list" });
+    try std.testing.expectEqualStrings("co:\tpr view\nhi:\t!echo hi\n", h.stdout());
+}
+
+test "aliases with a missing argument, or broken in config.zon, fail without crashing" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "alias", "set", "rl", "release list -R $1" });
+    try h.expectRun(1, &.{"rl"});
+    try h.expectErr("not enough arguments for alias rl");
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config/config.zon", .data = ".{ .aliases = .{ .{ .name = \"z\", .expansion = \"\" }, .{ .name = \"y\", .expansion = \"pr 'x\" } } }\n" });
+    try h.expectRun(1, &.{"z"});
+    try h.expectErr("alias z expands to nothing");
+    try h.expectRun(1, &.{"y"});
+    try h.expectErr("alias y has an unterminated quote");
+}
+
+test "a broken config.zon is ignored by other commands and named by the ones that edit it" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config/config.zon", .data = "{{\n" });
+    try h.expectRun(0, &.{ "completion", "bash" });
+    try h.expectErr("preferences and aliases are ignored");
+    try h.expectRun(1, &.{ "config", "set", "editor", "vim" });
+    try h.expectErr("fix or delete it");
+}

@@ -446,7 +446,7 @@ test "status lists the current branch's, yours, and those waiting for your revie
         break :blk s[0..i] ++ "\"login\":\"me\"" ++ s[i + "\"login\":\"alice\"".len ..];
     };
     try h.init(&.{
-        .{ .path = pulls, .body = "[" ++ mine ++ "," ++ requested ++ "]" },
+        .{ .path = pulls, .body = "[" ++ mine ++ "," ++ requested ++ "," ++ comptime fx.pull("16", "Fork feature", "feature", "5", "open", "false") ++ "]" },
         .{ .path = "/api/v1/repos/owner/repo/commits/abc123/status", .body = fx.status_mixed },
     }, .{});
     defer h.deinit();

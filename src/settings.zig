@@ -165,4 +165,6 @@ test expand {
     try testing.expectEqualStrings("--web", e[6]);
     const plain = try expand(a, "pr checkout", &.{"12"});
     try testing.expectEqualStrings("12", plain[2]);
+    try testing.expectError(error.NotEnoughArguments, expand(a, "release list -R $2", &.{"x"}));
+    try testing.expectError(error.UnterminatedQuote, split(a, "pr \"x"));
 }

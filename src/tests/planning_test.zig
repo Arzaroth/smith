@@ -25,8 +25,20 @@ test "label list, create with a normalised colour, edit, delete" {
     try h.expectErr("six hex digits");
     try h.expectRun(0, &.{ "label", "edit", "UI", "-n", "frontend", "-R", "owner/repo" });
     try std.testing.expectEqualStrings("{\"name\":\"frontend\"}", h.mock.lastBody(.PATCH, labels ++ "/2").?);
-    try h.expectRun(0, &.{ "label", "delete", "bug", "-y", "-R", "owner/repo" });
+    h.ctx.stdin_tty = true;
+    h.ctx.stdout_tty = true;
+    for ([_][]const u8{ "n\n", "\n" }) |answer| {
+        h.ctx.stdin_data = answer;
+        try h.expectRun(1, &.{ "label", "delete", "bug", "-R", "owner/repo" });
+        try std.testing.expectEqual(@as(usize, 0), h.mock.count(.DELETE, labels ++ "/1"));
+    }
+    h.ctx.stdin_data = "y\n";
+    try h.expectRun(0, &.{ "label", "delete", "bug", "-R", "owner/repo" });
     try std.testing.expectEqual(@as(usize, 1), h.mock.count(.DELETE, labels ++ "/1"));
+    h.ctx.stdin_tty = false;
+    h.ctx.stdout_tty = false;
+    try h.expectRun(0, &.{ "label", "delete", "bug", "-y", "-R", "owner/repo" });
+    try std.testing.expectEqual(@as(usize, 2), h.mock.count(.DELETE, labels ++ "/1"));
 }
 
 test "label clone creates what is missing and updates the rest with --force" {
