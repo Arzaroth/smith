@@ -26,6 +26,7 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_cmd.addArgs(args);
     b.step("run", "Run smith").dependOn(&run_cmd.step);
 
-    const tests = b.addRunArtifact(b.addTest(.{ .root_module = exe.root_module }));
+    const filters = b.option([]const []const u8, "test-filter", "Run only the tests whose name contains this") orelse &.{};
+    const tests = b.addRunArtifact(b.addTest(.{ .root_module = exe.root_module, .filters = filters }));
     b.step("test", "Run unit tests").dependOn(&tests.step);
 }
