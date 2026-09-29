@@ -25,6 +25,8 @@ pub const Command = struct {
     max_args: usize = 0,
     /// Accepts `-- <args>` passed through verbatim (e.g. to git).
     passthrough: bool = false,
+    /// Output goes through the pager on a terminal.
+    pages: bool = false,
 };
 
 pub const repo_flag: Flag = .{ .long = "repo", .short = 'R', .value = "[HOST/]OWNER/REPO", .help = "Select another repository" };
@@ -136,7 +138,10 @@ pub fn parse(alloc: Allocator, cmd: *const Command, argv: []const []const u8, er
             }
             break;
         }
-        if (std.mem.eql(u8, a, "-h") or std.mem.eql(u8, a, "--help")) return error.Help;
+        const h_is_flag = for (cmd.flags) |f| {
+            if (f.short == 'h') break true;
+        } else false;
+        if ((std.mem.eql(u8, a, "-h") and !h_is_flag) or std.mem.eql(u8, a, "--help")) return error.Help;
 
         if (std.mem.startsWith(u8, a, "--") and a.len > 2) {
             const body = a[2..];
@@ -265,7 +270,10 @@ pub fn writeHelp(w: *Writer, path: []const *const Command) Writer.Error!void {
         try w.splatByteAll(' ', width - flagLabelLen(f) + 3);
         try w.print("{s}\n", .{f.help});
     };
-    try w.writeAll("  -h, --help");
+    const h_is_flag = for (cmd.flags) |f| {
+        if (f.short == 'h') break true;
+    } else false;
+    try w.writeAll(if (h_is_flag) "      --help" else "  -h, --help");
     try w.splatByteAll(' ', width - "-h, --help".len + 3);
     try w.writeAll("Show help for this command\n");
 }
