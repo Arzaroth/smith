@@ -39,11 +39,29 @@ pub const Spec = struct {
     name: []const u8,
 };
 
-/// Parses `[HOST/]OWNER/REPO` or a clone URL.
+/// Parses `OWNER/REPO`, `HOST/OWNER/REPO`, `HOST:OWNER/REPO` (git's scp-like
+/// form without a user) or a clone URL. `HOST:PORT/OWNER/REPO` keeps the port.
 pub fn parseSpec(s: []const u8) ?Spec {
-    if (git.parseRemoteUrl(s)) |u| if (std.mem.indexOf(u8, s, "://") != null or std.mem.indexOfScalar(u8, s, '@') != null)
+    if (std.mem.indexOf(u8, s, "://") != null or std.mem.indexOfScalar(u8, s, '@') != null) {
+        const u = git.parseRemoteUrl(s) orelse return null;
         return .{ .host = u.host, .owner = u.owner, .name = u.repo };
-    var parts = std.mem.splitScalar(u8, std.mem.trim(u8, s, "/"), '/');
+    }
+    var rest = std.mem.trim(u8, s, "/");
+    var host: ?[]const u8 = null;
+    const first = rest[0 .. std.mem.indexOfScalar(u8, rest, '/') orelse rest.len];
+    if (std.mem.indexOfScalar(u8, first, ':')) |c| {
+        const after = first[c + 1 ..];
+        const is_port = after.len > 0 and for (after) |ch| {
+            if (!std.ascii.isDigit(ch)) break false;
+        } else true;
+        if (!is_port) {
+            if (c == 0) return null;
+            host = first[0..c];
+            rest = rest[c + 1 ..];
+        }
+    }
+
+    var parts = std.mem.splitScalar(u8, rest, '/');
     var segs: [3][]const u8 = undefined;
     var n: usize = 0;
     while (parts.next()) |p| {
@@ -51,8 +69,10 @@ pub fn parseSpec(s: []const u8) ?Spec {
         segs[n] = p;
         n += 1;
     }
+    if (n == 0) return null;
     var name = segs[n - 1];
     if (std.mem.endsWith(u8, name, ".git")) name = name[0 .. name.len - 4];
+    if (host != null) return if (n == 2) .{ .host = host, .owner = segs[0], .name = name } else null;
     return switch (n) {
         2 => .{ .owner = segs[0], .name = name },
         3 => .{ .host = segs[0], .owner = segs[1], .name = name },
@@ -116,4 +136,15 @@ test parseSpec {
     try testing.expect(parseSpec("justone") == null);
     try testing.expect(parseSpec("a/b/c/d") == null);
     try testing.expect(parseSpec("a//b") == null);
+
+    const scp = parseSpec("git.example.com:owner/repo.git").?;
+    try testing.expectEqualStrings("git.example.com", scp.host.?);
+    try testing.expectEqualStrings("owner", scp.owner);
+    try testing.expectEqualStrings("repo", scp.name);
+    const port = parseSpec("127.0.0.1:3000/owner/repo").?;
+    try testing.expectEqualStrings("127.0.0.1:3000", port.host.?);
+    try testing.expectEqualStrings("owner", port.owner);
+    try testing.expect(parseSpec("host:owner") == null);
+    try testing.expect(parseSpec("host:a/b/c") == null);
+    try testing.expect(parseSpec(":owner/repo") == null);
 }
