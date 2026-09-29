@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-29
+
 ### Added
 
 - `install.sh`: `curl -fsSL https://raw.githubusercontent.com/Arzaroth/smith/master/install.sh | sh`
