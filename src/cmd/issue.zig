@@ -168,6 +168,7 @@ fn view(ctx: *Ctx, args: *const cli.Args) !u8 {
     if (labels.len > 0) try w.print("Labels: {s}\n", .{labels});
     const assignees = try common.joinUsers(ctx, i.assignees);
     if (assignees.len > 0) try w.print("Assignees: {s}\n", .{assignees});
+    if (i.milestone) |m| try w.print("Milestone: {s}\n", .{try term.clean(ctx.alloc, m.title, false)});
     try w.writeByte('\n');
     try common.writeBody(ctx, i.body);
     if (args.has("comments")) try common.writeComments(ctx, &client, r, n);
