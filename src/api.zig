@@ -5,7 +5,8 @@ const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const json = std.json;
 const Ctx = @import("Ctx.zig");
-const Host = @import("config.zig").Host;
+const config = @import("config.zig");
+const Host = config.Host;
 const oauth = @import("oauth.zig");
 
 pub const Client = struct {
@@ -148,7 +149,12 @@ pub const Client = struct {
         const ctx = c.ctx;
         const message = errorMessage(ctx.alloc, r.body);
         switch (r.status) {
-            401 => return ctx.fail("authentication failed for {s} ({s}); run `smith auth login --hostname {s}`", .{ c.host.name, message orelse "HTTP 401", c.host.name }),
+            401 => {
+                if (config.tokenWithheld(ctx, c.host)) {
+                    return ctx.fail("authentication failed for {s} ({s}); SMITH_TOKEN only applies to the host SMITH_HOST names, or the default host: set SMITH_HOST={s} or {s}", .{ c.host.name, message orelse "HTTP 401", c.host.name, config.tokenVariable(ctx.alloc, c.host.name) catch "SMITH_TOKEN_<HOST>" });
+                }
+                return ctx.fail("authentication failed for {s} ({s}); run `smith auth login --hostname {s}`", .{ c.host.name, message orelse "HTTP 401", c.host.name });
+            },
             else => {},
         }
         if (message) |m| return ctx.fail("{s} (HTTP {d}, {t} {s})", .{ m, r.status, method, path });

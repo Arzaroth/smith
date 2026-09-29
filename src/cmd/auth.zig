@@ -41,19 +41,27 @@ pub const command: cli.Command = .{
             .run = status,
         },
         .{
+            .name = "switch",
+            .summary = "Change the default host, or the active account on a host.",
+            .flags = &.{ hostname_flag, user_flag },
+            .run = switchAccount,
+        },
+        .{
             .name = "logout",
-            .summary = "Forget the token of a Forgejo host.",
-            .flags = &.{hostname_flag},
+            .summary = "Forget an account (the active one on the default host unless told otherwise).",
+            .flags = &.{ hostname_flag, user_flag },
             .run = logout,
         },
         .{
             .name = "token",
             .summary = "Print the token smith uses for a host.",
-            .flags = &.{hostname_flag},
+            .flags = &.{ hostname_flag, user_flag },
             .run = token,
         },
     },
 };
+
+const user_flag: cli.Flag = .{ .long = "user", .short = 'u', .value = "login", .help = "The account, when the host has several" };
 
 const Route = enum { web, password, token };
 
@@ -66,6 +74,8 @@ fn login(ctx: *Ctx, args: *const cli.Args) !u8 {
     const known = cfg.find(name);
     var host: config.Host = known orelse .{ .name = name };
     host.name = name;
+    host.user = null;
+    host.active = true;
     host.token = null;
     host.refresh_token = null;
     host.expires_at = null;
@@ -224,73 +234,149 @@ fn discoverSshHost(ctx: *Ctx, client: *api.Client, host: config.Host) !?[]const 
 fn status(ctx: *Ctx, args: *const cli.Args) !u8 {
     const cfg = try config.load(ctx);
     const path = try std.fs.path.join(ctx.alloc, &.{ try config.dir(ctx), "hosts.zon" });
-    if (cfg.hosts.len == 0 and ctx.getenv("SMITH_TOKEN") == null) {
+    if (cfg.hosts.len == 0) {
         return ctx.fail("You are not logged in to any Forgejo host. Run `smith auth login` to authenticate.", .{});
     }
+    const default = cfg.defaultName(ctx);
     var failed = false;
-    const only = args.get("hostname");
-    for (cfg.hosts) |stored| {
-        if (only) |o| if (!stored.matches(o)) continue;
-        const h = config.withEnv(ctx, stored);
-        try term.paint(ctx, ctx.out, .bold, h.name);
-        try ctx.out.writeByte('\n');
-        const t = h.token orelse {
-            try ctx.out.writeAll("  X no token stored\n");
-            failed = true;
-            continue;
-        };
-        var client = try api.Client.init(ctx, h);
-        const r = client.raw(.GET, "/user", .{}) catch |e| {
-            if (e != error.Reported) return e;
-            failed = true;
-            continue;
-        };
-        switch (r.status) {
-            200 => {
-                const u = try api.decode(types.User, ctx, try client.parseValue(r.body));
-                try ctx.out.print("  ✓ Logged in to {s} as {s} ({s})\n", .{ h.name, u.login, path });
-            },
-            403 => try ctx.out.print("  ✓ Logged in to {s} ({s}); the token cannot read the user\n", .{ h.name, path }),
-            401 => {
-                try ctx.out.print("  X the token for {s} is invalid or expired\n", .{h.name});
-                failed = true;
-            },
-            else => {
-                try ctx.out.print("  X {s} answered HTTP {d}\n", .{ h.name, r.status });
-                failed = true;
-            },
-        }
-        if (h.refresh_token != null) {
-            try ctx.out.writeAll("  - Login: browser; the access token renews itself\n");
-        }
-        try ctx.out.print("  - Git operations protocol: {t}\n", .{h.git_protocol});
-        if (h.ssh_host) |s| try ctx.out.print("  - SSH host: {s}\n", .{s});
-        if (args.has("show-token")) {
-            try ctx.out.print("  - Token: {s}\n", .{t});
+    var seen: std.ArrayList([]const u8) = .empty;
+    for (cfg.hosts) |first| {
+        if (args.get("hostname")) |o| if (!first.matches(o)) continue;
+        for (seen.items) |s| {
+            if (std.ascii.eqlIgnoreCase(s, first.name)) break;
         } else {
-            try ctx.out.print("  - Token: {s}{s}\n", .{ t[0..@min(4, t.len)], "*" ** 12 });
+            try seen.append(ctx.alloc, first.name);
+            const accounts = try cfg.accounts(ctx.alloc, first.name);
+            try term.paint(ctx, ctx.out, .bold, first.name);
+            if (default != null and first.matches(default.?)) try ctx.out.writeAll(" (default)");
+            try ctx.out.writeByte('\n');
+            for (accounts) |stored| {
+                if (!try account(ctx, cfg, stored, accounts.len > 1, path, args.has("show-token"))) failed = true;
+            }
         }
     }
     return if (failed) 1 else 0;
 }
 
+/// One account's lines in `auth status`; false when its token does not work.
+fn account(ctx: *Ctx, cfg: config.Config, stored: config.Host, several: bool, path: []const u8, show: bool) !bool {
+    const h = if (stored.active) try config.withEnv(ctx, cfg, stored) else stored;
+    const t = h.token orelse {
+        try ctx.out.print("  X no token stored{s}{s}\n", .{ if (h.user != null) " for " else "", h.user orelse "" });
+        return false;
+    };
+    var client = try api.Client.init(ctx, h);
+    const r = client.raw(.GET, "/user", .{}) catch |e| {
+        if (e != error.Reported) return e;
+        return false;
+    };
+    var ok = true;
+    switch (r.status) {
+        200 => {
+            const u = try api.decode(types.User, ctx, try client.parseValue(r.body));
+            try ctx.out.print("  ✓ Logged in to {s} as {s} ({s})\n", .{ h.name, u.login, path });
+        },
+        403 => try ctx.out.print("  ✓ Logged in to {s} ({s}); the token cannot read the user\n", .{ h.name, path }),
+        401 => {
+            try ctx.out.print("  X the token for {s} on {s} is invalid or expired\n", .{ h.user orelse "the account", h.name });
+            ok = false;
+        },
+        else => {
+            try ctx.out.print("  X {s} answered HTTP {d}\n", .{ h.name, r.status });
+            ok = false;
+        },
+    }
+    if (several) try ctx.out.print("  - Active account: {s}\n", .{if (h.active) "yes" else "no"});
+    if (h.refresh_token != null) try ctx.out.writeAll("  - Login: browser; the access token renews itself\n");
+    try ctx.out.print("  - Git operations protocol: {t}\n", .{h.git_protocol});
+    if (h.ssh_host) |s| try ctx.out.print("  - SSH host: {s}\n", .{s});
+    if (show) {
+        try ctx.out.print("  - Token: {s}\n", .{t});
+    } else {
+        try ctx.out.print("  - Token: {s}{s}\n", .{ t[0..@min(4, t.len)], "*" ** 12 });
+    }
+    return ok;
+}
+
+/// The host a command about accounts means: `--hostname`, else the default.
+fn chosenHost(ctx: *Ctx, cfg: config.Config, args: *const cli.Args) ![]const u8 {
+    if (args.get("hostname")) |n| return n;
+    if (cfg.defaultName(ctx)) |n| return n;
+    var names: std.ArrayList([]const u8) = .empty;
+    for (cfg.hosts) |h| try names.append(ctx.alloc, h.name);
+    if (names.items.len == 0) return ctx.fail("not logged in to any Forgejo host", .{});
+    return ctx.fail("pass --hostname; smith is logged in to several hosts ({s})", .{try std.mem.join(ctx.alloc, ", ", names.items)});
+}
+
 fn logout(ctx: *Ctx, args: *const cli.Args) !u8 {
     var cfg = try config.load(ctx);
-    const name = args.get("hostname") orelse
-        (if (cfg.hosts.len == 1) cfg.hosts[0].name else return ctx.fail("--hostname is required when several hosts are configured", .{}));
-    if (!try cfg.remove(ctx.alloc, name)) return ctx.fail("not logged in to {s}", .{name});
+    const name = try chosenHost(ctx, cfg, args);
+    const user = args.get("user");
+    const removed = try cfg.remove(ctx.alloc, name, user) orelse
+        return if (user) |u| ctx.fail("no account {s} on {s}", .{ u, name }) else ctx.fail("not logged in to {s}", .{name});
     try config.save(ctx, cfg);
-    try ctx.err.print("✓ Logged out of {s}\n", .{name});
+    try ctx.err.print("✓ Logged out of {s}", .{removed.name});
+    if (removed.user) |u| try ctx.err.print(" as {s}", .{u});
+    try ctx.err.writeByte('\n');
+    if (removed.refresh_token == null and removed.token != null)
+        try ctx.err.writeAll("- the token stays valid on the server until revoked under Settings > Applications\n");
+    if (removed.active) if (cfg.find(removed.name)) |next| {
+        try ctx.err.print("✓ Switched to {s} on {s}\n", .{ next.user orelse "the remaining account", next.name });
+    };
     return 0;
 }
 
 fn token(ctx: *Ctx, args: *const cli.Args) !u8 {
     const cfg = try config.load(ctx);
-    const h = if (args.get("hostname")) |n|
-        config.withEnv(ctx, cfg.find(n) orelse .{ .name = n })
-    else
-        config.withEnv(ctx, cfg.defaultHost(ctx) orelse return ctx.fail("not logged in to any Forgejo host", .{}));
+    const name = try chosenHost(ctx, cfg, args);
+    const stored = if (args.get("user")) |u| blk: {
+        for (try cfg.accounts(ctx.alloc, name)) |a| {
+            if (a.user != null and std.ascii.eqlIgnoreCase(a.user.?, u)) break :blk a;
+        }
+        return ctx.fail("no account {s} on {s}", .{ u, name });
+    } else cfg.find(name) orelse config.Host{ .name = name };
+    const h = if (stored.active) try config.withEnv(ctx, cfg, stored) else stored;
     const t = h.token orelse return ctx.fail("no token for {s}", .{h.name});
     try ctx.out.print("{s}\n", .{t});
+    return 0;
+}
+
+/// `auth switch`: makes a host the default, makes another account on a host
+/// the active one, or both. With no `--user` on a host with several
+/// accounts, the next one becomes active.
+fn switchAccount(ctx: *Ctx, args: *const cli.Args) !u8 {
+    var cfg = try config.load(ctx);
+    const name = try chosenHost(ctx, cfg, args);
+    const accounts = try cfg.accounts(ctx.alloc, name);
+    if (accounts.len == 0) return ctx.fail("not logged in to {s}; run `smith auth login --hostname {s}`", .{ name, name });
+    const host_name = accounts[0].name;
+
+    var made_default = false;
+    if (args.get("hostname") != null) {
+        if (cfg.default_host == null or !std.ascii.eqlIgnoreCase(cfg.default_host.?, host_name)) {
+            cfg.default_host = host_name;
+            made_default = true;
+        }
+    }
+
+    var user = args.get("user");
+    if (user == null and accounts.len > 1) {
+        var i: usize = 0;
+        for (accounts, 0..) |a, j| if (a.active) {
+            i = j;
+        };
+        user = accounts[(i + 1) % accounts.len].user orelse
+            return ctx.fail("the other account on {s} has no username; pass --user", .{host_name});
+    }
+    if (user) |u| {
+        if (!try cfg.activate(ctx.alloc, host_name, u))
+            return ctx.fail("no account {s} on {s}; log in with `smith auth login --hostname {s}`", .{ u, host_name, host_name });
+    } else if (!made_default) {
+        return ctx.fail("{s} is already the default host and has a single account", .{host_name});
+    }
+
+    try config.save(ctx, cfg);
+    if (user) |u| try ctx.err.print("✓ Switched to {s} on {s}\n", .{ u, host_name });
+    if (made_default) try ctx.err.print("✓ {s} is now the default host\n", .{host_name});
     return 0;
 }

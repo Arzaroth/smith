@@ -92,6 +92,8 @@ pub const RemoteUrl = struct {
     owner: []const u8,
     repo: []const u8,
     ssh: bool,
+    /// "https", "http" or "ssh".
+    scheme: []const u8 = "ssh",
 };
 
 /// Understands `git@host:owner/repo.git`, `ssh://git@host:22/owner/repo.git`
@@ -101,6 +103,7 @@ pub fn parseRemoteUrl(url: []const u8) ?RemoteUrl {
     var host: []const u8 = undefined;
     var path: []const u8 = undefined;
     var ssh = false;
+    var url_scheme: []const u8 = "ssh";
     if (std.mem.indexOf(u8, url, "://")) |i| {
         const scheme = url[0..i];
         const rest = url[i + 3 ..];
@@ -108,6 +111,7 @@ pub fn parseRemoteUrl(url: []const u8) ?RemoteUrl {
         var authority = rest[0..slash];
         if (std.mem.lastIndexOfScalar(u8, authority, '@')) |at| authority = authority[at + 1 ..];
         ssh = std.mem.eql(u8, scheme, "ssh") or std.mem.eql(u8, scheme, "git+ssh");
+        if (!ssh) url_scheme = scheme;
         if (!ssh and !std.mem.eql(u8, scheme, "https") and !std.mem.eql(u8, scheme, "http")) return null;
         host = if (ssh) (if (std.mem.indexOfScalar(u8, authority, ':')) |c| authority[0..c] else authority) else authority;
         path = rest[slash + 1 ..];
@@ -126,7 +130,7 @@ pub fn parseRemoteUrl(url: []const u8) ?RemoteUrl {
     const before = path[0..last];
     const owner = if (std.mem.lastIndexOfScalar(u8, before, '/')) |s| before[s + 1 ..] else before;
     if (host.len == 0 or owner.len == 0 or repo.len == 0) return null;
-    return .{ .host = host, .owner = owner, .repo = repo, .ssh = ssh };
+    return .{ .host = host, .owner = owner, .repo = repo, .ssh = ssh, .scheme = url_scheme };
 }
 
 const testing = std.testing;

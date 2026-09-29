@@ -90,7 +90,7 @@ test "upstream wins over origin, and an unknown ssh host is refused" {
     try h.git(&.{ "-C", "other", "remote", "add", "origin", "git@elsewhere.test:o/r.git" });
     h.ctx.cwd = try h.path("other");
     try h.expectRun(1, &.{ "repo", "view" });
-    try h.expectErr("no git remote points at a known Forgejo host");
+    try h.expectErr("no git remote points at a Forgejo host (checked: elsewhere.test (SSH host not configured))");
 }
 
 test "clone HOST:OWNER/REPO picks the host by its SSH name, HOST/OWNER/REPO by its web name" {

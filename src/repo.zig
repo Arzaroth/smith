@@ -81,10 +81,10 @@ pub fn parseSpec(s: []const u8) ?Spec {
 }
 
 pub fn hostFor(ctx: *Ctx, cfg: config.Config, name: ?[]const u8) !config.Host {
-    if (name) |n| return config.withEnv(ctx, cfg.find(n) orelse .{ .name = n });
+    if (name) |n| return config.withEnv(ctx, cfg, cfg.find(n) orelse .{ .name = n });
     const h = cfg.defaultHost(ctx) orelse
         return ctx.fail("no Forgejo host configured; run `smith auth login --hostname <host>`", .{});
-    return config.withEnv(ctx, h);
+    return config.withEnv(ctx, cfg, h);
 }
 
 pub fn resolve(ctx: *Ctx, args: *const cli.Args) !Repo {
@@ -96,19 +96,55 @@ pub fn resolve(ctx: *Ctx, args: *const cli.Args) !Repo {
     const rs = try git.remotes(ctx);
     if (rs.len == 0) return ctx.fail("not in a git repository with remotes; pass -R OWNER/REPO", .{});
 
-    var fallback: ?Repo = null;
+    var unknown: std.ArrayList(Repo) = .empty;
+    var skipped: std.ArrayList([]const u8) = .empty;
     for ([_]?[]const u8{ "upstream", "origin", null }) |preferred| {
         for (rs) |r| {
             if (preferred) |p| {
                 if (!std.mem.eql(u8, r.name, p)) continue;
-            }
+            } else if (std.mem.eql(u8, r.name, "upstream") or std.mem.eql(u8, r.name, "origin")) continue;
             const u = r.parse() orelse continue;
-            if (cfg.find(u.host)) |h| return .{ .host = config.withEnv(ctx, h), .owner = u.owner, .name = u.repo, .remote = r.name };
-            if (fallback == null and !u.ssh)
-                fallback = .{ .host = config.withEnv(ctx, .{ .name = u.host }), .owner = u.owner, .name = u.repo, .remote = r.name };
+            if (cfg.find(u.host)) |h| return .{ .host = try config.withEnv(ctx, cfg, h), .owner = u.owner, .name = u.repo, .remote = r.name };
+            if (u.ssh) {
+                try skipped.append(ctx.alloc, try std.fmt.allocPrint(ctx.alloc, "{s} (SSH host not configured)", .{u.host}));
+                continue;
+            }
+            try unknown.append(ctx.alloc, .{
+                .host = try config.withEnv(ctx, cfg, .{ .name = u.host, .scheme = u.scheme }),
+                .owner = u.owner,
+                .name = u.repo,
+                .remote = r.name,
+            });
         }
     }
-    return fallback orelse ctx.fail("no git remote points at a known Forgejo host; run `smith auth login` or pass -R", .{});
+    for (unknown.items) |candidate| {
+        if (try isForgejo(ctx, candidate.host)) return candidate;
+        try skipped.append(ctx.alloc, try std.fmt.allocPrint(ctx.alloc, "{s} (not a Forgejo instance)", .{candidate.host.name}));
+    }
+    const checked = try std.mem.join(ctx.alloc, ", ", skipped.items);
+    return ctx.fail("no git remote points at a Forgejo host{s}{s}{s}; run `smith auth login --hostname <host>` or pass -R", .{
+        if (checked.len > 0) " (checked: " else "",
+        checked,
+        if (checked.len > 0) ")" else "",
+    });
+}
+
+/// Whether an unconfigured host answers Forgejo's (or Gitea's) version
+/// endpoint. Asked anonymously, and quietly: a host that is not one is
+/// simply skipped.
+fn isForgejo(ctx: *Ctx, host: config.Host) !bool {
+    var h = host;
+    h.token = null;
+    var client: api.Client = .{ .ctx = ctx, .host = h, .base = try h.apiBase(ctx.alloc) };
+    var discard: std.Io.Writer.Discarding = .init(&.{});
+    const saved = ctx.err;
+    ctx.err = &discard.writer;
+    defer ctx.err = saved;
+    const r = client.raw(.GET, "/version", .{}) catch return false;
+    if (!r.ok()) return false;
+    const Version = struct { version: []const u8 };
+    _ = std.json.parseFromSliceLeaky(Version, ctx.alloc, r.body, .{ .ignore_unknown_fields = true }) catch return false;
+    return true;
 }
 
 /// The remote whose URL points at `owner/name` on `host`, if any.
