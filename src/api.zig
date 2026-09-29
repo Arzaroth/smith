@@ -42,33 +42,65 @@ pub const Client = struct {
             path
         else
             try std.fmt.allocPrint(ctx.alloc, "{s}{s}", .{ c.base, path });
-        const uri = std.Uri.parse(url) catch return ctx.fail("invalid URL: {s}", .{url});
+        var uri = std.Uri.parse(url) catch return ctx.fail("invalid URL: {s}", .{url});
 
         var headers: std.ArrayList(std.http.Header) = .empty;
         try headers.append(ctx.alloc, .{ .name = "accept", .value = opts.accept });
         try headers.appendSlice(ctx.alloc, opts.extra_headers);
-        var privileged: []const std.http.Header = &.{};
-        if (c.host.token) |t| {
-            const auth = try std.fmt.allocPrint(ctx.alloc, "token {s}", .{t});
-            privileged = try ctx.alloc.dupe(std.http.Header, &.{.{ .name = "authorization", .value = auth }});
+        // std 0.16 never sends `privileged_headers` and keeps the overridable
+        // authorization header across redirects to any host, so redirects
+        // are followed here, and only within the same host.
+        const auth: std.http.Client.Request.Headers.Value = if (c.host.token) |t|
+            .{ .override = try std.fmt.allocPrint(ctx.alloc, "token {s}", .{t}) }
+        else
+            .omit;
+
+        var redirects: u8 = 0;
+        while (true) {
+            var req = ctx.http.request(method, uri, .{
+                .headers = .{
+                    .user_agent = .{ .override = "smith" },
+                    .authorization = auth,
+                    .content_type = if (opts.body != null) .{ .override = opts.content_type } else .default,
+                },
+                .extra_headers = headers.items,
+                .redirect_behavior = .unhandled,
+            }) catch |e| return ctx.fail("cannot reach {s}: {t}", .{ c.host.name, e });
+            defer req.deinit();
+
+            send(&req, opts.body) catch |e| return ctx.fail("cannot reach {s}: {t}", .{ c.host.name, e });
+
+            var response = req.receiveHead(&.{}) catch |e| return ctx.fail("no response from {s}: {t}", .{ c.host.name, e });
+            const status = @intFromEnum(response.head.status);
+            if (opts.body == null and (status == 301 or status == 302 or status == 307 or status == 308)) {
+                const location = response.head.location orelse return ctx.fail("HTTP {d} from {s} without a location", .{ status, url });
+                const next = try resolveRedirect(ctx.alloc, uri, location);
+                if (!sameHost(uri, next)) return ctx.fail("{s} redirects to another host ({s}); not following it with the token", .{ c.host.name, location });
+                redirects += 1;
+                if (redirects > 3) return ctx.fail("too many redirects from {s}", .{url});
+                uri = next;
+                continue;
+            }
+            return readResponse(ctx, c.host.name, &response);
         }
+    }
 
-        var req = ctx.http.request(method, uri, .{
-            .headers = .{
-                .user_agent = .{ .override = "smith" },
-                .content_type = if (opts.body != null) .{ .override = opts.content_type } else .default,
-            },
-            .extra_headers = headers.items,
-            .privileged_headers = privileged,
-            .redirect_behavior = if (opts.body == null) @enumFromInt(3) else .unhandled,
-        }) catch |e| return ctx.fail("cannot reach {s}: {t}", .{ c.host.name, e });
-        defer req.deinit();
+    fn resolveRedirect(alloc: std.mem.Allocator, base: std.Uri, location: []const u8) !std.Uri {
+        const buf = try alloc.alloc(u8, location.len + 1024);
+        @memcpy(buf[0..location.len], location);
+        var aux = buf;
+        return base.resolveInPlace(location.len, &aux) catch base;
+    }
 
-        send(&req, opts.body) catch |e| return ctx.fail("cannot reach {s}: {t}", .{ c.host.name, e });
+    fn sameHost(a: std.Uri, b: std.Uri) bool {
+        var ab: [std.Io.net.HostName.max_len]u8 = undefined;
+        var bb: [std.Io.net.HostName.max_len]u8 = undefined;
+        const ha = a.getHost(&ab) catch return false;
+        const hb = b.getHost(&bb) catch return false;
+        return std.ascii.eqlIgnoreCase(ha.bytes, hb.bytes) and a.port == b.port and std.mem.eql(u8, a.scheme, b.scheme);
+    }
 
-        var redirect_buf: [8 * 1024]u8 = undefined;
-        var response = req.receiveHead(&redirect_buf) catch |e| return ctx.fail("no response from {s}: {t}", .{ c.host.name, e });
-
+    fn readResponse(ctx: *Ctx, host_name: []const u8, response: *std.http.Client.Response) !Response {
         var body: Io.Writer.Allocating = .init(ctx.alloc);
         var transfer: [64]u8 = undefined;
         var decompress: std.http.Decompress = undefined;
@@ -79,7 +111,7 @@ pub const Client = struct {
         });
         const reader = response.readerDecompressing(&transfer, &decompress, decompress_buf);
         _ = reader.streamRemaining(&body.writer) catch |e| switch (e) {
-            error.ReadFailed => return ctx.fail("reading the response from {s} failed: {t}", .{ c.host.name, response.bodyErr().? }),
+            error.ReadFailed => return ctx.fail("reading the response from {s} failed: {t}", .{ host_name, response.bodyErr().? }),
             else => |x| return x,
         };
         return .{ .status = @intFromEnum(response.head.status), .body = body.written() };
