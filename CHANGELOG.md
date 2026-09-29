@@ -17,6 +17,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - `issue create` and `pr create` on a terminal end with submit, edit the
   body again, or cancel (exit 2).
 - `SMITH_JQ` picks the jq program; jq's own error message is shown.
+- `--template` covers Go's text/template as gh documents it: pipelines,
+  variables, `with`, `else if`, `printf`, comparisons, and gh's `tablerow`,
+  `tablerender`, `truncate`, `color`, `autocolor`, `hyperlink`, `timefmt`,
+  `pluck` and `contains`; errors name their position.
 
 ### Changed
 

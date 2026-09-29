@@ -26,6 +26,7 @@ command path from the tokens typed.
 - `src/cmd/api.zig`
 - `src/cmd/browse.zig`
 - `src/cmd/completion.zig`
+- `src/template.zig`, `src/template/`
 - `src/tests/tools_test.zig`
 
 ## --jq and --template
@@ -38,11 +39,19 @@ them:
   out raw, like gh). smith does not embed jq; without it installed, the error
   says so and points at `--template`. `SMITH_JQ` names another jq program.
   When jq fails, its own message is smith's error.
-- `--template` renders the part of Go's text/template gh users reach for
-  (`src/template.zig`): text, `{{.a.b}}`, `{{range .x}}…{{else}}…{{end}}`,
-  `{{if .x}}…{{else}}…{{end}}`, `{{"literal\n"}}`, `{{len .x}}`, `{{join ", "
-  .x}}`, `{{timeago .t}}`, and `{{-`/`-}}` trimming, which reaches across `range`, `if`, `else` and
-  `end` as in Go. A missing field renders as nothing; an unknown action, or
-  blocks nested more than 32 deep, is a syntax error before anything prints.
-  Pipes, variables, `printf`, comparisons and gh's helpers (`tablerow`,
-  `truncate`, `color`...) are not there yet.
+- `--template` renders Go's text/template as gh users know it
+  (`src/template.zig`, whose top comment is the full list; lexer, parser,
+  evaluator and functions in `src/template/`): pipelines with `|`,
+  parentheses, variables (`$`, `:=`, `=`, `range $i, $v :=`), `if` /
+  `with` / `range` with `else if` chains, `break`, `continue`, comments,
+  `{{-`/`-}}` trimming across blocks; Go's functions (`printf`, `eq`,
+  `and`, `index`, `slice`...) and gh's (`tablerow`/`tablerender`,
+  `truncate`, `color`/`autocolor`, `hyperlink`, `timefmt`, `timeago`,
+  `pluck`, `join`, `contains`). A missing field renders as nothing.
+  Syntax errors, argument counts included, are found before anything
+  prints, and every error names its position (`template: 1:14: function
+  "foo" not defined`). On a terminal only the strings from the JSON are
+  cleaned of control characters, so the template's own colours and links
+  survive; colour follows smith's colour setting, links need a terminal.
+  Left out: `define`/`template`/`block` (refused with a clear error),
+  `html`, `js`, `urlquery`, `call` and gh's `regexMatch`.

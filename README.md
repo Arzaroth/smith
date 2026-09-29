@@ -77,6 +77,7 @@ print them as Forgejo sent them, `-q/--jq EXPR` to filter them with jq, and
 smith pr list -q '.[].head.ref'
 smith release view -t '{{.tag_name}}: {{len .assets}} assets{{"\n"}}'
 smith issue list -t '{{range .}}#{{.number}} {{.title}} ({{timeago .updated_at}}){{"\n"}}{{end}}'
+smith pr list -t '{{range .}}{{tablerow (printf "#%v" .number | autocolor "green") .title .head.ref}}{{end}}'
 ```
 
 - Drafts are Forgejo's `WIP:` title prefix; `pr ready` removes it.

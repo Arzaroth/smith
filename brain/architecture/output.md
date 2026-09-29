@@ -11,8 +11,9 @@
   sent (titles, bodies, labels, log lines, diffs on a terminal) become `?`
   (`term.clean`), so an escape sequence cannot write to the clipboard or
   forge a line; table cells also lose tabs and newlines. `--json`, `api` and
-  piped `pr diff` stay byte-exact. On a terminal, `--template` and
-  `--jq` output is cleaned the same way, and stderr goes through
+  piped `pr diff` stay byte-exact. On a terminal, `--jq` output is
+  cleaned the same way, `--template` cleans the JSON strings it is given
+  (keeping its own colours and links), and stderr goes through
   `term.Scrubber`, so the names and titles quoted in smith's own messages
   are covered too.
 - **stdout vs stderr**: stdout carries what a command produces (tables,
