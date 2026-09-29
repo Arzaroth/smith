@@ -77,4 +77,5 @@ test {
     _ = @import("tests/planning_test.zig");
     _ = @import("tests/actions_test.zig");
     _ = @import("tests/account_test.zig");
+    _ = @import("tests/settings_test.zig");
 }
