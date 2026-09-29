@@ -366,9 +366,10 @@ fn writeFiltered(ctx: *Ctx, text: []const u8) !void {
 fn jqFilter(ctx: *Ctx, text: []const u8, expr: []const u8) !void {
     try ctx.out.flush();
     var child = std.process.spawn(ctx.io, .{
-        .argv = &.{ "jq", "-r", expr },
+        .argv = &.{ ctx.getenv("SMITH_JQ") orelse "jq", "-r", expr },
         .stdin = .pipe,
         .stdout = .pipe,
+        .stderr = .pipe,
         .environ_map = ctx.env,
     }) catch |e| switch (e) {
         error.FileNotFound => return ctx.fail("--jq needs jq installed (https://jqlang.org); --template works without it", .{}),
@@ -386,9 +387,16 @@ fn jqFilter(ctx: *Ctx, text: []const u8, expr: []const u8) !void {
     var buf: [4096]u8 = undefined;
     var r = child.stdout.?.readerStreaming(ctx.io, &buf);
     const out = try r.interface.allocRemaining(ctx.alloc, .limited(256 * 1024 * 1024));
+    var ebuf: [4096]u8 = undefined;
+    var er = child.stderr.?.readerStreaming(ctx.io, &ebuf);
+    const complaint = er.interface.allocRemaining(ctx.alloc, .limited(64 * 1024)) catch "";
     const exit = try child.wait(ctx.io);
     try writeFiltered(ctx, out);
-    if (exit != .exited or exit.exited != 0) return ctx.fail("jq rejected the expression: {s}", .{expr});
+    if (exit != .exited or exit.exited != 0) {
+        const why = std.mem.trim(u8, complaint, " \r\n");
+        if (why.len > 0) return ctx.fail("{s}", .{why});
+        return ctx.fail("jq rejected the expression: {s}", .{expr});
+    }
 }
 
 /// Percent-encodes a query or path component.
