@@ -272,7 +272,8 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
         .{ "state", if (std.mem.eql(u8, state, "merged")) "closed" else state },
         .{ "poster", args.get("author") },
         .{ "base", args.get("base") },
-        .{ "sort", "recentupdate" },
+        .{ "head", if (args.get("head")) |h| (if (std.mem.indexOfScalar(u8, h, ':')) |c| h[c + 1 ..] else h) else null },
+        .{ "sort", if (std.mem.eql(u8, state, "merged")) "recentclose" else "recentupdate" },
     });
     for (try common.labelIds(ctx, &client, r, try args.all(ctx.alloc, "label"))) |id| {
         path = try std.fmt.allocPrint(ctx.alloc, "{s}&labels={d}", .{ path, id });
@@ -280,30 +281,22 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
     const limit = try args.int("limit", 30);
     const want_merged = std.mem.eql(u8, state, "merged");
     const head = args.get("head");
-    const filtered = want_merged or head != null;
-    const fetched = try client.listValues(path, if (filtered) limit *| 4 else limit, null);
-
-    var values: std.ArrayList(std.json.Value) = .empty;
-    var prs: std.ArrayList(types.PullRequest) = .empty;
-    for (fetched) |v| {
-        const pr = try api.decode(types.PullRequest, ctx, v);
-        if (want_merged and !pr.merged) continue;
-        if (head) |want| if (!headMatches(pr, want)) continue;
-        if (prs.items.len >= limit) break;
-        try values.append(ctx.alloc, v);
-        try prs.append(ctx.alloc, pr);
-    }
+    const values = if (want_merged or head != null)
+        try client.listMatching(path, limit, null, Wanted{ .ctx = ctx, .merged = want_merged, .head = head })
+    else
+        try client.listValues(path, limit, null);
+    const prs = try api.decodeAll(types.PullRequest, ctx, values);
     if (args.has("json")) {
-        try api.printJson(ctx, values.items);
+        try api.printJson(ctx, values);
         return 0;
     }
-    if (prs.items.len == 0) {
+    if (prs.len == 0) {
         try ctx.err.print("No pull requests match your search in {s}\n", .{try r.fullName(ctx.alloc)});
         return 0;
     }
-    if (ctx.stdout_tty) try ctx.out.print("\nShowing {d} {s} pull requests in {s}\n\n", .{ prs.items.len, state, try r.fullName(ctx.alloc) });
+    if (ctx.stdout_tty) try ctx.out.print("\nShowing {d} {s} pull requests in {s}\n\n", .{ prs.len, state, try r.fullName(ctx.alloc) });
     var table: term.Table = .{};
-    for (prs.items) |pr| {
+    for (prs) |pr| {
         const st = displayState(pr);
         try table.add(ctx.alloc, &.{
             .{ .text = try term.num(ctx, pr.number), .color = if (std.mem.eql(u8, st, "draft")) .dim else common.stateColor(st) },
@@ -853,6 +846,19 @@ fn checks(ctx: *Ctx, args: *const cli.Args) !u8 {
 }
 
 /// `branch` or `owner:branch` against a pull request's head.
+const Wanted = struct {
+    ctx: *Ctx,
+    merged: bool,
+    head: ?[]const u8,
+
+    pub fn keep(w: Wanted, v: std.json.Value) !bool {
+        const pr = try api.decode(types.PullRequest, w.ctx, v);
+        if (w.merged and !pr.merged) return false;
+        if (w.head) |want| if (!headMatches(pr, want)) return false;
+        return true;
+    }
+};
+
 fn headMatches(pr: types.PullRequest, want: []const u8) bool {
     if (std.mem.indexOfScalar(u8, want, ':')) |c| {
         const owner = if (pr.head.repo) |r| (if (r.owner) |o| o.login else "") else "";

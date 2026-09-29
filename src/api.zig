@@ -278,9 +278,25 @@ pub const Client = struct {
     /// Fetches up to `limit` items across pages. `field` names the array when
     /// the endpoint wraps it in an object (e.g. `workflow_runs`).
     pub fn listValues(c: *Client, path: []const u8, limit: u32, field: ?[]const u8) ![]json.Value {
+        const All = struct {
+            pub fn keep(_: @This(), _: json.Value) !bool {
+                return true;
+            }
+        };
+        return c.list(path, limit, field, limit, All{});
+    }
+
+    /// Like `listValues`, keeping only the items `filter.keep` accepts and
+    /// reading on until `limit` of them were found or the list ends: for
+    /// filters the API lacks.
+    pub fn listMatching(c: *Client, path: []const u8, limit: u32, field: ?[]const u8, filter: anytype) ![]json.Value {
+        return c.list(path, limit, field, std.math.maxInt(u32), filter);
+    }
+
+    fn list(c: *Client, path: []const u8, limit: u32, field: ?[]const u8, batch: u32, filter: anytype) ![]json.Value {
         const ctx = c.ctx;
         var items: std.ArrayList(json.Value) = .empty;
-        var page_size: u32 = @max(1, @min(limit, c.host.page_size orelse 50));
+        var page_size: u32 = @max(1, @min(batch, c.host.page_size orelse 50));
         var size_known = c.host.page_size != null;
         const sep: u8 = if (std.mem.indexOfScalar(u8, path, '?') != null) '&' else '?';
         var page: u32 = 1;
@@ -294,7 +310,7 @@ pub const Client = struct {
             };
             for (arr) |item| {
                 if (items.items.len >= limit) break;
-                try items.append(ctx.alloc, item);
+                if (try filter.keep(item)) try items.append(ctx.alloc, item);
             }
             if (arr.len >= page_size) continue;
             // A short page ends the list, unless the server caps pages below
