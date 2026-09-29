@@ -10,7 +10,8 @@
 - **Tasks** (`mise run <task>`): `build`, `run`, `test`, `fmt`, `check` (the
   gate: `zig fmt --check`, `shellcheck mise-tasks/*`, tests, ReleaseSafe
   build), `release <x.y.z>` (`mise-tasks/release`).
-- **CI**: `.forgejo/workflows/ci.yml` runs the gate on Forgejo Actions.
+- **CI**: `.github/workflows/ci.yml` runs the gate on Forgejo Actions and,
+  through the mirror, on GitHub Actions.
 
 ## Sources
 
@@ -18,4 +19,4 @@
 - `build.zig`, `build.zig.zon`
 - `src/main.zig`
 - `mise-tasks/release`
-- `.forgejo/workflows/ci.yml`
+- `.github/workflows/ci.yml`

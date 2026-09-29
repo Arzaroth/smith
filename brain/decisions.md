@@ -27,5 +27,7 @@ is absent rather than approximated.
 
 The repo lives on git.arzaroth.com and is push-mirrored to GitHub, so smith is
 developed through its own pull requests and pipelines. CI lives in
-`.forgejo/workflows/`, which also keeps the mirror's GitHub PAT free of the
-workflow scope.
+`.github/workflows/`, like the sibling repos: Forgejo's runners read it too,
+and the same file runs on both sides of the mirror, so it installs mise with
+the `mise.run` script rather than an action only one side can resolve. The
+mirror's GitHub token therefore needs the Workflows permission.

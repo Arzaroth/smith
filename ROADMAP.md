@@ -39,9 +39,8 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
       `--web` opens the page with `xdg-open`/`open`.
 - [ ] Test harness: a local HTTP mock server in the test binary, temporary
       git repos, no network and no real `$HOME`.
-- [ ] CI on Forgejo Actions (`.forgejo/workflows/ci.yml`): `mise run check`.
-      Kept out of `.github/` so the GitHub push mirror's PAT needs no
-      workflow scope.
+- [ ] CI (`.github/workflows/ci.yml`): `mise run check`, on Forgejo Actions
+      and on GitHub Actions through the mirror.
 
 ## P1 - MVP: clone, pull requests, issues, pipelines
 
