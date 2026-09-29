@@ -23,6 +23,8 @@ now: i64 = 0,
 http: *std.http.Client,
 /// Working directory for git; null means the process's own.
 cwd: ?[]const u8 = null,
+/// Stands in for standard input when set.
+stdin_data: ?[]const u8 = null,
 
 pub const Error = error{Reported};
 
@@ -42,7 +44,8 @@ pub fn interactive(ctx: *const Ctx) bool {
     return ctx.stdin_tty and ctx.stdout_tty;
 }
 
-pub fn readStdin(ctx: *Ctx) ![]u8 {
+pub fn readStdin(ctx: *Ctx) ![]const u8 {
+    if (ctx.stdin_data) |d| return d;
     var buf: [4096]u8 = undefined;
     var r = ctx.stdin.readerStreaming(ctx.io, &buf);
     return r.interface.allocRemaining(ctx.alloc, .limited(16 * 1024 * 1024));

@@ -58,3 +58,7 @@ test {
     refAll(@import("types.zig"));
     refAll(app);
 }
+
+test {
+    _ = @import("tests/smoke_test.zig");
+}
