@@ -81,7 +81,7 @@ test "--template and --jq shape the JSON of any command that has --json" {
     try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo", "-t", "{{range .}}#{{.number}} {{.title}} ({{join \", \" .labels}}){{\"\\n\"}}{{end}}" });
     try std.testing.expectEqualStrings("#7 Crash on start ({\"id\":1,\"name\":\"bug\",\"color\":\"ee0701\"})\n", h.stdout());
     try h.expectRun(1, &.{ "issue", "list", "-R", "owner/repo", "--template", "{{range .}}" });
-    try h.expectErr("invalid --template");
+    try h.expectErr("invalid --template: template: 1:12: unexpected EOF: {{range}} has no {{end}}");
 
     try h.expectRun(0, &.{ "issue", "list", "--help" });
     try h.expectOut("-q, --jq expression");
@@ -109,6 +109,26 @@ test "--jq hands the JSON and the expression to jq and reports its complaints" {
     try h.env.put("SMITH_JQ", try h.path("no-such-jq"));
     try h.expectRun(1, &.{ "issue", "list", "-R", "owner/repo", "-q", "." });
     try h.expectErr("--jq needs jq installed");
+}
+
+test "--template runs gh's documented table template, aligned and coloured on a terminal" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .path = "/api/v1/repos/owner/repo/issues", .body = fx.issue_list }}, .{});
+    defer h.deinit();
+    const tmpl = "{{range .}}{{tablerow (printf \"#%v\" .number | autocolor \"green\") .title (timeago .updated_at)}}{{end}}";
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo", "-t", tmpl });
+    try std.testing.expectEqualStrings("#7\tCrash on start\tabout 3 hours ago\n", h.stdout());
+
+    h.ctx.stdout_tty = true;
+    h.ctx.color = true;
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo", "-t", "{{tablerow \"NUM\" \"TITLE\"}}" ++ tmpl ++ "{{tablerender}}{{hyperlink (index . 0).html_url \"open\"}}" });
+    try std.testing.expectEqualStrings(
+        "NUM  TITLE         \n\x1b[32m#7\x1b[0m   Crash on start  about 3 hours ago\n\x1b]8;;http://forge.test/owner/repo/issues/7\x1b\\open\x1b]8;;\x1b\\",
+        h.stdout(),
+    );
+
+    try h.expectRun(1, &.{ "issue", "list", "-R", "owner/repo", "-t", "{{index . 3}}" });
+    try h.expectErr("invalid --template: template: 1:3: error calling index: index out of range: 3");
 }
 
 test "browse prints the URLs it would open" {
