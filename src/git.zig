@@ -19,11 +19,17 @@ pub fn capture(ctx: *Ctx, args: []const []const u8) !?[]const u8 {
     return std.mem.trim(u8, result.stdout, " \r\n\t");
 }
 
-/// Runs git with the terminal attached; a failure is reported.
+/// Runs git with its output on stderr, keeping smith's stdout for smith's own
+/// output; a failure is reported.
 pub fn run(ctx: *Ctx, args: []const []const u8) !void {
     try ctx.out.flush();
     try ctx.err.flush();
-    var child = std.process.spawn(ctx.io, .{ .argv = try argv(ctx, args), .stdin = .ignore, .environ_map = ctx.env }) catch |e|
+    var child = std.process.spawn(ctx.io, .{
+        .argv = try argv(ctx, args),
+        .stdin = .ignore,
+        .stdout = .{ .file = .stderr() },
+        .environ_map = ctx.env,
+    }) catch |e|
         return ctx.fail("cannot run git: {t}", .{e});
     const term = try child.wait(ctx.io);
     if (term != .exited or term.exited != 0) {
