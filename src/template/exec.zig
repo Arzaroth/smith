@@ -20,6 +20,8 @@ pub const Exec = struct {
     opts: Options,
     diag: *Diagnostic,
     vars: std.ArrayList(Var) = .empty,
+    /// Rows from `tablerow` that `tablerender` has not written yet.
+    rows: std.ArrayList([]const []const u8) = .empty,
 
     const Var = struct { name: []const u8, value: Value };
 
@@ -31,6 +33,7 @@ pub const Exec = struct {
             error.Break, error.Continue => unreachable,
             else => |x| return x,
         };
+        if (e.rows.items.len > 0) try e.w.writeAll(try funcs.table(e));
     }
 
     pub fn fail(e: *Exec, pos: usize, comptime fmt: []const u8, args: anytype) Error {
