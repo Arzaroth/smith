@@ -544,7 +544,7 @@ test "merge waits while Forgejo is still checking the branch" {
     }, .{});
     defer h.deinit();
     try h.expectRun(0, &.{ "pr", "merge", "12", "-R", "owner/repo", "--merge" });
-    try h.expectErr("still checking #12");
+    try h.expectErr("cannot merge #12 yet");
     try h.expectErr("Merged pull request #12");
     try std.testing.expectEqual(@as(usize, 2), h.mock.count(.POST, pulls ++ "/12/merge"));
 }

@@ -89,6 +89,9 @@ pub fn parseRemotes(alloc: Allocator, out: []const u8) ![]Remote {
 pub fn safeName(ctx: *const Ctx, what: []const u8, name: []const u8) ![]const u8 {
     if (name.len == 0 or name[0] == '-') return ctx.fail("refusing {s} \"{s}\": git would read it as an option", .{ what, name });
     for (name) |c| if (c < 0x20 or c == 0x7f or c == ' ') return ctx.fail("refusing {s} with control characters or spaces", .{what});
+    if (std.mem.indexOfAny(u8, name, "~^:?*[\\") != null or std.mem.indexOf(u8, name, "@{") != null or std.mem.indexOf(u8, name, "..") != null or
+        std.mem.endsWith(u8, name, "/") or std.mem.endsWith(u8, name, ".") or std.mem.endsWith(u8, name, ".lock"))
+        return ctx.fail("refusing {s} \"{s}\": git would read it as more than a name", .{ what, name });
     return name;
 }
 

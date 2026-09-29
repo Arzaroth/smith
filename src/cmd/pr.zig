@@ -627,17 +627,21 @@ fn merge(ctx: *Ctx, args: *const cli.Args) !u8 {
     var tries: u32 = 0;
     const resp = while (true) : (tries += 1) {
         const answer = try client.raw(.POST, try r.path(ctx.alloc, "/pulls/{d}/merge", .{pr.number}), .{ .body = merge_body });
-        // Forgejo refuses a merge while it is still checking the branch (after a
-        // push or an update); that settles in a few seconds.
+        // Forgejo says "try again later" both while it is still checking the
+        // branch (after a push or an update), which settles in seconds, and
+        // for conflicts, which do not.
         const busy = answer.status == 405 and std.mem.indexOf(u8, api.errorMessage(ctx.alloc, answer.body) orelse "", "try again later") != null;
         if (!busy or tries == merge_retries) break answer;
-        if (tries == 0) try ctx.err.print("- Forgejo is still checking #{d}; waiting\n", .{pr.number});
+        if (tries == 0) try ctx.err.print("- Forgejo cannot merge #{d} yet; retrying for a few seconds\n", .{pr.number});
         try ctx.io.sleep(.fromSeconds(1), .awake);
     };
     if (!resp.ok()) {
         const msg = api.errorMessage(ctx.alloc, resp.body);
         return switch (resp.status) {
-            405 => ctx.fail("pull request #{d} is not mergeable: {s}", .{ pr.number, msg orelse "checks, reviews or conflicts are in the way" }),
+            405 => if (std.mem.indexOf(u8, msg orelse "", "try again later") != null)
+                ctx.fail("pull request #{d} cannot be merged: it has conflicts, or Forgejo is still checking it; see {s}", .{ pr.number, pr.html_url })
+            else
+                ctx.fail("pull request #{d} is not mergeable: {s}", .{ pr.number, msg orelse "checks, reviews or conflicts are in the way" }),
             409 => ctx.fail("pull request #{d} cannot be merged now: {s}", .{ pr.number, msg orelse "it changed while merging, or is already scheduled" }),
             else => client.failStatus(.POST, "/pulls/merge", resp),
         };
@@ -649,23 +653,24 @@ fn merge(ctx: *Ctx, args: *const cli.Args) !u8 {
         return 0;
     }
     try ctx.err.print("✓ Merged pull request #{d} ({s}) with {s}\n", .{ pr.number, pr.title, method.? });
-    if (delete) try deleteLocalBranch(ctx, pr, true);
+    if (delete) try deleteLocalBranch(ctx, r, pr, true);
     return 0;
 }
 
-const merge_retries = 10;
+const merge_retries = 5;
 
 /// After a merge or close with --delete-branch: move off the pull request's
 /// local branch, if it has one, and delete it.
-fn deleteLocalBranch(ctx: *Ctx, pr: types.PullRequest, merged: bool) !void {
+fn deleteLocalBranch(ctx: *Ctx, r: repo.Repo, pr: types.PullRequest, merged: bool) !void {
     if (try git.capture(ctx, &.{ "rev-parse", "--git-dir" }) == null) return;
+    const remote = r.remote orelse try repo.remoteFor(ctx, r.host, r.owner, r.name) orelse return;
     const branch = try localBranchFor(ctx, pr) orelse return;
     if (try git.currentBranch(ctx)) |cur| if (std.mem.eql(u8, cur, branch)) {
         const base = try git.safeName(ctx, "base branch", pr.base.ref);
         // git creates the base from its remote-tracking branch when it is not
         // local yet; without either, the head branch stays.
         if (try git.capture(ctx, &.{ "switch", base }) == null) return;
-        if (merged and try git.capture(ctx, &.{ "pull", "--ff-only", "--quiet" }) == null)
+        if (merged and try git.capture(ctx, &.{ "pull", "--ff-only", "--quiet", remote, base }) == null)
             try ctx.err.print("! could not fast-forward {s}; run `git pull`\n", .{base});
     };
     try git.run(ctx, &.{ "branch", "-D", "--", branch });
@@ -690,7 +695,7 @@ fn setState(ctx: *Ctx, args: *const cli.Args, state: []const u8, verb: []const u
             _ = try client.call(.DELETE, try r.path(ctx.alloc, "/branches/{s}", .{try api.escape(ctx.alloc, pr.head.ref)}), .{});
             try ctx.err.print("✓ Deleted branch {s}\n", .{pr.head.ref});
         }
-        try deleteLocalBranch(ctx, pr, false);
+        try deleteLocalBranch(ctx, r, pr, false);
     }
     return 0;
 }
