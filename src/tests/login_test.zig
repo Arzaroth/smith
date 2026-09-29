@@ -221,3 +221,16 @@ test "SMITH_TOKEN bypasses the refresh" {
     try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo" });
     try std.testing.expectEqualStrings("token from-env", h.mock.requests.items[0].authorization.?);
 }
+
+test "the browser login gives up when no sign-in comes back" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/forgejo/v1/version", .body = fx.version },
+        .{ .path = "/.well-known/openid-configuration", .body = oidc },
+        .{ .method = .POST, .path = "/login/oauth/access_token", .status = 400, .body = known_client },
+    }, .{ .config = false });
+    defer h.deinit();
+    try h.env.put("SMITH_LOGIN_TIMEOUT", "1");
+    try h.expectRun(1, &.{ "auth", "login", "--hostname", try host(&h), "--scheme", "http", "--web" });
+    try h.expectErr("no sign-in came back from the browser in time");
+}
