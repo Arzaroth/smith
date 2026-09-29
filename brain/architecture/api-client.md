@@ -11,8 +11,14 @@
   301/302/303/307/308 itself, at most three times: with the token while the
   scheme, host and port stay the same, without it once they change (release
   assets and artifacts redirect to object storage).
-- **Uploads**: `Client.upload` sends a file as the `attachment` field of a
-  multipart form with a random boundary (release assets).
+- **Absolute URLs**: a path that is a whole URL (release asset links) gets
+  the token only when its scheme, host and port are the API's; external
+  assets on another host are fetched anonymously.
+- **Streaming**: `Client.uploadFile` sends an open file as the `attachment`
+  field of a multipart form with a random boundary, straight from disk
+  (`RequestOptions.upload`); `Client.download` writes a 2xx body into a
+  temporary file through `RequestOptions.sink` and renames it into place.
+  Release assets and artifacts never sit in memory.
 - **Refresh**: `Client.init` renews a browser login's access token when it
   is within a minute of expiry (`oauth.refreshIfDue`) and saves the new pair.
 - **Bodies**: JSON payloads are anonymous structs stringified with null

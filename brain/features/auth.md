@@ -42,8 +42,9 @@ then remembered. Forgejo accepts any loopback port for public clients.
 
 The browser route gives up after five minutes without a redirect
 (`SMITH_LOGIN_TIMEOUT` seconds), suggesting `--password`: a timer task shuts
-the listening socket, which is how std lets another task end a blocking
-accept.
+the listening socket, which ends a blocking accept on Linux, and where that
+fails (macOS) connects to it instead; either way the wait sees the flag the
+timer set and gives up.
 
 ## Where the token goes
 

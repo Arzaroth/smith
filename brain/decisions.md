@@ -138,3 +138,26 @@ only deletes those, or a same-repository branch tracking the head.
 Tables piped to another program print plain numbers, whole text, raw
 timestamps and the state that colour carries on a terminal, so scripts
 written against gh's piped output port over.
+
+## The token follows the API, not the URL (2026-09-29)
+
+Forgejo lets anyone who can edit a release add an external asset, whose
+download URL is whatever they typed, and `release download` fetched it with
+the token. Redirects already dropped the token off-host; now an absolute URL
+gets it only when its scheme, host and port are the API's own, from the
+first request.
+
+## Scrub stderr as a whole (2026-09-29)
+
+smith's confirmations and errors quote server text (titles, names, tags) in
+some sixty places. Rather than wrapping each, stderr on a terminal goes
+through `term.Scrubber`, which applies `term.clean`'s rule to everything
+written, so a new message cannot forget. smith never writes escape sequences
+to stderr itself; piped stderr stays byte-exact.
+
+## Stream release assets and artifacts (2026-09-29)
+
+Uploads and downloads used to be read whole into memory (up to 2 GiB for an
+upload). They now stream between the file and the socket, and downloads land
+in a temporary file renamed into place, so a failed transfer leaves nothing
+half-written.

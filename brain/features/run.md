@@ -19,8 +19,10 @@ current branch.
   running.
 - Log lines are prefixed with the job name and a tab.
 - `download` unpacks each artifact into `-D/<name>/` (through a temporary
-  zip file, which `std.zip` needs), `-n` globs pick artifacts, expired ones
-  are skipped with a warning.
+  zip file streamed from the server, which `std.zip` needs), `-n` globs pick
+  artifacts, expired ones are skipped with a warning. A destination that
+  already exists is refused rather than merged into, and artifact names must
+  be plain file names.
 - No `rerun`: Forgejo's API has no endpoint for it.
 
 ## Sources

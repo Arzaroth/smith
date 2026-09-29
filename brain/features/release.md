@@ -19,13 +19,18 @@
 - `edit` uses paired flags instead of gh's `--draft=false`: `--draft` /
   `--publish`, `--prerelease` / `--latest`.
 - `download` takes `-p` globs (`*`, `?`), writes into `-D` (created if
-  needed) and refuses to overwrite without `--clobber`. Asset URLs may
-  redirect to object storage on another host; the client follows without the
-  token ([../architecture/api-client.md](../architecture/api-client.md)).
+  needed) and refuses to overwrite without `--clobber`. Each asset streams
+  to a temporary file renamed into place. An asset's name must be a plain
+  file name (no `/`, `\`, `..` or leading `-`), since uploaders choose it.
+  Asset URLs may point or redirect to another host (external assets, object
+  storage); the token goes only to the API's own
+  ([../architecture/api-client.md](../architecture/api-client.md)).
+- `upload` and `create` stream each file from disk; `--clobber` opens the
+  new file before deleting the old asset, so a typo loses nothing.
 - Deleting asks first; without a terminal it needs `--yes`.
 
 ## Sources
 
 - `src/cmd/release.zig`
-- `src/api.zig` (`Client.upload`)
+- `src/api.zig` (`Client.uploadFile`, `Client.download`)
 - `src/tests/release_test.zig`

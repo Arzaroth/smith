@@ -40,5 +40,8 @@ them:
 - `--template` renders the part of Go's text/template gh users reach for
   (`src/template.zig`): text, `{{.a.b}}`, `{{range .x}}…{{else}}…{{end}}`,
   `{{if .x}}…{{else}}…{{end}}`, `{{"literal\n"}}`, `{{len .x}}`, `{{join ", "
-  .x}}`, `{{timeago .t}}`, and `{{-`/`-}}` trimming. A missing field renders
-  as nothing; an unknown action is a syntax error before anything prints.
+  .x}}`, `{{timeago .t}}`, and `{{-`/`-}}` trimming, which reaches across `range`, `if`, `else` and
+  `end` as in Go. A missing field renders as nothing; an unknown action, or
+  blocks nested more than 32 deep, is a syntax error before anything prints.
+  Pipes, variables, `printf`, comparisons and gh's helpers (`tablerow`,
+  `truncate`, `color`...) are not there yet.

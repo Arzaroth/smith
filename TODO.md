@@ -41,3 +41,23 @@ live on git.arzaroth.com and codeberg.org.
   waits on them indefinitely; decide whether to stop and say so.
 - **The mock always closes connections**, so keep-alive behaviour (the 204
   bug the review found) is only covered by the code path, not a test.
+
+## Deferred from the gh-parity review
+
+- **`--template` beyond the basics**: pipes, variables, `with`, `printf`,
+  comparisons and gh's helpers (`tablerow`/`tablerender`, `truncate`,
+  `color`, `pluck`, `timefmt`, `hyperlink`); the error should name the
+  action it choked on rather than repeat the whole template.
+- **More of gh's config and alias surface**: `pager`, `prompt` and friends,
+  per-host keys (`-h`), `alias set <name> -` (from stdin), `alias delete
+  --all`, `alias import`.
+- **`pr list --head` on the server**: Forgejo documents a `head` filter on
+  `/pulls`; check its format across versions before dropping the
+  client-side filter.
+- **`release edit --latest`** only clears the pre-release flag; Forgejo has
+  no way to promote an older release to latest.
+- **Pin `actions/checkout` to a commit** in the workflows, once it is clear
+  the Forgejo runner's action mirror carries the same commits as GitHub.
+- **`smith status` test routes**: only the review-request section has a
+  route of its own, so a wrong filter on the other three would pass.
+- **`--jq` tests need jq installed** and pass silently without it.

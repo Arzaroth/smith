@@ -110,7 +110,7 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
       secrets on stdin, keeping the binary static.
 - [x] `pr review` (`--approve`, `--request-changes`, `--comment`),
       `pr status` (current branch with its checks, yours, review requested),
-      `pr update` (merge or rebase the base in), `pr list --head`
+      `pr update-branch` (merge or rebase the base in), `pr list --head`
       (client-side).
 - [x] `repo create` (also `--source` a local clone and `--push`), `repo fork
       [--clone | --remote]`, `repo delete` (typed confirmation), `repo edit`

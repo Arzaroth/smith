@@ -13,7 +13,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
   `auth login --insecure-storage`. The browser login gives up after five
   minutes without a sign-in.
 - `smith pr review` (approve, request changes, comment), `pr status`,
-  `pr update`, and `pr list --head`.
+  `pr update-branch`, and `pr list --head`.
 - `smith repo create` (also from a local clone, with `--push`), `fork`,
   `edit`, `sync` (a fork from its parent, a mirror from its source),
   `archive`, `unarchive`, `delete` and `set-default`.
@@ -22,16 +22,23 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - `smith label` (with `clone` from another repository) and `smith milestone`;
   `--milestone` on issues and pull requests.
 - `smith run download` unpacks a run's artifacts; `smith workflow list` and
-  `workflow run` dispatch a workflow with inputs.
+  `workflow run` dispatch a workflow with inputs (`-F`, with `@file`, and
+  `-f`, as in gh).
 - `smith secret` and `smith variable`, for a repository, an organization or
   your account.
 - `smith search` (repositories, issues, pull requests), `smith status` (what
   needs you across the host), `smith notification`, `smith ssh-key`,
   `smith gpg-key` and `smith org list`.
-- `smith alias` and `smith config` (editor, browser, git protocol).
+- `smith alias` (`set --clobber` to replace one, `--shell` for `!`) and
+  `smith config` (editor, browser, git protocol).
 - `-q/--jq` and `-t/--template` on every command with `--json`.
 - Release archives for Linux and macOS, x86_64 and aarch64, published on
   both forges when a version is tagged.
+
+### Fixed
+
+- Server text quoted in smith's own messages (titles, names) can no longer
+  carry terminal escape sequences.
 
 ## [0.1.0] - 2026-09-29
 

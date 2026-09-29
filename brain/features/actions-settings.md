@@ -5,8 +5,9 @@
   `.gitea/workflows`, `.github/workflows` that exists, read through
   `/repos/{o}/{r}/contents/{dir}` (Forgejo has no workflow listing endpoint).
 - `run <file>`: `POST .../actions/workflows/{file}/dispatches` with `ref`
-  (`-r`, else the current branch, else the default branch), `inputs` from
-  repeated `-f key=value`, and `return_run_info`, whose run id is offered to
+  (`-r`, else the repository's default branch, as gh does), `inputs` from
+  repeated `-F key=value` (`@file` reads the value from a file) and
+  `-f key=value` (taken literally), and `return_run_info`, whose run id is offered to
   `smith run watch`. The workflow must declare `workflow_dispatch`.
 
 **secret** and **variable** act on the current repository, an organization
@@ -19,6 +20,7 @@
 
 - `secret set` reads the value from `--body`, else a no-echo prompt on a
   terminal, else stdin (trailing newline dropped). Values cannot be read back.
+  `--body` puts the value in the process list, so its help steers to stdin.
 - `variable set` tries `PUT` (update) and falls back to `POST` (create) on a
   404; `variable get` prints the value.
 

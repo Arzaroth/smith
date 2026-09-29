@@ -3,16 +3,17 @@
 These act on a host rather than a repository: `--hostname`, else the default
 host.
 
-- **search repos <q>**: `/repos/search` (the `data` array), sorted by recent
+- **search repos <q>...**: the words are joined into one query; `/repos/search` (the `data` array), sorted by recent
   update, archived ones left out unless `--archived`. `--owner` looks the
   owner's id up (`/users/{name}`) and passes `uid` with `exclusive`.
-- **search issues|prs <q>**: `/repos/issues/search?type=issues|pulls` with
-  `state` and `owner`; rows name the repository (`team/app#3`).
+- **search issues|prs <q>...**: `/repos/issues/search?type=issues|pulls` with
+  `state` and `owner`; rows name the repository (`team/app#3` on a terminal,
+  `team/app`, `3` and the state as columns when piped).
 - **status**: four `/repos/issues/search` queries for open items with
   `assigned`, `review_requested` and `mentioned`: assigned issues, assigned
   pull requests, review requests, mentions (`-L` per section, 10 by
-  default). Needs a login.
-- **notification list** (`--all` includes read ones), **notification read
+  default). Needs a login, and exits 4 without one.
+- **notification list** (`--all` includes read ones; piped, the first column says `unread` or `read`), **notification read
   <id>** (`PATCH /notifications/threads/{id}?to-status=read`) or `--all`
   (`PUT /notifications?all=true&to-status=read`).
 - **ssh-key** `list`, `add [file]` (stdin without one; the title defaults to

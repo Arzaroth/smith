@@ -13,7 +13,7 @@ const scope_flags = [_]cli.Flag{
     .{ .long = "user", .short = 'u', .help = "Your own instead of the repository's" },
     cli.repo_flag,
 };
-const body_flag: cli.Flag = .{ .long = "body", .short = 'b', .value = "value", .help = "The value (default: standard input, or a prompt on a terminal)" };
+const body_flag: cli.Flag = .{ .long = "body", .short = 'b', .value = "value", .help = "The value; other local users can see it in the process list, so prefer standard input or the prompt" };
 
 pub const secret_command: cli.Command = .{
     .name = "secret",

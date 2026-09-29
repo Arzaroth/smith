@@ -46,7 +46,7 @@ remote work without logging in.
 
 ```sh
 smith pr list | view | diff | create | checkout | merge | checks | review
-smith pr status | update | ready | comment | close | reopen | edit
+smith pr status | update-branch | ready | comment | close | reopen | edit
 smith issue list | view | create | close | reopen | comment | edit
 smith repo clone | view | list | create | fork | edit | sync | archive | delete | set-default
 smith run list | view | watch | cancel | download
@@ -113,8 +113,10 @@ smith alias set standup '!smith status && smith notification list'
 smith config set editor 'nvim'
 ```
 
-`$1`… take the alias's arguments, extra arguments are appended, and a leading
-`!` runs the rest with `sh`. An alias can never take a smith command's name.
+`$1`… take the alias's arguments (a missing one is an error), extra
+arguments are appended, and a leading `!` (or `--shell`) runs the rest with
+`sh`. An alias can never take a smith command's name, and replacing one
+needs `--clobber`.
 Preferences (`editor`, `browser`, `git_protocol` for new logins) and aliases
 live in `config.zon`.
 
