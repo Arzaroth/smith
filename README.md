@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/Arzaroth/smith/master/install.sh | 
 `--dev` builds the tip of master from source (a minute or two) with Zig
 0.16.0: yours if it is on `PATH`, else through mise, else a download from
 ziglang.org checked against its published checksum; `smith --version` then
-says `0.3.0-dev+<commit>`. `--from forgejo` downloads from git.arzaroth.com
+says `<version>-dev+<commit>`. `--from forgejo` downloads from git.arzaroth.com
 instead of GitHub. Or unpack a release archive yourself, or build it
 (below).
 
