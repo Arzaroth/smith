@@ -47,6 +47,7 @@ pub fn loadLenient(ctx: *Ctx) !Settings {
 }
 
 fn read(ctx: *Ctx, lenient: bool) !Settings {
+    if (lenient and ctx.getenv("SMITH_CONFIG_DIR") == null and ctx.getenv("XDG_CONFIG_HOME") == null and ctx.getenv("HOME") == null) return .{};
     const p = try path(ctx);
     const bytes = Io.Dir.cwd().readFileAlloc(ctx.io, p, ctx.alloc, .limited(1024 * 1024)) catch |e| switch (e) {
         error.FileNotFound => return .{},
