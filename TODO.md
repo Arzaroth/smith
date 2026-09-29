@@ -5,14 +5,12 @@ Feature backlog with design notes lives in [ROADMAP.md](ROADMAP.md).
 
 ## Hosting
 
-- **Create the repo on Forgejo** (`git.arzaroth.com/Arzaroth/smith`) and push
-  `master`. No API token was available when the repo was scaffolded, so it
-  exists locally only.
 - **GitHub push mirror**: `POST /api/v1/repos/Arzaroth/smith/push_mirrors` to
   `github.com/Arzaroth/smith`, same settings as the other mirrors
   (`interval: 8h0m0s`, `sync_on_commit: true`).
-- **Check a Forgejo Actions runner picks up `.forgejo/workflows/ci.yml`.** If
-  the instance has none, the job just sits queued.
+- **No runner picks up `.forgejo/workflows/ci.yml`.** The first run (run 1,
+  job `gate`, `runs-on: docker`) sat in `waiting`. Either register a runner
+  or switch `runs-on` to a label an existing runner carries.
 
 ## Development
 
