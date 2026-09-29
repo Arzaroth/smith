@@ -248,3 +248,40 @@ test "set-default makes resolution prefer a remote over upstream" {
     try h.expectRun(0, &.{ "repo", "set-default", "--unset" });
     try h.expectRun(1, &.{ "repo", "set-default", "nobody/else" });
 }
+
+test "sync reports a fork that is up to date or has diverged, and posts nothing" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    const fork_json = try std.mem.replaceOwned(u8, h.arena.allocator(), fx.repo, "\"fork\":false", "\"fork\":true");
+    try setRoutes(&h, &.{
+        .{ .path = "/api/v1/repos/me/f", .body = fork_json },
+        .{ .path = "/api/v1/repos/me/f/sync_fork", .body = "{\"allowed\":false,\"commits_behind\":0}", .times = 1 },
+        .{ .path = "/api/v1/repos/me/f/sync_fork", .body = "{\"allowed\":false,\"commits_behind\":3}" },
+    });
+    try h.expectRun(0, &.{ "repo", "sync", "me/f" });
+    try h.expectErr("already up to date");
+    try h.expectRun(1, &.{ "repo", "sync", "me/f" });
+    try h.expectErr("has commits of its own");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.count(.POST, "/api/v1/repos/me/f/sync_fork"));
+}
+
+test "list filters forks, sources, visibility and archived ones while it pages" {
+    var h: Harness = undefined;
+    const fork = comptime blk: {
+        const s: []const u8 = fx.repo;
+        const i = std.mem.indexOf(u8, s, "\"fork\":false").?;
+        break :blk s[0..i] ++ "\"fork\":true" ++ s[i + "\"fork\":false".len ..];
+    };
+    try h.init(&.{.{ .path = "/api/v1/user/repos", .body = "[" ++ fx.repo ++ "," ++ fork ++ "]" }}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "repo", "list", "--fork" });
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, h.stdout(), "\n"));
+    try h.expectOut("public, fork");
+    try h.expectRun(0, &.{ "repo", "list", "--source" });
+    try std.testing.expect(std.mem.indexOf(u8, h.stdout(), "fork") == null);
+    try h.expectRun(0, &.{ "repo", "list", "--visibility", "private" });
+    try h.expectErr("No repositories found");
+    try h.expectRun(1, &.{ "repo", "list", "--fork", "--source" });
+    try h.expectRun(1, &.{ "repo", "list", "--visibility", "secret" });
+}
