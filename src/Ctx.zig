@@ -42,6 +42,7 @@ prompts: bool = true,
 paged: ?Paged = null,
 
 const Paged = struct {
+    program: []const u8,
     child: std.process.Child,
     writer: *Io.File.Writer,
     out: *Writer,
@@ -85,19 +86,25 @@ pub fn startPager(ctx: *Ctx) !void {
     }) catch return;
     const writer = try ctx.alloc.create(Io.File.Writer);
     writer.* = child.stdin.?.writerStreaming(ctx.io, try ctx.alloc.alloc(u8, 16 * 1024));
-    ctx.paged = .{ .child = child, .writer = writer, .out = ctx.out };
+    ctx.paged = .{ .program = program, .child = child, .writer = writer, .out = ctx.out };
     ctx.out = &writer.interface;
 }
 
 /// Ends paging: the pager gets end of input and smith waits for it to exit.
-pub fn stopPager(ctx: *Ctx) void {
-    var p = ctx.paged orelse return;
+/// False, with a message, when the pager failed, so the output may be lost.
+pub fn stopPager(ctx: *Ctx) bool {
+    var p = ctx.paged orelse return true;
     ctx.paged = null;
     ctx.out.flush() catch {};
     ctx.out = p.out;
     p.child.stdin.?.close(ctx.io);
     p.child.stdin = null;
-    _ = p.child.wait(ctx.io) catch {};
+    const term = p.child.wait(ctx.io) catch return true;
+    if (term == .exited and term.exited != 0) {
+        ctx.err.print("smith: the pager `{s}` exited with {d}; set SMITH_PAGER, `smith config set pager`, or PAGER=cat\n", .{ p.program, term.exited }) catch {};
+        return false;
+    }
+    return true;
 }
 
 pub fn readStdin(ctx: *Ctx) ![]const u8 {

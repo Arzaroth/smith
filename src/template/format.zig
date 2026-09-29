@@ -17,7 +17,7 @@ const Spec = struct {
     precision: ?usize = null,
 };
 
-const max_width = 1_000_000;
+const max_width = 10_000;
 
 pub fn printf(alloc: Allocator, w: *Writer, format: []const u8, args: []const Value) Writer.Error!void {
     var next: usize = 0;
@@ -238,10 +238,13 @@ fn fixed(alloc: Allocator, f: f64, precision: usize) Writer.Error![]const u8 {
 
 /// The first `n` codepoints of `s`.
 pub fn prefix(s: []const u8, n: usize) []const u8 {
-    var it = std.unicode.Utf8View.initUnchecked(s).iterator();
+    var i: usize = 0;
     var k: usize = 0;
-    while (k < n) : (k += 1) if (it.nextCodepointSlice() == null) break;
-    return s[0..it.i];
+    while (k < n and i < s.len) : (k += 1) {
+        const len = std.unicode.utf8ByteSequenceLength(s[i]) catch 1;
+        i = @min(i + len, s.len);
+    }
+    return s[0..i];
 }
 
 fn width(s: []const u8) usize {
@@ -270,17 +273,16 @@ fn pad(w: *Writer, s: []const u8, spec: Spec, numeric: bool) Writer.Error!void {
 }
 
 fn number(w: *Writer, s: []const u8, spec: Spec) Writer.Error!void {
-    var buf: [400]u8 = undefined;
-    var out: Writer = .fixed(&buf);
-    if (s.len > 0 and s[0] != '-') {
-        if (spec.plus) out.writeByte('+') catch {} else if (spec.space) out.writeByte(' ') catch {};
-    }
-    out.writeAll(s) catch return pad(w, s, spec, true);
-    try pad(w, out.buffered(), spec, true);
+    if (s.len == 0 or s[0] == '-' or !(spec.plus or spec.space)) return pad(w, s, spec, true);
+    var buf: [max_width + 400]u8 = undefined;
+    buf[0] = if (spec.plus) '+' else ' ';
+    const n = @min(s.len, buf.len - 1);
+    @memcpy(buf[1..][0..n], s[0..n]);
+    try pad(w, buf[0 .. n + 1], spec, true);
 }
 
 fn int(w: *Writer, n: i64, base: u8, upper: bool, spec: Spec) Writer.Error!void {
-    var buf: [100]u8 = undefined;
+    var buf: [max_width + 72]u8 = undefined;
     var out: Writer = .fixed(&buf);
     if (n < 0) out.writeByte('-') catch unreachable else if (spec.plus) out.writeByte('+') catch unreachable else if (spec.space) out.writeByte(' ') catch unreachable;
     if (spec.sharp) out.writeAll(switch (base) {
@@ -291,7 +293,7 @@ fn int(w: *Writer, n: i64, base: u8, upper: bool, spec: Spec) Writer.Error!void 
     }) catch unreachable;
     var digit_buf: [64]u8 = undefined;
     const body = digit_buf[0..std.fmt.printInt(&digit_buf, @abs(n), base, if (upper) .upper else .lower, .{})];
-    if (spec.precision) |p| if (p > body.len) out.splatByteAll('0', @min(p - body.len, 64)) catch {};
+    if (spec.precision) |p| if (p > body.len) out.splatByteAll('0', p - body.len) catch unreachable;
     out.writeAll(body) catch unreachable;
     var s = spec;
     if (spec.precision != null) s.zero = false;

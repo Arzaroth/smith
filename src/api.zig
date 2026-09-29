@@ -394,6 +394,20 @@ fn writeFiltered(ctx: *Ctx, text: []const u8) !void {
 }
 
 /// Runs the system jq over `text`, like gh's --jq: strings come out raw.
+/// The start of what a child writes to a pipe, the rest read and dropped so
+/// the child never blocks on it. Runs beside the reader of the other pipe.
+const Head = struct {
+    buf: [4096]u8 = undefined,
+    len: usize = 0,
+
+    fn drain(h: *Head, io: Io, file: Io.File) void {
+        var rbuf: [4096]u8 = undefined;
+        var r = file.readerStreaming(io, &rbuf);
+        h.len = r.interface.readSliceShort(&h.buf) catch return;
+        _ = r.interface.discardRemaining() catch {};
+    }
+};
+
 fn jqFilter(ctx: *Ctx, text: []const u8, expr: []const u8) !void {
     try ctx.out.flush();
     var child = std.process.spawn(ctx.io, .{
@@ -415,12 +429,14 @@ fn jqFilter(ctx: *Ctx, text: []const u8, expr: []const u8) !void {
         child.stdin.?.close(ctx.io);
         child.stdin = null;
     }
+    var head: Head = .{};
+    var complaints = try ctx.io.concurrent(Head.drain, .{ &head, ctx.io, child.stderr.? });
+    defer complaints.cancel(ctx.io);
     var buf: [4096]u8 = undefined;
     var r = child.stdout.?.readerStreaming(ctx.io, &buf);
     const out = try r.interface.allocRemaining(ctx.alloc, .limited(256 * 1024 * 1024));
-    var ebuf: [4096]u8 = undefined;
-    var er = child.stderr.?.readerStreaming(ctx.io, &ebuf);
-    const complaint = er.interface.allocRemaining(ctx.alloc, .limited(64 * 1024)) catch "";
+    complaints.await(ctx.io);
+    const complaint = head.buf[0..head.len];
     const exit = try child.wait(ctx.io);
     try writeFiltered(ctx, out);
     if (exit != .exited or exit.exited != 0) {

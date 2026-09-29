@@ -66,10 +66,10 @@ pub fn run(ctx: *Ctx, argv: []const []const u8) u8 {
             break :blk 1;
         },
     };
-    ctx.stopPager();
+    const paged_ok = ctx.stopPager();
     ctx.out.flush() catch {};
     ctx.err.flush() catch {};
-    return code;
+    return if (!paged_ok and code == 0) 1 else code;
 }
 
 fn dispatch(ctx: *Ctx, argv_in: []const []const u8) !u8 {

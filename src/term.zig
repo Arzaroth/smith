@@ -116,6 +116,12 @@ pub fn truncate(alloc: Allocator, s: []const u8, max: usize) ![]const u8 {
 /// Unix seconds from an RFC 3339 timestamp, or null when it does not parse.
 pub fn parseTime(s: []const u8) ?i64 {
     if (s.len < 19) return null;
+    for (s[0..19], 0..) |c, i| switch (i) {
+        4, 7 => if (c != '-') return null,
+        10 => if (c != 'T' and c != 't' and c != ' ') return null,
+        13, 16 => if (c != ':') return null,
+        else => if (!std.ascii.isDigit(c)) return null,
+    };
     const year = std.fmt.parseInt(i64, s[0..4], 10) catch return null;
     const month = std.fmt.parseInt(u8, s[5..7], 10) catch return null;
     const day = std.fmt.parseInt(u8, s[8..10], 10) catch return null;
@@ -131,7 +137,9 @@ pub fn parseTime(s: []const u8) ?i64 {
         rest = rest[i..];
     }
     var offset: i64 = 0;
-    if (rest.len >= 6 and (rest[0] == '+' or rest[0] == '-')) {
+    if (rest.len == 6 and (rest[0] == '+' or rest[0] == '-') and rest[3] == ':' and
+        std.ascii.isDigit(rest[1]) and std.ascii.isDigit(rest[2]) and std.ascii.isDigit(rest[4]) and std.ascii.isDigit(rest[5]))
+    {
         const oh = std.fmt.parseInt(i64, rest[1..3], 10) catch return null;
         const om = std.fmt.parseInt(i64, rest[4..6], 10) catch return null;
         offset = (oh * 60 + om) * 60;
