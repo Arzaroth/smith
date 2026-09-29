@@ -34,15 +34,37 @@ pub fn run(ctx: *Ctx, args: []const []const u8) !void {
 
 pub const Remote = struct {
     name: []const u8,
+    /// The URL git fetches from, after `insteadOf` rewriting.
     url: []const u8,
+    /// The URL as configured, when it differs from `url`.
+    configured: ?[]const u8 = null,
+
+    /// Parses the effective URL, else the configured one: an `insteadOf`
+    /// alias can hide the host either way round.
+    pub fn parse(r: Remote) ?RemoteUrl {
+        if (parseRemoteUrl(r.url)) |u| return u;
+        return parseRemoteUrl(r.configured orelse return null);
+    }
 };
 
 pub fn remotes(ctx: *Ctx) ![]const Remote {
     const out = try capture(ctx, &.{ "remote", "-v" }) orelse return &.{};
-    return parseRemotes(ctx.alloc, out);
+    const list = try parseRemotes(ctx.alloc, out);
+    const raw = try capture(ctx, &.{ "config", "--get-regexp", "^remote\\..+\\.url$" }) orelse return list;
+    var lines = std.mem.tokenizeScalar(u8, raw, '\n');
+    while (lines.next()) |line| {
+        const space = std.mem.indexOfScalar(u8, line, ' ') orelse continue;
+        const key = line[0..space];
+        const name = key["remote.".len .. key.len - ".url".len];
+        const url = line[space + 1 ..];
+        for (list) |*r| if (std.mem.eql(u8, r.name, name) and !std.mem.eql(u8, r.url, url)) {
+            r.configured = url;
+        };
+    }
+    return list;
 }
 
-pub fn parseRemotes(alloc: Allocator, out: []const u8) ![]const Remote {
+pub fn parseRemotes(alloc: Allocator, out: []const u8) ![]Remote {
     var list: std.ArrayList(Remote) = .empty;
     var lines = std.mem.tokenizeScalar(u8, out, '\n');
     while (lines.next()) |line| {

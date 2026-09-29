@@ -350,7 +350,7 @@ fn headFor(ctx: *Ctx, args: *const cli.Args, r: repo.Repo) !struct { head: []con
     const remote_branch = upstream[slash + 1 ..];
     for (try git.remotes(ctx)) |rem| {
         if (!std.mem.eql(u8, rem.name, remote_name)) continue;
-        const u = git.parseRemoteUrl(rem.url) orelse break;
+        const u = rem.parse() orelse break;
         if (!std.ascii.eqlIgnoreCase(u.owner, r.owner))
             return .{ .head = try std.fmt.allocPrint(ctx.alloc, "{s}:{s}", .{ u.owner, remote_branch }), .branch = remote_branch };
     }

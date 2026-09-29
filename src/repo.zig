@@ -82,7 +82,7 @@ pub fn resolve(ctx: *Ctx, args: *const cli.Args) !Repo {
             if (preferred) |p| {
                 if (!std.mem.eql(u8, r.name, p)) continue;
             }
-            const u = git.parseRemoteUrl(r.url) orelse continue;
+            const u = r.parse() orelse continue;
             if (cfg.find(u.host)) |h| return .{ .host = config.withEnv(ctx, h), .owner = u.owner, .name = u.repo, .remote = r.name };
             if (fallback == null and !u.ssh)
                 fallback = .{ .host = config.withEnv(ctx, .{ .name = u.host }), .owner = u.owner, .name = u.repo, .remote = r.name };
@@ -94,7 +94,7 @@ pub fn resolve(ctx: *Ctx, args: *const cli.Args) !Repo {
 /// The remote whose URL points at `owner/name` on `host`, if any.
 pub fn remoteFor(ctx: *Ctx, host: config.Host, owner: []const u8, name: []const u8) !?[]const u8 {
     for (try git.remotes(ctx)) |r| {
-        const u = git.parseRemoteUrl(r.url) orelse continue;
+        const u = r.parse() orelse continue;
         if (host.matches(u.host) and std.ascii.eqlIgnoreCase(u.owner, owner) and std.ascii.eqlIgnoreCase(u.repo, name))
             return r.name;
     }
