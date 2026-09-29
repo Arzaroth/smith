@@ -5,17 +5,14 @@ Feature backlog with design notes lives in [ROADMAP.md](ROADMAP.md).
 
 ## Try for real
 
-Everything below is covered against the mock only; reads were exercised
-live on git.arzaroth.com and codeberg.org.
+The writes (a fork included), the browser login with its token refresh, and
+the Secret Service keyring were exercised on git.arzaroth.com on 2026-09-29; these were not:
 
-- **The writes against git.arzaroth.com**, with a scratch repository: create,
-  comment, merge, close, cancel, release create/upload, labels, milestones,
-  secrets, variables, repo create/fork/edit/delete, keys.
-- **Both logins with a real account**: the browser round trip (consent
-  screen, refresh an hour later) and the password route with TOTP. Only the
-  start of the browser flow and a wrong password were tried live.
-- **The keyring with the real Secret Service** (KDE Wallet or GNOME Keyring
-  here) and on a Mac. Tests only drive a fake secret-tool.
+- **`gpg-key add/delete`**, and **`repo sync` of a fork that is behind** (the
+  up-to-date case was tried on a fork of vyol/trading_bot).
+- **The password login with TOTP** with a real account; only a wrong
+  password was tried live.
+- **The keyring on a Mac** (`security`); Linux's Secret Service works.
 
 ## Development
 

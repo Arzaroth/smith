@@ -56,6 +56,7 @@ pub fn init(h: *Harness, routes: []const Mock.Route, opts: Options) !void {
     try h.env.put("GIT_COMMITTER_EMAIL", "test@example.com");
     try h.env.put("SMITH_BROWSER", "true");
     try h.env.put("TMPDIR", h.root);
+    try h.env.put("TZ", "UTC0");
     try h.env.put("SMITH_EDITOR", "true");
     try h.env.put("GIT_CEILING_DIRECTORIES", std.fs.path.dirname(h.root) orelse h.root);
     try h.env.put("SMITH_KEYRING", "none");

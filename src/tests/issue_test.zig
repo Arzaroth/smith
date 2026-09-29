@@ -222,3 +222,15 @@ test "create on a terminal asks before submitting: cancel, edit, submit" {
     try h.expectRun(0, &.{ "issue", "create", "-R", "owner/repo", "-t", "Crash on start", "-b", "Given." });
     try std.testing.expectEqual(@as(usize, 2), h.mock.count(.POST, issues));
 }
+
+test "view shows the milestone" {
+    var h: Harness = undefined;
+    const with_milestone = comptime blk: {
+        const s: []const u8 = fx.issue_open;
+        break :blk s[0 .. s.len - 1] ++ ",\"milestone\":{\"title\":\"v1.0\"}}";
+    };
+    try h.init(&.{.{ .path = issues ++ "/7", .body = with_milestone }}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "issue", "view", "7", "-R", "owner/repo" });
+    try h.expectOut("Milestone: v1.0\n");
+}

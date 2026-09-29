@@ -65,6 +65,7 @@ test {
     refAll(@import("template.zig"));
     refAll(@import("settings.zig"));
     refAll(@import("keyring.zig"));
+    refAll(@import("localtime.zig"));
     refAll(app);
 }
 

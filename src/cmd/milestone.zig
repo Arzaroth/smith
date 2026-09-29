@@ -4,6 +4,7 @@ const Ctx = @import("../Ctx.zig");
 const api = @import("../api.zig");
 const repo = @import("../repo.zig");
 const term = @import("../term.zig");
+const localtime = @import("../localtime.zig");
 const types = @import("../types.zig");
 const common = @import("common.zig");
 
@@ -46,9 +47,19 @@ fn path(ctx: *Ctx, r: repo.Repo, name: []const u8) ![]const u8 {
 
 fn due(ctx: *Ctx, args: *const cli.Args) !?[]const u8 {
     const d = args.get("due") orelse return null;
-    if (term.parseTime(try std.fmt.allocPrint(ctx.alloc, "{s}T00:00:00Z", .{d})) == null)
+    const midnight = term.parseTime(try std.fmt.allocPrint(ctx.alloc, "{s}T00:00:00Z", .{d})) orelse
         return ctx.fail("--due takes a date as YYYY-MM-DD, got \"{s}\"", .{d});
-    return try std.fmt.allocPrint(ctx.alloc, "{s}T23:59:59Z", .{d});
+    return localtime.utc(ctx.alloc, localtime.endOfDay(ctx, @divFloor(midnight, 86400))) catch |e| switch (e) {
+        error.OutOfRange => ctx.fail("--due {s} is out of range", .{d}),
+        else => |x| x,
+    };
+}
+
+/// The local day a due date falls on; Forgejo reports it in its own zone.
+fn dueDate(ctx: *Ctx, stamp: []const u8) ![]const u8 {
+    const unix = term.parseTime(stamp) orelse return term.clean(ctx.alloc, stamp[0..@min(10, stamp.len)], false);
+    var buf: [16]u8 = undefined;
+    return ctx.alloc.dupe(u8, localtime.date(ctx, unix, &buf));
 }
 
 fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
@@ -69,7 +80,7 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
     for (ms) |m| try table.add(ctx.alloc, &.{
         .{ .text = m.title, .color = .bold },
         .{ .text = try progress(ctx, m) },
-        .{ .text = if (m.due_on) |d| try std.fmt.allocPrint(ctx.alloc, "due {s}", .{d[0..@min(10, d.len)]}) else "", .color = .dim },
+        .{ .text = if (m.due_on) |d| try std.fmt.allocPrint(ctx.alloc, "due {s}", .{try dueDate(ctx, d)}) else "", .color = .dim },
         .{ .text = m.state, .color = common.stateColor(m.state) },
     });
     try table.write(ctx);
@@ -93,7 +104,7 @@ fn view(ctx: *Ctx, args: *const cli.Args) !u8 {
     const m = try api.decode(types.Milestone, ctx, v);
     try term.paint(ctx, ctx.out, .bold, m.title);
     try ctx.out.print("\n{s} · {s}", .{ m.state, try progress(ctx, m) });
-    if (m.due_on) |d| try ctx.out.print(" · due {s}", .{d[0..@min(10, d.len)]});
+    if (m.due_on) |d| try ctx.out.print(" · due {s}", .{try dueDate(ctx, d)});
     try ctx.out.writeAll("\n\n");
     try common.writeBody(ctx, m.description);
     return 0;

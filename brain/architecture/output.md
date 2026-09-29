@@ -22,7 +22,13 @@
   output go to stderr.
 - **Times**: RFC 3339 timestamps render as "about 3 hours ago"; run durations
   as "1m 5s", and as nothing when the run never started (Forgejo reports
-  its zero time, `1970-01-01T01:00:00+01:00`, as the start).
+  its zero time, `1970-01-01T01:00:00+01:00`, as the start). Dates a person
+  types or reads as a day (milestone due dates) are local: the offset comes
+  from `TZ` (a zone name or file first, then a POSIX rule, where a daylight
+  name without dates takes the US rules; empty means UTC, as in glibc) or
+  `/etc/localtime`, read with `std.tz` from regular files only, and past the file's last transition from its POSIX rule
+  footer, which `src/localtime.zig` evaluates (slim zone files need it for
+  every current date). Tests pin `TZ=UTC0`.
 - **Watching**: `pr checks --watch` and `run watch` redraw the screen on a
   terminal and append snapshots otherwise; each poll allocates from its own
   arena, freed before the next.
@@ -41,6 +47,7 @@
 ## Sources
 
 - `src/term.zig`
+- `src/localtime.zig`
 - `src/Ctx.zig`
 - **--jq / --template**: applied by `api.printJson` to anything a command
   would print as JSON; see [../features/tools.md](../features/tools.md#--jq-and---template).

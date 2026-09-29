@@ -149,9 +149,9 @@ pub fn parse(alloc: Allocator, cmd: *const Command, argv: []const []const u8, er
             const name = if (eq) |e| body[0..e] else body;
             const flag = findLong(cmd, name) orelse return usage(err, "unknown flag: --{s}", .{name});
             if (flag.value == null) {
-                if (eq != null) return usage(err, "flag --{s} takes no value", .{name});
-                try names.append(alloc, flag.long);
-                try values.append(alloc, "");
+                const on = if (eq) |e| boolValue(body[e + 1 ..]) orelse
+                    return usage(err, "flag --{s} takes true or false, not \"{s}\"", .{ name, body[e + 1 ..] }) else true;
+                try setBool(alloc, cmd, &names, &values, flag.long, on);
             } else if (eq) |e| {
                 try names.append(alloc, flag.long);
                 try values.append(alloc, body[e + 1 ..]);
@@ -168,11 +168,16 @@ pub fn parse(alloc: Allocator, cmd: *const Command, argv: []const []const u8, er
             var j: usize = 1;
             while (j < a.len) : (j += 1) {
                 const flag = findShort(cmd, a[j]) orelse return usage(err, "unknown shorthand flag: '{c}' in {s}", .{ a[j], a });
-                try names.append(alloc, flag.long);
                 if (flag.value == null) {
-                    try values.append(alloc, "");
+                    if (j + 1 < a.len and a[j + 1] == '=') {
+                        const on = boolValue(a[j + 2 ..]) orelse return usage(err, "flag -{c} takes true or false, not \"{s}\"", .{ a[j], a[j + 2 ..] });
+                        try setBool(alloc, cmd, &names, &values, flag.long, on);
+                        break;
+                    }
+                    try setBool(alloc, cmd, &names, &values, flag.long, true);
                     continue;
                 }
+                try names.append(alloc, flag.long);
                 if (j + 1 < a.len) {
                     try values.append(alloc, a[j + 1 ..]);
                 } else {
@@ -216,6 +221,48 @@ pub const yes_flag: Flag = .{ .long = "yes", .short = 'y', .help = "Do not ask f
 pub fn implicitFlags(cmd: *const Command) []const Flag {
     for (cmd.flags) |f| if (std.mem.eql(u8, f.long, "json")) return &.{ jq_flag, template_flag };
     return &.{};
+}
+
+/// The flag that undoes `long` (`--enable-x` and `--disable-x`, `release
+/// edit`'s `--draft` and `--publish`, `--prerelease` and `--latest`), so gh's
+/// `--x=false` works; null for a plain boolean, which `=false` leaves off.
+fn opposite(cmd: *const Command, long: []const u8) ?[]const u8 {
+    const prefixes = [_][2][]const u8{ .{ "enable-", "disable-" }, .{ "disable-", "enable-" } };
+    for (prefixes) |p| if (std.mem.startsWith(u8, long, p[0])) {
+        var buf: [64]u8 = undefined;
+        const other = std.fmt.bufPrint(&buf, "{s}{s}", .{ p[1], long[p[0].len..] }) catch return null;
+        if (findLong(cmd, other)) |f| return f.long;
+    };
+    const pairs = [_][2][]const u8{ .{ "draft", "publish" }, .{ "prerelease", "latest" } };
+    for (pairs) |p| for ([_][2][]const u8{ p, .{ p[1], p[0] } }) |q| if (std.mem.eql(u8, long, q[0])) {
+        if (findLong(cmd, q[1])) |f| return f.long;
+    };
+    return null;
+}
+
+/// pflag's spellings of a boolean.
+fn boolValue(v: []const u8) ?bool {
+    for ([_][]const u8{ "1", "t", "T", "true", "TRUE", "True" }) |s| if (std.mem.eql(u8, v, s)) return true;
+    for ([_][]const u8{ "0", "f", "F", "false", "FALSE", "False" }) |s| if (std.mem.eql(u8, v, s)) return false;
+    return null;
+}
+
+/// Records a boolean flag, its last occurrence winning over earlier ones;
+/// `=false` records the opposite if any. Naming both opposites stays a
+/// contradiction for the command to refuse.
+fn setBool(alloc: Allocator, cmd: *const Command, names: *std.ArrayList([]const u8), values: *std.ArrayList([]const u8), long: []const u8, on: bool) !void {
+    const other = opposite(cmd, long);
+    var k: usize = 0;
+    while (k < names.items.len) {
+        const n = names.items[k];
+        if (std.mem.eql(u8, n, long)) {
+            _ = names.orderedRemove(k);
+            _ = values.orderedRemove(k);
+        } else k += 1;
+    }
+    const recorded = if (on) long else other orelse return;
+    try names.append(alloc, recorded);
+    try values.append(alloc, "");
 }
 
 fn findLong(cmd: *const Command, name: []const u8) ?Flag {
@@ -316,6 +363,43 @@ test "parse long, short, clustered and = flags" {
     const labels = try p.all(a, "label");
     try testing.expectEqual(@as(usize, 3), labels.len);
     try testing.expectEqualStrings("b", labels[2]);
+}
+
+test "boolean flags take =true and =false, and --enable-x=false means --disable-x" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    try testing.expect((try testParse(a, &.{"--draft=true"})).has("draft"));
+    try testing.expect(!(try testParse(a, &.{"--draft=false"})).has("draft"));
+    try testing.expectError(error.Usage, testParse(a, &.{"--draft=maybe"}));
+    const toggles: Command = .{ .name = "edit", .summary = "", .flags = &.{
+        .{ .long = "enable-wiki", .help = "" },
+        .{ .long = "disable-wiki", .help = "" },
+    } };
+    var buf: [256]u8 = undefined;
+    var w: Writer = .fixed(&buf);
+    const off = try parse(a, &toggles, &.{"--enable-wiki=false"}, &w);
+    try testing.expect(off.has("disable-wiki") and !off.has("enable-wiki"));
+    const on = try parse(a, &toggles, &.{"--disable-wiki=false"}, &w);
+    try testing.expect(on.has("enable-wiki") and !on.has("disable-wiki"));
+}
+
+test "booleans take pflag's spellings and -d=false, and the last one wins" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    for ([_][]const u8{ "--draft=1", "--draft=t", "--draft=TRUE", "-d=True" }) |on| try testing.expect((try testParse(a, &.{on})).has("draft"));
+    for ([_][]const u8{ "--draft=0", "--draft=F", "-d=false" }) |off| try testing.expect(!(try testParse(a, &.{off})).has("draft"));
+    try testing.expect(!(try testParse(a, &.{ "--draft", "--draft=false" })).has("draft"));
+    try testing.expect((try testParse(a, &.{ "--draft=false", "-d" })).has("draft"));
+    const release_edit: Command = .{ .name = "edit", .summary = "", .flags = &.{
+        .{ .long = "draft", .help = "" },
+        .{ .long = "publish", .help = "" },
+    } };
+    var buf: [256]u8 = undefined;
+    var w: Writer = .fixed(&buf);
+    const published = try parse(a, &release_edit, &.{"--draft=false"}, &w);
+    try testing.expect(published.has("publish") and !published.has("draft"));
 }
 
 test "parse rejects unknown flags and extra arguments" {

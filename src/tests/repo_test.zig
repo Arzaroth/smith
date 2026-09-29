@@ -193,6 +193,7 @@ test "sync picks sync_fork for a fork and mirror-sync for a mirror" {
     const mirror_json = try std.mem.replaceOwned(u8, h.arena.allocator(), fx.repo, "\"fork\":false", "\"mirror\":true");
     try setRoutes(&h, &.{
         .{ .path = "/api/v1/repos/me/f", .body = fork_json },
+        .{ .path = "/api/v1/repos/me/f/sync_fork/dev", .body = "{\"allowed\":true,\"commits_behind\":2}" },
         .{ .method = .POST, .path = "/api/v1/repos/me/f/sync_fork/dev", .body = "" },
         .{ .path = "/api/v1/repos/me/m", .body = mirror_json },
         .{ .method = .POST, .path = "/api/v1/repos/me/m/mirror-sync", .body = "" },
@@ -246,4 +247,65 @@ test "set-default makes resolution prefer a remote over upstream" {
     try std.testing.expectEqualStrings("/api/v1/repos/me/repo", h.mock.requests.items[1].target);
     try h.expectRun(0, &.{ "repo", "set-default", "--unset" });
     try h.expectRun(1, &.{ "repo", "set-default", "nobody/else" });
+}
+
+test "sync reports a fork that is up to date or has diverged, and posts nothing" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    const fork_json = try std.mem.replaceOwned(u8, h.arena.allocator(), fx.repo, "\"fork\":false", "\"fork\":true");
+    try setRoutes(&h, &.{
+        .{ .path = "/api/v1/repos/me/f", .body = fork_json },
+        .{ .path = "/api/v1/repos/me/f/sync_fork", .body = "{\"allowed\":false,\"fork_commit\":\"aaa\",\"base_commit\":\"aaa\",\"commits_behind\":0}", .times = 1 },
+        .{ .path = "/api/v1/repos/me/f/sync_fork", .body = "{\"allowed\":false,\"fork_commit\":\"aaa\",\"base_commit\":\"bbb\",\"commits_behind\":0}" },
+    });
+    try h.expectRun(0, &.{ "repo", "sync", "me/f" });
+    try h.expectErr("already up to date");
+    try h.expectRun(1, &.{ "repo", "sync", "me/f" });
+    try h.expectErr("Forgejo cannot sync owner/repo main");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.count(.POST, "/api/v1/repos/me/f/sync_fork"));
+}
+
+test "list filters forks, sources, visibility and archived ones while it pages" {
+    var h: Harness = undefined;
+    const fork = comptime blk: {
+        const s: []const u8 = fx.repo;
+        const i = std.mem.indexOf(u8, s, "\"fork\":false").?;
+        break :blk s[0..i] ++ "\"fork\":true" ++ s[i + "\"fork\":false".len ..];
+    };
+    try h.init(&.{.{ .path = "/api/v1/user/repos", .body = "[" ++ fx.repo ++ "," ++ fork ++ "]" }}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "repo", "list", "--fork" });
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, h.stdout(), "\n"));
+    try h.expectOut("public, fork");
+    try h.expectRun(0, &.{ "repo", "list", "--source" });
+    try std.testing.expect(std.mem.indexOf(u8, h.stdout(), "fork") == null);
+    try h.expectRun(0, &.{ "repo", "list", "--visibility", "private" });
+    try h.expectErr("No repositories found");
+    try h.expectRun(1, &.{ "repo", "list", "--fork", "--source" });
+    try h.expectRun(1, &.{ "repo", "list", "--visibility", "secret" });
+}
+
+test "list filters archived ones, language, topics and internal, also for an organization" {
+    var h: Harness = undefined;
+    const archived = comptime blk: {
+        const s: []const u8 = fx.repo;
+        const i = std.mem.indexOf(u8, s, "\"archived\":false").?;
+        break :blk s[0..i] ++ "\"archived\":true,\"internal\":true,\"language\":\"Zig\",\"topics\":[\"cli\",\"forge\"]" ++ s[i + "\"archived\":false".len ..];
+    };
+    try h.init(&.{
+        .{ .path = "/api/v1/users/team/repos", .status = 404, .body = "{}" },
+        .{ .path = "/api/v1/orgs/team/repos", .body = "[" ++ fx.repo ++ "," ++ archived ++ "]" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "repo", "list", "team", "--archived" });
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, h.stdout(), "\n"));
+    try h.expectOut("public, archived");
+    try h.expectRun(0, &.{ "repo", "list", "team", "--no-archived" });
+    try std.testing.expect(std.mem.indexOf(u8, h.stdout(), "archived") == null);
+    try h.expectRun(0, &.{ "repo", "list", "team", "-l", "zig", "--topic", "CLI", "--visibility", "internal" });
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, h.stdout(), "\n"));
+    try h.expectRun(0, &.{ "repo", "list", "team", "--topic", "cli", "--topic", "missing" });
+    try h.expectErr("No repositories found");
+    try h.expectRun(1, &.{ "repo", "list", "team", "--archived", "--no-archived" });
 }

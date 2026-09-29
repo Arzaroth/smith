@@ -200,3 +200,13 @@ every push and a moving tag, and the Forgejo push mirror syncs tags to
 GitHub, so a tag made on one side would fight the other. Building takes a
 minute or two, needs no git (a source tarball of the exact commit), and
 always matches master; the Zig it builds with is pinned and checked.
+
+## Due dates are local days (2026-09-29)
+
+`--due 2026-12-31` was sent as 23:59:59 UTC; a Forgejo in Paris stored it as
+00:59:59 on January 1st and every view showed the wrong day. A person typing
+or reading a date means their own day, so smith now sends the end of that
+day at the machine's offset and shows due dates in the local zone. The
+offset comes from the zone file through `std.tz`, plus an evaluator for its
+POSIX rule footer, rather than from `date`, to stay free of child processes
+and of GNU/BSD differences.
