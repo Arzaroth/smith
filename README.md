@@ -23,7 +23,9 @@ curl -fsSL https://raw.githubusercontent.com/Arzaroth/smith/master/install.sh | 
 This installs the latest release into `~/.local/bin` (`--dir` or
 `SMITH_INSTALL_DIR` to change it): a static binary for Linux (x86_64,
 aarch64) or macOS (Intel, Apple silicon), checked against the release's
-`SHA256SUMS`. Pass options after `sh -s --`:
+`SHA256SUMS` (which catches a corrupted download; it comes from the same
+release, so it is not a signature). Running it again upgrades in place, or
+says smith is up to date. Pass options after `sh -s --`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Arzaroth/smith/master/install.sh | sh -s -- --version 0.3.0
@@ -34,8 +36,10 @@ curl -fsSL https://raw.githubusercontent.com/Arzaroth/smith/master/install.sh | 
 0.16.0: yours if it is on `PATH`, else through mise, else a download from
 ziglang.org checked against its published checksum; `smith --version` then
 says `<version>-dev+<commit>`. `--from forgejo` downloads from git.arzaroth.com
-instead of GitHub. Or unpack a release archive yourself, or build it
-(below).
+(releases from 0.3.0 on) instead of GitHub. Other systems (Windows,
+FreeBSD, 32-bit ARM) can build it (below). To uninstall, delete the
+binary; `smith auth logout` first removes its tokens from the keyring, and
+`~/.config/smith` holds its settings.
 
 ## Getting started
 

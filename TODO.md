@@ -47,3 +47,9 @@ live on git.arzaroth.com and codeberg.org.
   exact binary value (`%f` is exact); `timefmt` lacks `002` (day of year)
   and wants a non-letter after `January`/`Monday`; `{{089}}` is refused
   where Go reads a float.
+- **Verify installs beyond the same host's `SHA256SUMS`**: each forge builds
+  its own release archives, which differ byte for byte (tar mtimes, gzip
+  headers), so the installer cannot cross-check GitHub against Forgejo.
+  Reproducible archives (fixed mtime and owner, `gzip -n`) would allow that;
+  signing `SHA256SUMS` (minisign, key pinned in `install.sh`) would go
+  further.

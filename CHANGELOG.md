@@ -9,8 +9,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - `install.sh`: `curl -fsSL https://raw.githubusercontent.com/Arzaroth/smith/master/install.sh | sh`
-  installs the latest release (or `--version`), checked against
-  `SHA256SUMS`; `--dev` builds master from source.
+  installs the latest release (or `--version`), checked against the
+  release's `SHA256SUMS`; `--dev` builds master from source.
+
+### Fixed
+
+- `smith --version` works without `HOME` set.
 
 ## [0.3.0] - 2026-09-29
 

@@ -11,8 +11,8 @@
 - **Tasks** (`mise run <task>`): `build`, `run`, `test` (`zig build test
   -Dtest-filter=<text>` for a subset), `fmt`, `check` (the
   gate: `zig fmt --check`, `shellcheck mise-tasks/*`,
-  `mise-tasks/installer-check` (shellcheck of `install.sh`, and its Zig
-  version against `.mise.toml`'s), tests, ReleaseSafe build), `release <x.y.z>` (`mise-tasks/release`), `dist` (`mise-tasks/dist`:
+  `mise-tasks/installer-check` (shellcheck of `install.sh`, its Zig
+  version against `.mise.toml`'s, and an offline run of it), tests, ReleaseSafe build), `release <x.y.z>` (`mise-tasks/release`), `dist` (`mise-tasks/dist`:
   stripped ReleaseSafe archives for x86_64 and aarch64 Linux (static musl)
   and macOS, with `SHA256SUMS`).
 - **CI**: `.github/workflows/ci.yml` runs the gate on Forgejo Actions and,
@@ -24,12 +24,20 @@
   `http://server:3000`, so that step writes smith a `hosts.zon` naming it
   with its scheme before `SMITH_TOKEN` can apply. `actions/checkout` is
   pinned to a commit that GitHub and Forgejo's action mirrors share.
-- **Installer**: `install.sh` (POSIX sh, curl or wget) installs the latest
-  release, or `--version`, for the machine's OS and architecture from
-  GitHub or `--from forgejo`, checked against `SHA256SUMS`. `--dev` builds
-  master's tip from its source tarball with Zig from `PATH`, mise, or a
-  ziglang.org download checked against checksums pinned in the script; a
-  Zig bump updates `zig_version` and those checksums (the gate notices).
+- **Installer**: `install.sh` (POSIX sh, curl or wget, https only) installs
+  the latest release, or `--version`, for the machine's OS and architecture
+  from GitHub or `--from forgejo`, checked against the release's
+  `SHA256SUMS` (corruption, not tampering: both come from the same place).
+  It runs from `main` on its last line, so a cut download runs nothing, and
+  stages the binary under a random name before renaming it into place.
+  `--dev` builds master's tip from its source tarball (trusted to TLS) with
+  Zig from `PATH`, mise, or a ziglang.org download checked against checksums
+  pinned in the script. A Zig bump updates `zig_version` and those
+  checksums (from ziglang.org's `download/index.json`); the gate catches a
+  stale `zig_version`, not stale checksums. `mise-tasks/installer-check`
+  runs the script offline against a `file://` fixture release
+  (`SMITH_INSTALL_URL`): an install, the up-to-date path, a checksum
+  mismatch, a missing release, no `HOME`, a truncated script.
 
 ## Sources
 
