@@ -21,7 +21,7 @@ pub const secret_command: cli.Command = .{
     .subs = &.{
         .{ .name = "list", .pages = true, .summary = "List secrets (their names; values cannot be read back).", .flags = &(scope_flags ++ [_]cli.Flag{cli.json_flag}), .run = secretList },
         .{ .name = "set", .summary = "Create or replace a secret.", .usage = "<name>", .min_args = 1, .max_args = 1, .flags = &(scope_flags ++ [_]cli.Flag{body_flag}), .run = secretSet },
-        .{ .name = "delete", .summary = "Delete a secret.", .usage = "<name>", .min_args = 1, .max_args = 1, .flags = &scope_flags, .run = secretDelete },
+        .{ .name = "delete", .summary = "Delete a secret.", .usage = "<name>", .min_args = 1, .max_args = 1, .flags = &(scope_flags ++ [_]cli.Flag{cli.yes_flag}), .run = secretDelete },
     },
 };
 
@@ -32,7 +32,7 @@ pub const variable_command: cli.Command = .{
         .{ .name = "list", .pages = true, .summary = "List variables and their values.", .flags = &(scope_flags ++ [_]cli.Flag{cli.json_flag}), .run = variableList },
         .{ .name = "get", .summary = "Print a variable's value.", .usage = "<name>", .min_args = 1, .max_args = 1, .flags = &scope_flags, .run = variableGet },
         .{ .name = "set", .summary = "Create or update a variable.", .usage = "<name>", .min_args = 1, .max_args = 1, .flags = &(scope_flags ++ [_]cli.Flag{body_flag}), .run = variableSet },
-        .{ .name = "delete", .summary = "Delete a variable.", .usage = "<name>", .min_args = 1, .max_args = 1, .flags = &scope_flags, .run = variableDelete },
+        .{ .name = "delete", .summary = "Delete a variable.", .usage = "<name>", .min_args = 1, .max_args = 1, .flags = &(scope_flags ++ [_]cli.Flag{cli.yes_flag}), .run = variableDelete },
     },
 };
 
@@ -103,6 +103,7 @@ fn secretSet(ctx: *Ctx, args: *const cli.Args) !u8 {
 fn secretDelete(ctx: *Ctx, args: *const cli.Args) !u8 {
     var s = try scope(ctx, args);
     const name = args.arg(0).?;
+    if (!try ctx.confirm(try std.fmt.allocPrint(ctx.alloc, "Delete secret {s} from {s}?", .{ name, s.label }), args.has("yes"))) return 1;
     _ = try s.client.call(.DELETE, try std.fmt.allocPrint(ctx.alloc, "{s}/secrets/{s}", .{ s.base, try api.escape(ctx.alloc, name) }), .{});
     try ctx.err.print("✓ Deleted secret {s} from {s}\n", .{ name, s.label });
     return 0;
@@ -159,6 +160,7 @@ fn variableSet(ctx: *Ctx, args: *const cli.Args) !u8 {
 fn variableDelete(ctx: *Ctx, args: *const cli.Args) !u8 {
     var s = try scope(ctx, args);
     const name = args.arg(0).?;
+    if (!try ctx.confirm(try std.fmt.allocPrint(ctx.alloc, "Delete variable {s} from {s}?", .{ name, s.label }), args.has("yes"))) return 1;
     _ = try s.client.call(.DELETE, try variablePath(ctx, s, name), .{});
     try ctx.err.print("✓ Deleted variable {s} from {s}\n", .{ name, s.label });
     return 0;

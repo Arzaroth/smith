@@ -96,7 +96,9 @@ test "secrets: set from stdin, list, delete; your own cannot be listed" {
     try std.testing.expectEqualStrings("{\"data\":\"s3cr3t\"}", h.mock.lastBody(.PUT, actions ++ "/secrets/TOKEN").?);
     try h.expectRun(0, &.{ "secret", "list", "-R", "owner/repo" });
     try std.testing.expectEqualStrings("TOKEN\t2026-09-29T11:00:00Z\n", h.stdout());
-    try h.expectRun(0, &.{ "secret", "delete", "TOKEN", "-R", "owner/repo" });
+    try h.expectRun(1, &.{ "secret", "delete", "TOKEN", "-R", "owner/repo" });
+    try h.expectErr("--yes");
+    try h.expectRun(0, &.{ "secret", "delete", "TOKEN", "-R", "owner/repo", "--yes" });
     try h.expectRun(0, &.{ "secret", "set", "K", "--org", "team", "-b", "v" });
     try h.expectRun(1, &.{ "secret", "list", "--user" });
     try h.expectErr("cannot list your own secrets");
@@ -129,4 +131,6 @@ test "variables: set creates when missing and updates otherwise, get prints the 
     try std.testing.expectEqualStrings("eu\n", h.stdout());
     try h.expectRun(0, &.{ "variable", "list", "--user" });
     try std.testing.expectEqualStrings("A\t1\n", h.stdout());
+    try h.expectRun(1, &.{ "variable", "delete", "A", "--user" });
+    try h.expectErr("--yes");
 }
