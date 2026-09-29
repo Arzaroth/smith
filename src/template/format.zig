@@ -148,7 +148,12 @@ fn one(alloc: Allocator, w: *Writer, verb: u8, verb_text: []const u8, spec: Spec
         },
         'f', 'F', 'e', 'E', 'g', 'G' => if (float(v)) |f| {
             if (verb == 'g' or verb == 'G') {
-                exec.writeFloat(&scratch, f) catch unreachable;
+                if (spec.precision != null and std.math.isFinite(f)) {
+                    general(&scratch, f, @max(spec.precision.?, 1)) catch unreachable;
+                } else exec.writeFloat(&scratch, f) catch unreachable;
+                if (verb == 'G') for (scratch.buffered()) |*c| {
+                    if (c.* == 'e') c.* = 'E';
+                };
             } else if ((verb == 'f' or verb == 'F') and std.math.isFinite(f)) {
                 return number(w, try fixed(alloc, f, spec.precision orelse 6), spec);
             } else {
@@ -189,6 +194,23 @@ fn one(alloc: Allocator, w: *Writer, verb: u8, verb_text: []const u8, spec: Spec
     }
     if (v == .null) return w.print("%!{s}(<nil>)", .{verb_text});
     try w.print("%!{s}({s}={f})", .{ verb_text, typeName(v), exec.fmtValue(v) });
+}
+
+/// `%.Ng`: `p` significant digits, in exponent form when the exponent is
+/// below -4 or at least `p`, trailing zeros dropped, as Go does.
+fn general(w: *Writer, f: f64, p: usize) Writer.Error!void {
+    var buf: [std.fmt.float.bufferSize(.scientific, f64) + 32]u8 = undefined;
+    const sci = std.fmt.float.render(&buf, f, .{ .mode = .scientific, .precision = @min(p - 1, 17) }) catch unreachable;
+    const e = std.mem.indexOfScalar(u8, sci, 'e').?;
+    const exp = std.fmt.parseInt(i32, sci[e + 1 ..], 10) catch unreachable;
+    if (exp < -4 or exp >= @as(i32, @intCast(@min(p, 1000)))) {
+        const mantissa = if (std.mem.indexOfScalar(u8, sci[0..e], '.') != null) std.mem.trimEnd(u8, std.mem.trimEnd(u8, sci[0..e], "0"), ".") else sci[0..e];
+        return w.print("{s}e{c}{d:0>2}", .{ mantissa, @as(u8, if (exp < 0) '-' else '+'), @abs(exp) });
+    }
+    var dbuf: [std.fmt.float.bufferSize(.decimal, f64) + 32]u8 = undefined;
+    const decimals: usize = @intCast(@max(@as(i64, @intCast(@min(p, 1000))) - 1 - exp, 0));
+    const d = std.fmt.float.render(&dbuf, f, .{ .mode = .decimal, .precision = @min(decimals, 17) }) catch unreachable;
+    try w.writeAll(if (std.mem.indexOfScalar(u8, d, '.') != null) std.mem.trimEnd(u8, std.mem.trimEnd(u8, d, "0"), ".") else d);
 }
 
 /// `f` with `precision` decimals, rounded half to even on its exact binary
@@ -291,8 +313,11 @@ fn int(w: *Writer, n: i64, base: u8, upper: bool, spec: Spec) Writer.Error!void 
         2 => "0b",
         else => "",
     }) catch unreachable;
+    const head = out.end;
     var digit_buf: [64]u8 = undefined;
     const body = digit_buf[0..std.fmt.printInt(&digit_buf, @abs(n), base, if (upper) .upper else .lower, .{})];
+    if (spec.zero and !spec.minus and spec.precision == null) if (spec.width) |wanted| if (wanted > head + body.len)
+        out.splatByteAll('0', wanted - head - body.len) catch unreachable;
     if (spec.precision) |p| if (p > body.len) out.splatByteAll('0', p - body.len) catch unreachable;
     out.writeAll(body) catch unreachable;
     var s = spec;
@@ -443,7 +468,9 @@ pub fn timefmt(w: *Writer, layout: []const u8, stamp: []const u8) Writer.Error!b
             var j: usize = 1;
             while (j < r.len and r[j] == r[1]) j += 1;
             if (j < r.len and std.ascii.isDigit(r[j])) {
-                try w.writeAll(r[0..j]);
+                try w.writeByte(r[0]);
+                i += 1;
+                continue;
             } else {
                 const n = j - 1;
                 var d: [9]u8 = @splat('0');

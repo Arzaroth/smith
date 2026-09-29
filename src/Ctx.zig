@@ -39,14 +39,7 @@ pager: ?[]const u8 = null,
 /// `SMITH_PROMPT_DISABLED`): commands then act as they do in a script.
 prompts: bool = true,
 /// The pager standard output goes through, while one runs.
-paged: ?Paged = null,
-
-const Paged = struct {
-    program: []const u8,
-    child: std.process.Child,
-    writer: *Io.File.Writer,
-    out: *Writer,
-};
+paged: ?*Pager = null,
 
 /// `Reported`: the message is printed, exit 1. `AuthRequired`: likewise, but
 /// exit 4, as gh does when authentication is what failed.
@@ -69,8 +62,9 @@ pub fn interactive(ctx: *const Ctx) bool {
 }
 
 /// Sends standard output through the pager (`SMITH_PAGER`, `config set
-/// pager`, then `PAGER`) until `stopPager`; nothing happens off a terminal,
-/// without a pager, or when it cannot start.
+/// pager`, then `PAGER`) until `stopPager`; nothing happens off a terminal
+/// or without a pager. The pager starts with the first output, so a command
+/// that fails before printing anything leaves its error on the terminal.
 pub fn startPager(ctx: *Ctx) !void {
     if (!ctx.stdout_tty or ctx.paged != null) return;
     const program = if (ctx.env.get("SMITH_PAGER")) |p| p else ctx.pager orelse ctx.getenv("PAGER") orelse return;
@@ -79,20 +73,61 @@ pub fn startPager(ctx: *Ctx) !void {
         try ctx.err.print("! the pager `{s}` was not found; printing directly\n", .{program});
         return;
     }
-    var env = try ctx.env.clone(ctx.alloc);
-    if (env.get("LESS") == null) try env.put("LESS", "FRX");
-    if (env.get("LV") == null) try env.put("LV", "-c");
     try ctx.out.flush();
-    const child = std.process.spawn(ctx.io, .{
-        .argv = &.{ "sh", "-c", program },
-        .stdin = .pipe,
-        .environ_map = &env,
-    }) catch return;
-    const writer = try ctx.alloc.create(Io.File.Writer);
-    writer.* = child.stdin.?.writerStreaming(ctx.io, try ctx.alloc.alloc(u8, 16 * 1024));
-    ctx.paged = .{ .program = program, .child = child, .writer = writer, .out = ctx.out };
-    ctx.out = &writer.interface;
+    const p = try ctx.alloc.create(Pager);
+    p.* = .{ .ctx = ctx, .program = program, .out = ctx.out, .interface = .{ .vtable = &.{ .drain = Pager.drain, .flush = Pager.flush }, .buffer = try ctx.alloc.alloc(u8, 16 * 1024) } };
+    ctx.paged = p;
+    ctx.out = &p.interface;
 }
+
+const Pager = struct {
+    ctx: *Ctx,
+    program: []const u8,
+    /// Standard output, restored when paging ends.
+    out: *Writer,
+    child: ?std.process.Child = null,
+    pipe: Io.File.Writer = undefined,
+    interface: Writer,
+
+    fn target(p: *Pager) Writer.Error!*Writer {
+        if (p.child != null) return &p.pipe.interface;
+        const ctx = p.ctx;
+        var env = ctx.env.clone(ctx.alloc) catch return error.WriteFailed;
+        if (env.get("LESS") == null) env.put("LESS", "FRX") catch return error.WriteFailed;
+        if (env.get("LV") == null) env.put("LV", "-c") catch return error.WriteFailed;
+        p.child = std.process.spawn(ctx.io, .{
+            .argv = &.{ "sh", "-c", p.program },
+            .stdin = .pipe,
+            .environ_map = &env,
+        }) catch return p.out;
+        p.pipe = p.child.?.stdin.?.writerStreaming(ctx.io, ctx.alloc.alloc(u8, 16 * 1024) catch return error.WriteFailed);
+        return &p.pipe.interface;
+    }
+
+    fn drain(w: *Writer, data: []const []const u8, splat: usize) Writer.Error!usize {
+        const p: *Pager = @alignCast(@fieldParentPtr("interface", w));
+        const t = try p.target();
+        try t.writeAll(w.buffered());
+        w.end = 0;
+        var n: usize = 0;
+        for (data[0 .. data.len - 1]) |d| {
+            try t.writeAll(d);
+            n += d.len;
+        }
+        const last = data[data.len - 1];
+        for (0..splat) |_| try t.writeAll(last);
+        return n + last.len * splat;
+    }
+
+    fn flush(w: *Writer) Writer.Error!void {
+        const p: *Pager = @alignCast(@fieldParentPtr("interface", w));
+        if (w.end == 0) return if (p.child != null) p.pipe.interface.flush();
+        const t = try p.target();
+        try t.writeAll(w.buffered());
+        w.end = 0;
+        try t.flush();
+    }
+};
 
 /// Whether the first word of a shell command names a program that exists.
 fn onPath(ctx: *const Ctx, command: []const u8) bool {
@@ -115,13 +150,14 @@ fn onPath(ctx: *const Ctx, command: []const u8) bool {
 /// Ends paging: the pager gets end of input and smith waits for it to exit.
 /// False, with a message, when the pager failed, so the output may be lost.
 pub fn stopPager(ctx: *Ctx) bool {
-    var p = ctx.paged orelse return true;
+    const p = ctx.paged orelse return true;
     ctx.paged = null;
     ctx.out.flush() catch {};
     ctx.out = p.out;
-    p.child.stdin.?.close(ctx.io);
-    p.child.stdin = null;
-    const term = p.child.wait(ctx.io) catch return true;
+    var child = p.child orelse return true;
+    child.stdin.?.close(ctx.io);
+    child.stdin = null;
+    const term = child.wait(ctx.io) catch return true;
     if (term == .exited and term.exited != 0) {
         ctx.err.print("smith: the pager `{s}` exited with {d}; set SMITH_PAGER, `smith config set pager`, or PAGER=cat\n", .{ p.program, term.exited }) catch {};
         return false;

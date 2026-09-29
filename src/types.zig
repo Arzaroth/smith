@@ -120,6 +120,7 @@ pub const ActionRun = struct {
     started: ?[]const u8 = null,
     stopped: ?[]const u8 = null,
     trigger_user: ?User = null,
+    need_approval: bool = false,
 };
 
 pub const ActionRunJob = struct {

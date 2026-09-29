@@ -77,7 +77,10 @@ fn run(comptime id: []const u8, comptime status: []const u8, comptime ref: []con
 pub const run_ok = run("40", "success", "main");
 pub const run_failed = run("41", "failure", "main");
 pub const run_running = run("42", "running", "feature");
-pub const run_blocked = run("43", "blocked", "feature");
+pub const run_blocked = blk: {
+    const s = run("43", "blocked", "feature");
+    break :blk s[0 .. s.len - 1] ++ ",\"need_approval\":true}";
+};
 pub const run_unknown = run("44", "unknown", "feature");
 pub const runs = "{\"total_count\":2,\"workflow_runs\":[" ++ run_ok ++ "," ++ run_failed ++ "]}";
 pub const runs_feature = "{\"total_count\":1,\"workflow_runs\":[" ++ run_running ++ "]}";

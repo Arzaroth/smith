@@ -444,6 +444,7 @@ fn jqFilter(ctx: *Ctx, text: []const u8, expr: []const u8) !void {
         if (why.len > 0) return ctx.fail("{s}", .{why});
         return ctx.fail("jq rejected the expression: {s}", .{expr});
     }
+    try ctx.err.writeAll(complaint);
 }
 
 /// Percent-encodes a query or path component.

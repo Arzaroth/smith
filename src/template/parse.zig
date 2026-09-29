@@ -362,6 +362,11 @@ fn isKeyword(s: []const u8) bool {
 }
 
 fn number(s: []const u8) ?Value {
+    const digits = if (s.len > 0 and (s[0] == '-' or s[0] == '+')) s[1..] else s;
+    if (digits.len > 1 and digits[0] == '0' and std.ascii.isDigit(digits[1])) {
+        const n = std.fmt.parseInt(i64, digits[1..], 8) catch return null;
+        return .{ .integer = if (s[0] == '-') -n else n };
+    }
     if (std.fmt.parseInt(i64, s, 0)) |n| return .{ .integer = n } else |_| {}
     if (std.mem.startsWith(u8, s, "0x") or std.mem.startsWith(u8, s, "0X")) return null;
     const f = std.fmt.parseFloat(f64, s) catch return null;

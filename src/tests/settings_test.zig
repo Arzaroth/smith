@@ -176,8 +176,9 @@ test "alias import, set from standard input, and delete --all" {
     defer h.deinit();
     try h.expectRun(0, &.{ "alias", "set", "co", "pr checkout" });
     h.ctx.stdin_data = "# from gh\nco: pr view\nbugs: 'issue list --label bug'\n";
-    try h.expectRun(1, &.{ "alias", "import", "-" });
-    try h.expectErr("alias co already exists");
+    try h.expectRun(0, &.{ "alias", "import", "-" });
+    try h.expectErr("alias co already exists; skipped");
+    try h.expectRun(0, &.{ "alias", "delete", "bugs" });
     h.ctx.stdin_data = "# from gh\nco: pr view\nbugs: 'issue list --label bug'\n";
     try h.expectRun(0, &.{ "alias", "import", "--clobber" });
     h.ctx.stdin_data = "nope: frobnicate\n";

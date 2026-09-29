@@ -848,7 +848,6 @@ fn checks(ctx: *Ctx, args: *const cli.Args) !u8 {
     }
 }
 
-/// `branch` or `owner:branch` against a pull request's head.
 const Wanted = struct {
     ctx: *Ctx,
     merged: bool,
@@ -862,6 +861,7 @@ const Wanted = struct {
     }
 };
 
+/// `branch` or `owner:branch` against a pull request's head.
 fn headMatches(pr: types.PullRequest, want: []const u8) bool {
     if (std.mem.indexOfScalar(u8, want, ':')) |c| {
         const owner = if (pr.head.repo) |r| (if (r.owner) |o| o.login else "") else "";

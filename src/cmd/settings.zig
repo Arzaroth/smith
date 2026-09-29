@@ -212,11 +212,18 @@ fn aliasImport(ctx: *Ctx, args: *const cli.Args) !u8 {
     };
     for (entries) |a| try checkAlias(ctx, a.name, a.expansion);
     var s = try settings.load(ctx);
-    for (entries) |a| {
-        const replaced = try putAlias(ctx, &s, a.name, a.expansion, args.has("clobber"));
-        try ctx.err.print("✓ {s} alias {s} for {s}\n", .{ if (replaced) "Changed" else "Added", a.name, a.expansion });
+    const changed = try ctx.alloc.alloc(?bool, entries.len);
+    for (entries, changed) |a, *outcome| {
+        outcome.* = null;
+        if (!args.has("clobber") and s.alias(a.name) != null) {
+            try ctx.err.print("! alias {s} already exists; skipped (--clobber replaces it)\n", .{a.name});
+            continue;
+        }
+        outcome.* = try putAlias(ctx, &s, a.name, a.expansion, true);
     }
     try settings.save(ctx, s);
+    for (entries, changed) |a, outcome| if (outcome) |replaced|
+        try ctx.err.print("✓ {s} alias {s} for {s}\n", .{ if (replaced) "Changed" else "Added", a.name, a.expansion });
     return 0;
 }
 

@@ -271,7 +271,7 @@ fn watch(ctx: *Ctx, args: *const cli.Args) !u8 {
             try ctx.err.print("\nRun {d} finished: {s}\n", .{ id, run.status });
             return if (args.has("exit-status") and outcome(run.status) == .fail) 1 else 0;
         }
-        if (std.mem.eql(u8, run.status, "blocked")) {
+        if (std.mem.eql(u8, run.status, "blocked") and run.need_approval) {
             try ctx.err.print("\nRun {d} is blocked: it needs approval from someone with write access on Forgejo\n", .{id});
             return 8;
         }
