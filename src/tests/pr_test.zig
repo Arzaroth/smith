@@ -27,6 +27,33 @@ test "list --state merged asks for closed ones and keeps the merged" {
     try std.testing.expect(std.mem.indexOf(u8, h.stdout(), "15\t") == null);
 }
 
+test "list --state merged reads on past pages of unmerged ones until it has enough" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    const a = h.arena.allocator();
+    var page: std.ArrayList(u8) = .empty;
+    try page.append(a, '[');
+    for (0..50) |i| {
+        if (i > 0) try page.append(a, ',');
+        try page.appendSlice(a, fx.pr_closed);
+    }
+    try page.append(a, ']');
+    h.mock.routes = &.{
+        .{ .path = pulls, .query = "page=1&", .body = page.items },
+        .{ .path = pulls, .query = "page=2&", .body = "[" ++ fx.pr_merged ++ "]" },
+        .{ .path = "/api/v1/settings/api", .body = "{\"max_response_items\":50}" },
+    };
+    h.mock.used = try a.alloc(u32, h.mock.routes.len);
+    @memset(h.mock.used, 0);
+    try h.expectRun(0, &.{ "pr", "list", "-R", "owner/repo", "-s", "merged", "-L", "1" });
+    try std.testing.expectEqualStrings("14\tOld change\told\tmerged\t2026-09-29T11:30:00Z\n", h.stdout());
+    try std.testing.expect(std.mem.indexOf(u8, h.mock.requests.items[0].target, "state=closed&sort=recentclose") != null);
+    const before = h.mock.requests.items.len;
+    try h.expectRun(0, &.{ "pr", "list", "-R", "owner/repo", "-H", "alice:patch-1", "-s", "all" });
+    try std.testing.expect(std.mem.indexOf(u8, h.mock.requests.items[before].target, "head=patch-1") != null);
+}
+
 test "view by number shows the fork head as owner:branch" {
     var h: Harness = undefined;
     try h.init(&.{.{ .path = pulls ++ "/13", .body = fx.pr_fork }}, .{});
