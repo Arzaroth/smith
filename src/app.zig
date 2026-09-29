@@ -15,6 +15,7 @@ pub const root: cli.Command = .{
         @import("cmd/auth.zig").command,
         @import("cmd/repo.zig").command,
         @import("cmd/issue.zig").command,
+        @import("cmd/pr.zig").command,
     },
     .run = runRoot,
 };
