@@ -92,3 +92,25 @@ test "upstream wins over origin, and an unknown ssh host is refused" {
     try h.expectRun(1, &.{ "repo", "view" });
     try h.expectErr("no git remote points at a known Forgejo host");
 }
+
+test "clone HOST:OWNER/REPO picks the host by its SSH name, HOST/OWNER/REPO by its web name" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.git(&.{ "init", "-q", "--bare", "-b", "main", "origin.git" });
+    const body = try repoJson(&h, "tool", try h.path("origin.git"), null);
+    const routes = try h.arena.allocator().dupe(Harness.Mock.Route, &.{.{ .path = "/api/v1/repos/team/tool", .body = body }});
+    h.mock.routes = routes;
+    h.mock.used = try h.arena.allocator().alloc(u32, 1);
+    h.mock.used[0] = 0;
+    const cfg = try std.fmt.allocPrint(h.arena.allocator(), ".{{ .hosts = .{{ .{{ .name = \"127.0.0.1:{d}\", .scheme = \"http\", .git_protocol = .https, .ssh_host = \"ssh.forge.test\" }} }} }}\n", .{h.mock.port});
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config/hosts.zon", .data = cfg });
+    h.ctx.cwd = h.root;
+
+    try h.expectRun(0, &.{ "repo", "clone", "ssh.forge.test:team/tool", "a", "--", "-q" });
+    const web = try std.fmt.allocPrint(h.arena.allocator(), "127.0.0.1:{d}/team/tool", .{h.mock.port});
+    try h.expectRun(0, &.{ "repo", "clone", web, "b", "--", "-q" });
+    try std.testing.expectEqual(@as(usize, 2), h.mock.count(.GET, "/api/v1/repos/team/tool"));
+    try h.git(&.{ "-C", "a", "rev-parse", "--git-dir" });
+    try h.git(&.{ "-C", "b", "rev-parse", "--git-dir" });
+}
