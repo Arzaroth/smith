@@ -20,6 +20,8 @@ pub const command: cli.Command = .{
         .{ .long = "input", .value = "file", .help = "Send the file as the request body (\"-\" for standard input)" },
         .{ .long = "paginate", .help = "Fetch every page of a list and print one array" },
         .{ .long = "hostname", .value = "string", .help = "The Forgejo host (default: the current repository's)" },
+        cli.jq_flag,
+        cli.template_flag,
     },
     .run = run,
 };
@@ -123,9 +125,15 @@ fn typedValue(ctx: *Ctx, s: []const u8) !std.json.Value {
     return .{ .string = s };
 }
 
-/// JSON is pretty-printed on a terminal; anything else is written as sent.
+/// JSON is pretty-printed on a terminal, or filtered by --jq and --template;
+/// anything else is written as sent.
 fn writeBody(ctx: *Ctx, body: []const u8) !void {
     if (body.len == 0) return;
+    if (ctx.jq != null or ctx.template != null) {
+        const v = std.json.parseFromSliceLeaky(std.json.Value, ctx.alloc, body, .{}) catch
+            return ctx.fail("the response is not JSON, so --jq and --template cannot apply", .{});
+        return api.printJson(ctx, v);
+    }
     if (ctx.stdout_tty) {
         if (std.json.parseFromSliceLeaky(std.json.Value, ctx.alloc, body, .{})) |v| {
             try api.printJson(ctx, v);
