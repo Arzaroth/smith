@@ -6,6 +6,7 @@ const api = @import("../api.zig");
 const caps = @import("../caps.zig");
 const git = @import("../git.zig");
 const oauth = @import("../oauth.zig");
+const keyring = @import("../keyring.zig");
 const term = @import("../term.zig");
 const types = @import("../types.zig");
 
@@ -31,6 +32,7 @@ pub const command: cli.Command = .{
                 .{ .long = "git-protocol", .short = 'p', .value = "ssh|https", .help = "Protocol for git operations (default ssh)" },
                 .{ .long = "ssh-host", .value = "string", .help = "Hostname git uses over SSH, when it is not the web one" },
                 .{ .long = "scheme", .value = "https|http", .help = "Scheme of the web address (default https)" },
+                .{ .long = "insecure-storage", .help = "Keep the token in hosts.zon instead of the system keyring" },
             },
             .run = login,
         },
@@ -136,6 +138,7 @@ fn login(ctx: *Ctx, args: *const cli.Args) !u8 {
 
     if (host.ssh_host == null) host.ssh_host = try discoverSshHost(ctx, &client, host);
 
+    host.keyring = !args.has("insecure-storage") and keyring.backend(ctx) != .none;
     try cfg.put(ctx.alloc, host);
     if (cfg.default_host == null) cfg.default_host = host.name;
     try config.save(ctx, cfg);
@@ -151,6 +154,12 @@ fn login(ctx: *Ctx, args: *const cli.Args) !u8 {
     try ctx.err.print("- git operations use {t}", .{host.git_protocol});
     if (host.ssh_host) |s| try ctx.err.print(" (SSH host {s})", .{s});
     try ctx.err.writeByte('\n');
+    const kept = (try config.load(ctx)).find(host.name);
+    if (kept != null and kept.?.keyring) {
+        try ctx.err.writeAll("- the token is in the system keyring\n");
+    } else {
+        try ctx.err.writeAll("- the token is in hosts.zon, readable only by you (no system keyring, or --insecure-storage)\n");
+    }
     return 0;
 }
 
@@ -263,7 +272,7 @@ fn status(ctx: *Ctx, args: *const cli.Args) !u8 {
 
 /// One account's lines in `auth status`; false when its token does not work.
 fn account(ctx: *Ctx, cfg: config.Config, stored: config.Host, several: bool, path: []const u8, show: bool) !bool {
-    const h = if (stored.active) try config.withEnv(ctx, cfg, stored) else stored;
+    const h = if (stored.active) try config.withEnv(ctx, cfg, stored) else try config.withSecrets(ctx, stored);
     const t = h.token orelse {
         try ctx.out.print("  X no token stored{s}{s}\n", .{ if (h.user != null) " for " else "", h.user orelse "" });
         return false;
@@ -321,6 +330,7 @@ fn logout(ctx: *Ctx, args: *const cli.Args) !u8 {
     const removed = try cfg.remove(ctx.alloc, name, user) orelse
         return if (user) |u| ctx.fail("no account {s} on {s}", .{ u, name }) else ctx.fail("not logged in to {s}", .{name});
     try config.save(ctx, cfg);
+    try config.forgetSecrets(ctx, removed);
     try ctx.err.print("✓ Logged out of {s}", .{removed.name});
     if (removed.user) |u| try ctx.err.print(" as {s}", .{u});
     try ctx.err.writeByte('\n');
@@ -341,7 +351,7 @@ fn token(ctx: *Ctx, args: *const cli.Args) !u8 {
         }
         return ctx.fail("no account {s} on {s}", .{ u, name });
     } else cfg.find(name) orelse config.Host{ .name = name };
-    const h = if (stored.active) try config.withEnv(ctx, cfg, stored) else stored;
+    const h = if (stored.active) try config.withEnv(ctx, cfg, stored) else try config.withSecrets(ctx, stored);
     const t = h.token orelse return ctx.fail("no token for {s}", .{h.name});
     try ctx.out.print("{s}\n", .{t});
     return 0;

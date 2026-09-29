@@ -5,6 +5,7 @@ const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const Ctx = @import("Ctx.zig");
+const keyring = @import("keyring.zig");
 
 pub const Protocol = enum { ssh, https };
 
@@ -27,6 +28,8 @@ pub const Host = struct {
     expires_at: ?i64 = null,
     /// The account smith uses on this host, when there are several.
     active: bool = true,
+    /// The token and refresh token live in the system keyring, not here.
+    keyring: bool = false,
 
     pub fn apiBase(h: Host, alloc: Allocator) ![]const u8 {
         return std.fmt.allocPrint(alloc, "{s}://{s}/api/v1", .{ h.scheme, h.name });
@@ -164,7 +167,7 @@ pub fn tokenVariable(alloc: Allocator, name: []const u8) ![]const u8 {
 /// the name must match exactly, port included; the host must be configured
 /// or be the default one (so a lookalike whose variable name collides gets
 /// nothing); and it goes over plain http only to a host configured that way.
-pub fn withEnv(ctx: *const Ctx, cfg: Config, host: Host) !Host {
+pub fn withEnv(ctx: *Ctx, cfg: Config, host: Host) !Host {
     const configured: ?Host = for (cfg.hosts) |c| {
         if (std.ascii.eqlIgnoreCase(c.name, host.name)) break c;
     } else null;
@@ -183,9 +186,25 @@ pub fn withEnv(ctx: *const Ctx, cfg: Config, host: Host) !Host {
         h.refresh_token = null;
         h.expires_at = null;
     }
+    return withSecrets(ctx, h);
+}
+
+/// Fills in an account's token and refresh token from the keyring, when
+/// that is where they live and nothing else supplied them.
+pub fn withSecrets(ctx: *Ctx, host: Host) !Host {
+    if (!host.keyring or host.token != null) return host;
+    var h = host;
+    h.token = try keyring.lookup(ctx, h.name, h.user, .token);
+    if (h.refresh_token == null and h.oauth_client_id != null) h.refresh_token = try keyring.lookup(ctx, h.name, h.user, .refresh);
     return h;
 }
 
+/// Removes an account's secrets from the keyring.
+pub fn forgetSecrets(ctx: *Ctx, host: Host) !void {
+    if (!host.keyring) return;
+    try keyring.remove(ctx, host.name, host.user, .token);
+    try keyring.remove(ctx, host.name, host.user, .refresh);
+}
 /// Whether `SMITH_TOKEN` is set but was kept from `host` by `withEnv`.
 pub fn tokenWithheld(ctx: *const Ctx, host: Host) bool {
     const t = ctx.getenv("SMITH_TOKEN") orelse return false;
@@ -211,7 +230,31 @@ pub fn load(ctx: *Ctx) !Config {
         return ctx.fail("{s} is not valid: {f}", .{ path, diag });
 }
 
-pub fn save(ctx: *Ctx, config: Config) !void {
+/// The config as written: secrets of keyring accounts go to the keyring and
+/// out of the file. An account the keyring refuses keeps them in the file.
+fn moveSecrets(ctx: *Ctx, config: Config) !Config {
+    const hosts = try ctx.alloc.dupe(Host, config.hosts);
+    for (hosts) |*h| {
+        if (!h.keyring) continue;
+        var ok = true;
+        if (h.token) |t| ok = try keyring.store(ctx, h.name, h.user, .token, t);
+        if (ok) if (h.refresh_token) |t| {
+            ok = try keyring.store(ctx, h.name, h.user, .refresh, t);
+        };
+        if (ok) {
+            h.token = null;
+            h.refresh_token = null;
+        } else {
+            h.keyring = false;
+            try ctx.err.print("! the system keyring did not take the token for {s}; it is kept in hosts.zon\n", .{h.name});
+        }
+    }
+    var out = config;
+    out.hosts = hosts;
+    return out;
+}
+pub fn save(ctx: *Ctx, config_in: Config) !void {
+    const config = try moveSecrets(ctx, config_in);
     const d = try dir(ctx);
     const cwd = Io.Dir.cwd();
     cwd.createDirPath(ctx.io, d) catch |e| return ctx.fail("cannot create {s}: {t}", .{ d, e });

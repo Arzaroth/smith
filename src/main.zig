@@ -60,6 +60,7 @@ test {
     refAll(@import("oauth.zig"));
     refAll(@import("template.zig"));
     refAll(@import("settings.zig"));
+    refAll(@import("keyring.zig"));
     refAll(app);
 }
 
