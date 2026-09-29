@@ -6,14 +6,18 @@ const Allocator = std.mem.Allocator;
 const json = std.json;
 const Ctx = @import("Ctx.zig");
 const Host = @import("config.zig").Host;
+const oauth = @import("oauth.zig");
 
 pub const Client = struct {
     ctx: *Ctx,
     host: Host,
     base: []const u8,
 
+    /// A client for `host`, renewing a browser login's access token first
+    /// when it is about to expire.
     pub fn init(ctx: *Ctx, host: Host) !Client {
-        return .{ .ctx = ctx, .host = host, .base = try host.apiBase(ctx.alloc) };
+        const h = try oauth.refreshIfDue(ctx, host);
+        return .{ .ctx = ctx, .host = h, .base = try h.apiBase(ctx.alloc) };
     }
 
     pub const Response = struct {
@@ -32,6 +36,8 @@ pub const Client = struct {
         accept: []const u8 = "application/json",
         content_type: []const u8 = "application/json",
         extra_headers: []const std.http.Header = &.{},
+        /// Replaces the host's token as the authorization header; `""` sends none.
+        authorization: ?[]const u8 = null,
     };
 
     /// Sends a request and returns whatever came back, error statuses included.
@@ -50,7 +56,9 @@ pub const Client = struct {
         // std 0.16 never sends `privileged_headers` and keeps the overridable
         // authorization header across redirects to any host, so redirects
         // are followed here, and only within the same host.
-        const auth: std.http.Client.Request.Headers.Value = if (c.host.token) |t|
+        const auth: std.http.Client.Request.Headers.Value = if (opts.authorization) |a|
+            (if (a.len == 0) .omit else .{ .override = a })
+        else if (c.host.token) |t|
             .{ .override = try std.fmt.allocPrint(ctx.alloc, "token {s}", .{t}) }
         else
             .omit;
@@ -174,7 +182,7 @@ pub const Client = struct {
     pub fn listValues(c: *Client, path: []const u8, limit: u32, field: ?[]const u8) ![]json.Value {
         const ctx = c.ctx;
         var items: std.ArrayList(json.Value) = .empty;
-        const page_size: u32 = @min(limit, 50);
+        const page_size: u32 = @max(1, @min(limit, c.host.page_size orelse 50));
         const sep: u8 = if (std.mem.indexOfScalar(u8, path, '?') != null) '&' else '?';
         var page: u32 = 1;
         while (items.items.len < limit) : (page += 1) {

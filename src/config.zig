@@ -18,6 +18,13 @@ pub const Host = struct {
     ssh_host: ?[]const u8 = null,
     /// "https", or "http" for a LAN instance.
     scheme: []const u8 = "https",
+    /// Largest page the API serves (`max_response_items`), read at login.
+    page_size: ?u32 = null,
+    /// OAuth client the token was issued to; set for browser logins, which
+    /// also keep a refresh token and the access token's expiry (Unix seconds).
+    oauth_client_id: ?[]const u8 = null,
+    refresh_token: ?[]const u8 = null,
+    expires_at: ?i64 = null,
 
     pub fn apiBase(h: Host, alloc: Allocator) ![]const u8 {
         return std.fmt.allocPrint(alloc, "{s}://{s}/api/v1", .{ h.scheme, h.name });
@@ -84,7 +91,11 @@ pub const Config = struct {
 /// Applies `SMITH_TOKEN` over whatever the file says for a host.
 pub fn withEnv(ctx: *const Ctx, host: Host) Host {
     var h = host;
-    if (ctx.getenv("SMITH_TOKEN")) |t| h.token = t;
+    if (ctx.getenv("SMITH_TOKEN")) |t| {
+        h.token = t;
+        h.refresh_token = null;
+        h.expires_at = null;
+    }
     return h;
 }
 
