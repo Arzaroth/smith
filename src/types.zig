@@ -130,3 +130,26 @@ pub const ActionRunJob = struct {
 pub const Version = struct {
     version: []const u8,
 };
+
+pub const Attachment = struct {
+    id: i64,
+    name: []const u8,
+    size: i64 = 0,
+    download_count: i64 = 0,
+    browser_download_url: []const u8 = "",
+};
+
+pub const Release = struct {
+    id: i64,
+    tag_name: []const u8,
+    name: ?[]const u8 = null,
+    body: ?[]const u8 = null,
+    draft: bool = false,
+    prerelease: bool = false,
+    html_url: []const u8 = "",
+    target_commitish: ?[]const u8 = null,
+    created_at: ?[]const u8 = null,
+    published_at: ?[]const u8 = null,
+    author: ?User = null,
+    assets: ?[]const Attachment = null,
+};

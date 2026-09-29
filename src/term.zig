@@ -290,3 +290,38 @@ pub fn when(ctx: *const Ctx, timestamp: ?[]const u8) ![]const u8 {
 pub fn fit(ctx: *const Ctx, s: []const u8, max: usize) ![]const u8 {
     return if (ctx.stdout_tty) truncate(ctx.alloc, s, max) else s;
 }
+
+/// "1.2 MiB"
+pub fn size(alloc: Allocator, bytes: i64) ![]const u8 {
+    const units = [_][]const u8{ "B", "KiB", "MiB", "GiB", "TiB" };
+    var v: f64 = @floatFromInt(@max(bytes, 0));
+    var u: usize = 0;
+    while (v >= 1024 and u + 1 < units.len) : (u += 1) v /= 1024;
+    if (u == 0) return std.fmt.allocPrint(alloc, "{d} B", .{bytes});
+    return std.fmt.allocPrint(alloc, "{d:.1} {s}", .{ v, units[u] });
+}
+
+/// Shell-style `*` and `?` matching, for asset and name patterns.
+pub fn glob(pattern: []const u8, name: []const u8) bool {
+    if (pattern.len == 0) return name.len == 0;
+    return switch (pattern[0]) {
+        '*' => glob(pattern[1..], name) or (name.len > 0 and glob(pattern, name[1..])),
+        '?' => name.len > 0 and glob(pattern[1..], name[1..]),
+        else => name.len > 0 and name[0] == pattern[0] and glob(pattern[1..], name[1..]),
+    };
+}
+
+test size {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    try testing.expectEqualStrings("512 B", try size(arena.allocator(), 512));
+    try testing.expectEqualStrings("1.5 KiB", try size(arena.allocator(), 1536));
+    try testing.expectEqualStrings("1.7 MiB", try size(arena.allocator(), 1799688));
+}
+
+test glob {
+    try testing.expect(glob("*.tar.gz", "smith-1-x86_64.tar.gz"));
+    try testing.expect(glob("smith-?-*", "smith-1-linux"));
+    try testing.expect(!glob("*.zip", "smith.tar.gz"));
+    try testing.expect(glob("*", ""));
+}
