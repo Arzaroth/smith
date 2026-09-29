@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Lint install.sh and check it builds --dev with the Zig version .mise.toml pins"
+set -euo pipefail
+
+shellcheck install.sh
+pinned="$(sed -n 's/^zig = "\(.*\)"$/\1/p' .mise.toml)"
+installer="$(sed -n 's/^zig_version="\(.*\)"$/\1/p' install.sh)"
+if [[ "${pinned}" != "${installer}" ]]; then
+  echo "install.sh builds --dev with Zig ${installer}, .mise.toml pins ${pinned}: update zig_version and its checksums" >&2
+  exit 1
+fi
