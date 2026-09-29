@@ -86,3 +86,10 @@ pub const jobs =
 
 pub const user = "{\"login\":\"me\",\"full_name\":\"Me\"}";
 pub const version = "{\"version\":\"16.0.5+gitea-1.22.0\"}";
+
+pub const release =
+    \\{"id":9,"tag_name":"v1.0.0","name":"One","body":"Notes.","draft":false,"prerelease":false,
+    \\"html_url":"http://forge.test/owner/repo/releases/tag/v1.0.0","published_at":"2026-09-28T12:00:00Z","author":{"login":"alice"},
+    \\"assets":[{"id":1,"name":"smith-linux.tar.gz","size":1536,"download_count":4,"browser_download_url":"BASE/attachments/1"},
+    \\{"id":2,"name":"SHA256SUMS","size":64,"download_count":1,"browser_download_url":"BASE/attachments/2"}]}
+;
