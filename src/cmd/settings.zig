@@ -23,10 +23,14 @@ pub const alias_command: cli.Command = .{
     .subs = &.{
         .{
             .name = "set",
-            .summary = "Create or replace an alias: `smith alias set co 'pr checkout'`; $1… take arguments; a leading ! runs the rest with sh.",
+            .summary = "Create an alias: `smith alias set co 'pr checkout'`; $1… take arguments; a leading ! runs the rest with sh.",
             .usage = "<name> <expansion>",
             .min_args = 2,
             .max_args = 2,
+            .flags = &.{
+                .{ .long = "shell", .short = 's', .help = "Run the expansion with sh, like a leading !" },
+                .{ .long = "clobber", .help = "Replace an existing alias of the same name" },
+            },
             .run = aliasSet,
         },
         .{ .name = "list", .summary = "List aliases.", .run = aliasList },
@@ -84,13 +88,20 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
 
 fn aliasSet(ctx: *Ctx, args: *const cli.Args) !u8 {
     const name = args.arg(0).?;
-    const expansion = args.arg(1).?;
+    const expansion = if (args.has("shell") and !std.mem.startsWith(u8, args.arg(1).?, "!"))
+        try std.fmt.allocPrint(ctx.alloc, "!{s}", .{args.arg(1).?})
+    else
+        args.arg(1).?;
     for (@import("../app.zig").root.subs) |c| if (std.mem.eql(u8, c.name, name))
         return ctx.fail("\"{s}\" is a smith command; pick another name", .{name});
     if (name.len == 0 or name[0] == '-' or std.mem.indexOfAny(u8, name, " \t") != null)
         return ctx.fail("invalid alias name \"{s}\"", .{name});
+    if (std.mem.trim(u8, expansion, " \t\n!").len == 0) return ctx.fail("the expansion is empty", .{});
     if (expansion[0] != '!') {
-        const words = try settings.split(ctx.alloc, expansion);
+        const words = settings.split(ctx.alloc, expansion) catch |e| switch (e) {
+            error.UnterminatedQuote => return ctx.fail("the expansion has an unterminated quote", .{}),
+            else => |x| return x,
+        };
         if (words.len == 0) return ctx.fail("the expansion is empty", .{});
         const known = for (@import("../app.zig").root.subs) |c| {
             if (std.mem.eql(u8, c.name, words[0])) break true;
@@ -102,6 +113,7 @@ fn aliasSet(ctx: *Ctx, args: *const cli.Args) !u8 {
     var replaced = false;
     for (s.aliases) |a| {
         if (std.mem.eql(u8, a.name, name)) {
+            if (!args.has("clobber")) return ctx.fail("alias {s} already exists; pass --clobber to replace it", .{name});
             try aliases.append(ctx.alloc, .{ .name = name, .expansion = expansion });
             replaced = true;
         } else try aliases.append(ctx.alloc, a);

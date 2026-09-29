@@ -65,14 +65,19 @@ pub fn run(ctx: *Ctx, argv: []const []const u8) u8 {
 }
 
 fn dispatch(ctx: *Ctx, argv_in: []const []const u8) !u8 {
-    const prefs = try settings.load(ctx);
+    const prefs = try settings.loadLenient(ctx);
     ctx.editor = prefs.editor;
     ctx.browser = prefs.browser;
     var argv = argv_in;
     if (argv.len > 0 and argv[0].len > 0 and argv[0][0] != '-' and !isCommand(argv[0])) {
         if (prefs.alias(argv[0])) |a| {
-            if (a.expansion[0] == '!') return shellAlias(ctx, a.expansion[1..], argv[1..]);
-            argv = try settings.expand(ctx.alloc, a.expansion, argv[1..]);
+            if (std.mem.startsWith(u8, a.expansion, "!")) return shellAlias(ctx, a.expansion[1..], argv[1..]);
+            argv = settings.expand(ctx.alloc, a.expansion, argv[1..]) catch |e| switch (e) {
+                error.NotEnoughArguments => return ctx.fail("not enough arguments for alias {s}: {s}", .{ argv[0], a.expansion }),
+                error.UnterminatedQuote => return ctx.fail("alias {s} has an unterminated quote: {s}", .{ argv[0], a.expansion }),
+                else => |x| return x,
+            };
+            if (argv.len == 0) return ctx.fail("alias {s} expands to nothing", .{argv_in[0]});
         }
     }
     const r = try cli.resolve(ctx.alloc, &root, argv);

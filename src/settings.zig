@@ -33,6 +33,16 @@ fn path(ctx: *Ctx) ![]const u8 {
 }
 
 pub fn load(ctx: *Ctx) !Settings {
+    return read(ctx, false);
+}
+
+/// Like `load`, but a file that does not parse is reported and ignored, so
+/// a broken `config.zon` never blocks the commands that could repair it.
+pub fn loadLenient(ctx: *Ctx) !Settings {
+    return read(ctx, true);
+}
+
+fn read(ctx: *Ctx, lenient: bool) !Settings {
     const p = try path(ctx);
     const bytes = Io.Dir.cwd().readFileAlloc(ctx.io, p, ctx.alloc, .limited(1024 * 1024)) catch |e| switch (e) {
         error.FileNotFound => return .{},
@@ -40,7 +50,10 @@ pub fn load(ctx: *Ctx) !Settings {
     };
     var diag: std.zon.parse.Diagnostics = .{};
     return std.zon.parse.fromSliceAlloc(Settings, ctx.alloc, try ctx.alloc.dupeZ(u8, bytes), &diag, .{ .ignore_unknown_fields = true }) catch
-        ctx.fail("{s} is not valid: {f}", .{ p, diag });
+        if (lenient) {
+            try ctx.err.print("! {s} is not valid, so its preferences and aliases are ignored: {f}\n", .{ p, diag });
+            return .{};
+        } else ctx.fail("{s} is not valid; fix or delete it: {f}", .{ p, diag });
 }
 
 pub fn save(ctx: *Ctx, s: Settings) !void {
@@ -97,6 +110,7 @@ pub fn split(alloc: Allocator, s: []const u8) ![]const []const u8 {
             },
         }
     }
+    if (quote != null) return error.UnterminatedQuote;
     if (in_word) try words.append(alloc, try word.toOwnedSlice(alloc));
     return words.toOwnedSlice(alloc);
 }
@@ -119,7 +133,7 @@ pub fn expand(alloc: Allocator, expansion: []const u8, rest: []const []const u8)
                 if (n >= 1 and n <= rest.len) {
                     try buf.appendSlice(alloc, rest[n - 1]);
                     used[n - 1] = true;
-                }
+                } else return error.NotEnoughArguments;
                 i = j - 1;
             } else try buf.append(alloc, w[i]);
         }
