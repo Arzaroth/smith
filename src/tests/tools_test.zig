@@ -121,3 +121,13 @@ test "server text cannot smuggle escape sequences, --web opens only http(s), and
     try h.expectRun(1, &.{ "repo", "clone", "o/r", "safe", "--", "-q" });
     try std.testing.expectError(error.FileNotFound, h.tmp.dir.access(std.testing.io, "pwned", .{}));
 }
+
+test "browse keeps the dot of dot-directories" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "browse", "-n", "-R", "owner/repo", "-b", "main", ".forgejo/workflows/ci.yml" });
+    try h.expectOut("/owner/repo/src/branch/main/.forgejo/workflows/ci.yml\n");
+    try h.expectRun(0, &.{ "browse", "-n", "-R", "owner/repo", "-b", "main", "./src/a.zig" });
+    try h.expectOut("/src/branch/main/src/a.zig\n");
+}

@@ -162,3 +162,40 @@ test "edit changes the title, adds a label and drops an assignee" {
     };
     try std.testing.expectEqual(@as(usize, 2), patches);
 }
+
+test "a server with smaller pages than asked is paged through, not cut short" {
+    var h: Harness = undefined;
+    const two = "[" ++ fx.issue_open ++ "," ++ fx.issue_open ++ "]";
+    try h.init(&.{
+        .{ .path = issues, .query = "page=1", .body = two },
+        .{ .path = issues, .query = "page=2", .body = two },
+        .{ .path = issues, .query = "page=3", .body = "[" ++ fx.issue_open ++ "]" },
+        .{ .path = "/api/v1/settings/api", .body = "{\"max_response_items\":2}" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo", "--json" });
+    const v = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqual(@as(usize, 5), v.array.items.len);
+}
+
+test "comments are fetched once: the endpoint ignores paging" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = issues ++ "/7", .body = fx.issue_open },
+        .{ .path = issues ++ "/7/comments", .body = fx.comments },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "issue", "view", "7", "-R", "owner/repo", "-c" });
+    try std.testing.expectEqual(@as(usize, 1), h.mock.count(.GET, issues ++ "/7/comments"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, h.stdout(), "Same here."));
+}
+
+test "--limit 0 and a non-number are explained" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.expectRun(1, &.{ "issue", "list", "-R", "owner/repo", "-L", "0" });
+    try h.expectErr("--limit takes a whole number greater than 0, got \"0\"");
+    try h.expectRun(1, &.{ "issue", "list", "-R", "owner/repo", "-L", "many" });
+    try h.expectErr("got \"many\"");
+}

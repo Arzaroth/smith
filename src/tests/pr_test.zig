@@ -235,6 +235,7 @@ fn forgeRepo(h: *Harness) !void {
     try h.git(&.{ "-C", "seed", "commit", "-q", "--allow-empty", "-m", "feature work" });
     try h.git(&.{ "-C", "seed", "switch", "-q", "-c", "fork-work", "main" });
     try h.git(&.{ "-C", "seed", "commit", "-q", "--allow-empty", "-m", "fork work" });
+    try h.git(&.{ "-C", "seed", "switch", "-q", "main" });
     try h.git(&.{ "clone", "-q", "--bare", "seed", "forge.git" });
     try h.git(&.{ "-C", "forge.git", "update-ref", "refs/pull/13/head", "refs/heads/fork-work" });
     try h.git(&.{ "-C", "forge.git", "update-ref", "-d", "refs/heads/fork-work" });
@@ -292,4 +293,100 @@ test "create off a terminal needs --title and --body, or --fill" {
     try h.expectRun(1, &.{ "pr", "create", "-R", "owner/repo", "-H", "feature", "-B", "main", "-t", "only a title" });
     try h.expectErr("--title and --body (or --fill) are required when not running interactively");
     try std.testing.expectEqual(@as(usize, 0), h.mock.requests.items.len);
+}
+
+/// A fork's pull request whose head branch is called `main`.
+const pr_fork_main = blk: {
+    const s: []const u8 = fx.pr_fork;
+    const i = std.mem.indexOf(u8, s, "\"ref\":\"patch-1\"").?;
+    break :blk s[0..i] ++ "\"ref\":\"main\"" ++ s[i + "\"ref\":\"patch-1\"".len ..];
+};
+
+test "checkout of a fork's main never touches our main" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .path = pulls ++ "/13", .body = pr_fork_main }}, .{});
+    defer h.deinit();
+    try forgeRepo(&h);
+    try h.expectRun(0, &.{ "pr", "checkout", "13" });
+    try h.expectErr("a local branch named main already exists; using pr-13");
+    try std.testing.expectEqualStrings("fork work", try head(&h));
+    try h.git(&.{ "-C", "work", "switch", "-q", "main" });
+    try std.testing.expectEqualStrings("init", try head(&h));
+}
+
+test "merge -d deletes the pull request's own branch and leaves a same-named stranger alone" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = pulls ++ "/12", .body = fx.pr_same },
+        .{ .path = pulls ++ "/13", .body = pr_fork_main },
+        .{ .path = "/api/v1/repos/owner/repo", .body = fx.repo },
+        .{ .method = .POST, .path = pulls ++ "/12/merge", .body = "" },
+        .{ .method = .POST, .path = pulls ++ "/13/merge", .body = "" },
+    }, .{});
+    defer h.deinit();
+    try forgeRepo(&h);
+    try h.expectRun(0, &.{ "pr", "checkout", "12" });
+    try h.expectRun(0, &.{ "pr", "merge", "12", "-d" });
+    try h.expectErr("Deleted local branch feature");
+    try std.testing.expectEqualStrings("init", try head(&h));
+    try std.testing.expectError(error.GitFailed, h.git(&.{ "-C", "work", "rev-parse", "--verify", "--quiet", "refs/heads/feature" }));
+
+    try h.expectRun(0, &.{ "pr", "merge", "13", "-d" });
+    try std.testing.expect(std.mem.indexOf(u8, h.stderr(), "Deleted local branch") == null);
+    try h.git(&.{ "-C", "work", "rev-parse", "--verify", "--quiet", "refs/heads/main" });
+}
+
+test "checkout again fast-forwards to new commits on the head" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .path = pulls ++ "/12", .body = fx.pr_same }}, .{});
+    defer h.deinit();
+    try forgeRepo(&h);
+    try h.expectRun(0, &.{ "pr", "checkout", "12" });
+    try h.git(&.{ "-C", "seed", "switch", "-q", "feature" });
+    try h.git(&.{ "-C", "seed", "commit", "-q", "--allow-empty", "-m", "more work" });
+    try h.git(&.{ "-C", "seed", "push", "-q", try h.path("forge.git"), "feature" });
+    try h.expectRun(0, &.{ "pr", "checkout", "12" });
+    try std.testing.expectEqualStrings("more work", try head(&h));
+}
+
+test "a headless pull request is checked out as pr-N from its pull ref" {
+    var h: Harness = undefined;
+    const headless = comptime blk: {
+        const s: []const u8 = fx.pr_same;
+        const i = std.mem.indexOf(u8, s, "\"ref\":\"feature\"").?;
+        break :blk s[0..i] ++ "\"ref\":\"refs/pull/13/head\"" ++ s[i + "\"ref\":\"feature\"".len ..];
+    };
+    const body = try std.mem.replaceOwned(u8, h_alloc(), headless, "\"number\":12", "\"number\":13");
+    try h.init(&.{.{ .path = pulls ++ "/13", .body = body }}, .{});
+    defer h.deinit();
+    try forgeRepo(&h);
+    try h.expectRun(0, &.{ "pr", "checkout", "13" });
+    try std.testing.expectEqualStrings("fork work", try head(&h));
+    try h.git(&.{ "-C", "work", "rev-parse", "--verify", "--quiet", "refs/heads/pr-13" });
+}
+
+fn h_alloc() std.mem.Allocator {
+    return std.heap.page_allocator;
+}
+
+test "lookup by branch wants this repository's branch; fix/42 is a branch, not #42" {
+    var h: Harness = undefined;
+    const slash = comptime blk: {
+        const s: []const u8 = fx.pr_same;
+        const i = std.mem.indexOf(u8, s, "\"ref\":\"feature\"").?;
+        break :blk s[0..i] ++ "\"ref\":\"fix/42\"" ++ s[i + "\"ref\":\"feature\"".len ..];
+    };
+    try h.init(&.{
+        .{ .path = pulls, .query = "state=open", .body = "[" ++ pr_fork_main ++ "," ++ slash ++ "]" },
+        .{ .path = pulls, .query = "state=closed", .body = "[]" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "pr", "view", "fix/42", "-R", "owner/repo" });
+    try h.expectOut("Add feature #12");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.count(.GET, pulls ++ "/42"));
+    try h.expectRun(1, &.{ "pr", "view", "main", "-R", "owner/repo" });
+    try h.expectErr("no pull request found for branch \"main\" of owner");
+    try h.expectRun(0, &.{ "pr", "view", "alice:main", "-R", "owner/repo" });
+    try h.expectOut("WIP: Fork change #13");
+    try std.testing.expect(std.mem.indexOf(u8, h.stderr(), "invalid number") == null);
 }
