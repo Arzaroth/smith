@@ -87,7 +87,7 @@ pub fn editText(ctx: *Ctx, name: []const u8, initial: []const u8) ![]const u8 {
 
     try ctx.out.flush();
     try ctx.err.flush();
-    var child = try std.process.spawn(ctx.io, .{ .argv = &.{ "sh", "-c", "exec " ++ "$0 \"$1\"", editor, path } });
+    var child = try std.process.spawn(ctx.io, .{ .argv = &.{ "sh", "-c", "exec $0 \"$1\"", editor, path }, .environ_map = ctx.env });
     const term = try child.wait(ctx.io);
     if (term != .exited or term.exited != 0) return ctx.fail("editor exited with an error", .{});
     return cwd.readFileAlloc(ctx.io, path, ctx.alloc, .limited(16 * 1024 * 1024));
@@ -100,7 +100,7 @@ pub fn openBrowser(ctx: *Ctx, url: []const u8) !void {
         if (builtin.os.tag == .macos) "open" else "xdg-open";
     if (ctx.stdout_tty) try ctx.err.print("Opening {s} in your browser.\n", .{url});
     try ctx.err.flush();
-    const result = std.process.run(ctx.alloc, ctx.io, .{ .argv = &.{ opener, url } }) catch |e|
+    const result = std.process.run(ctx.alloc, ctx.io, .{ .argv = &.{ opener, url }, .environ_map = ctx.env }) catch |e|
         return ctx.fail("could not run {s} to open {s}: {t}", .{ opener, url, e });
     if (result.term != .exited or result.term.exited != 0)
         return ctx.fail("{s} failed to open {s}", .{ opener, url });
