@@ -57,6 +57,9 @@ pub fn login(ctx: *Ctx, host: config.Host, client_id: []const u8) !config.Host {
     var server = addr.listen(ctx.io, .{}) catch |e| return ctx.fail("cannot listen on 127.0.0.1 for the login redirect: {t}", .{e});
     defer server.deinit(ctx.io);
     const redirect_uri = try std.fmt.allocPrint(ctx.alloc, "http://127.0.0.1:{d}/", .{server.socket.address.getPort()});
+    const wait: i64 = if (ctx.getenv("SMITH_LOGIN_TIMEOUT")) |t| std.fmt.parseInt(i64, t, 10) catch 300 else 300;
+    var timer = try ctx.io.concurrent(expire, .{ ctx.io, &server, wait });
+    defer timer.cancel(ctx.io);
 
     const url = try std.fmt.allocPrint(ctx.alloc, "{s}/login/oauth/authorize?client_id={s}&redirect_uri={s}&response_type=code&code_challenge={s}&code_challenge_method=S256&state={s}", .{
         try host.webBase(ctx.alloc),
@@ -88,7 +91,10 @@ pub fn login(ctx: *Ctx, host: config.Host, client_id: []const u8) !config.Host {
 
 fn waitForCode(ctx: *Ctx, server: *Io.net.Server, state: []const u8, host_name: []const u8) ![]const u8 {
     while (true) {
-        const stream = server.accept(ctx.io) catch |e| return ctx.fail("waiting for the login redirect failed: {t}", .{e});
+        const stream = server.accept(ctx.io) catch |e| switch (e) {
+            error.SocketNotListening => return ctx.fail("no sign-in came back from the browser in time; try again, or use --password", .{}),
+            else => return ctx.fail("waiting for the login redirect failed: {t}", .{e}),
+        };
         defer stream.close(ctx.io);
         var read_buf: [16 * 1024]u8 = undefined;
         var write_buf: [4096]u8 = undefined;
@@ -191,4 +197,12 @@ pub fn param(ctx: *Ctx, query: []const u8, name: []const u8) !?[]const u8 {
         return try out.toOwnedSlice(ctx.alloc);
     }
     return null;
+}
+
+/// Stops the wait for the redirect after `seconds`, by shutting the listening
+/// socket, which is how std lets another task end a blocking accept.
+fn expire(io: Io, server: *Io.net.Server, seconds: i64) void {
+    io.sleep(.fromSeconds(seconds), .awake) catch return;
+    const s: Io.net.Stream = .{ .socket = server.socket };
+    s.shutdown(io, .both) catch {};
 }
