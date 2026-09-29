@@ -256,13 +256,13 @@ test "sync reports a fork that is up to date or has diverged, and posts nothing"
     const fork_json = try std.mem.replaceOwned(u8, h.arena.allocator(), fx.repo, "\"fork\":false", "\"fork\":true");
     try setRoutes(&h, &.{
         .{ .path = "/api/v1/repos/me/f", .body = fork_json },
-        .{ .path = "/api/v1/repos/me/f/sync_fork", .body = "{\"allowed\":false,\"commits_behind\":0}", .times = 1 },
-        .{ .path = "/api/v1/repos/me/f/sync_fork", .body = "{\"allowed\":false,\"commits_behind\":3}" },
+        .{ .path = "/api/v1/repos/me/f/sync_fork", .body = "{\"allowed\":false,\"fork_commit\":\"aaa\",\"base_commit\":\"aaa\",\"commits_behind\":0}", .times = 1 },
+        .{ .path = "/api/v1/repos/me/f/sync_fork", .body = "{\"allowed\":false,\"fork_commit\":\"aaa\",\"base_commit\":\"bbb\",\"commits_behind\":0}" },
     });
     try h.expectRun(0, &.{ "repo", "sync", "me/f" });
     try h.expectErr("already up to date");
     try h.expectRun(1, &.{ "repo", "sync", "me/f" });
-    try h.expectErr("has commits of its own");
+    try h.expectErr("Forgejo cannot sync owner/repo main");
     try std.testing.expectEqual(@as(usize, 0), h.mock.count(.POST, "/api/v1/repos/me/f/sync_fork"));
 }
 

@@ -110,7 +110,9 @@ pub const command: cli.Command = .{
             .flags = &.{
                 .{ .long = "fork", .help = "Only forks" },
                 .{ .long = "source", .help = "Only repositories that are not forks" },
-                .{ .long = "visibility", .value = "public|private", .help = "Only public or only private repositories" },
+                .{ .long = "visibility", .value = "public|private|internal", .help = "Only repositories of that visibility" },
+                .{ .long = "language", .short = 'l', .value = "string", .help = "Only repositories in that primary language" },
+                .{ .long = "topic", .value = "name", .help = "Only repositories with that topic (repeatable)" },
                 .{ .long = "archived", .help = "Only archived repositories" },
                 .{ .long = "no-archived", .help = "Leave archived repositories out" },
                 cli.limit_flag,
@@ -198,13 +200,25 @@ fn view(ctx: *Ctx, args: *const cli.Args) !u8 {
 const RepoFilter = struct {
     ctx: *Ctx,
     fork: ?bool,
-    private: ?bool,
+    visibility: ?[]const u8,
     archived: ?bool,
+    language: ?[]const u8,
+    topics: []const []const u8,
 
     pub fn keep(f: RepoFilter, v: std.json.Value) !bool {
         const r = try api.decode(types.Repository, f.ctx, v);
         if (f.fork) |want| if (r.fork != want) return false;
-        if (f.private) |want| if (r.private != want) return false;
+        if (f.visibility) |want| {
+            const is = if (r.internal) "internal" else if (r.private) "private" else "public";
+            if (!std.mem.eql(u8, is, want)) return false;
+        }
+        if (f.language) |want| if (!std.ascii.eqlIgnoreCase(r.language, want)) return false;
+        for (f.topics) |want| {
+            const has = for (r.topics orelse &.{}) |t| {
+                if (std.ascii.eqlIgnoreCase(t, want)) break true;
+            } else false;
+            if (!has) return false;
+        }
         if (f.archived) |want| if (r.archived != want) return false;
         return true;
     }
@@ -218,11 +232,13 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
     if (args.has("fork") and args.has("source")) return ctx.fail("choose one of --fork and --source", .{});
     if (args.has("archived") and args.has("no-archived")) return ctx.fail("choose one of --archived and --no-archived", .{});
     const visibility = args.get("visibility");
-    if (visibility) |v| if (!std.mem.eql(u8, v, "public") and !std.mem.eql(u8, v, "private")) return ctx.fail("--visibility must be public or private", .{});
+    if (visibility) |v| if (!@import("issue.zig").isOneOf(v, &.{ "public", "private", "internal" })) return ctx.fail("--visibility must be public, private or internal", .{});
     const wanted: RepoFilter = .{
         .ctx = ctx,
         .fork = if (args.has("fork")) true else if (args.has("source")) false else null,
-        .private = if (visibility) |v| std.mem.eql(u8, v, "private") else null,
+        .visibility = visibility,
+        .language = args.get("language"),
+        .topics = try args.all(ctx.alloc, "topic"),
         .archived = if (args.has("archived")) true else if (args.has("no-archived")) false else null,
     };
 
@@ -427,15 +443,19 @@ fn sync(ctx: *Ctx, args: *const cli.Args) !u8 {
         try t.path(ctx.alloc, "/sync_fork", .{});
     const branch = args.get("branch") orelse info.default_branch orelse "";
     const parent = if (info.parent) |p| p.full_name else "its parent";
-    const Behind = struct { allowed: bool = false, commits_behind: i64 = 0 };
+    // Forgejo sends allowed=false with commits_behind=0 both when there is
+    // nothing to do and when it cannot sync; the commits tell them apart.
+    const Behind = struct { allowed: bool = false, commits_behind: i64 = 0, fork_commit: []const u8 = "", base_commit: []const u8 = "" };
     const state = try api.decode(Behind, ctx, try client.getValue(path));
-    if (state.commits_behind == 0) {
-        try ctx.err.print("✓ {s} {s} is already up to date with {s}\n", .{ info.full_name, branch, parent });
-        return 0;
+    if (!state.allowed or state.commits_behind == 0) {
+        if (state.fork_commit.len > 0 and std.mem.eql(u8, state.fork_commit, state.base_commit)) {
+            try ctx.err.print("✓ {s} {s} is already up to date with {s}\n", .{ info.full_name, branch, parent });
+            return 0;
+        }
+        return ctx.fail("Forgejo cannot sync {s} {s} from {s}: it has commits of its own, or {s} has no such branch; merge by hand", .{ info.full_name, branch, parent, parent });
     }
-    if (!state.allowed) return ctx.fail("{s} {s} has commits of its own, so Forgejo cannot sync it from {s}; merge them by hand", .{ info.full_name, branch, parent });
     _ = try client.call(.POST, path, .{});
-    try ctx.err.print("✓ Synced {s} {s} from {s} ({d} commits)\n", .{ info.full_name, branch, parent, state.commits_behind });
+    try ctx.err.print("✓ Synced {s} {s} from {s} ({d} commit{s})\n", .{ info.full_name, branch, parent, state.commits_behind, if (state.commits_behind == 1) "" else "s" });
     return 0;
 }
 
