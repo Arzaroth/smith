@@ -195,3 +195,48 @@ test "browse keeps the dot of dot-directories" {
     try h.expectRun(0, &.{ "browse", "-n", "-R", "owner/repo", "-b", "main", "./src/a.zig" });
     try h.expectOut("/src/branch/main/src/a.zig\n");
 }
+
+test "help reference has every command and flag, help skill a skill file, help <command> its help" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "help", "reference" });
+    const out = h.stdout();
+    try std.testing.expect(std.mem.startsWith(u8, out, "# smith "));
+    try h.expectOut("## Exit codes");
+    try h.expectOut("| `SMITH_TOKEN` |");
+    try h.expectOut("\n#### smith pr list\n");
+    try h.expectOut("- `-L, --limit int`: ");
+    try h.expectOut("- `-q, --jq expression`: ");
+    const app = @import("../app.zig");
+    for (app.root.subs) |group| {
+        const heading = try std.fmt.allocPrint(h.arena.allocator(), "\n### smith {s}\n", .{group.name});
+        try std.testing.expect(std.mem.indexOf(u8, out, heading) != null);
+        for (group.subs) |sub| {
+            const sub_heading = try std.fmt.allocPrint(h.arena.allocator(), "\n#### smith {s} {s}\n", .{ group.name, sub.name });
+            try std.testing.expect(std.mem.indexOf(u8, out, sub_heading) != null);
+        }
+    }
+
+    try h.expectRun(0, &.{ "help", "skill" });
+    try std.testing.expect(std.mem.startsWith(u8, h.stdout(), "---\nname: smith\ndescription: "));
+    try h.expectOut("smith help reference");
+
+    try h.expectRun(0, &.{ "help", "pr", "checks" });
+    try h.expectOut("USAGE\n  smith pr checks");
+    try h.expectRun(1, &.{ "help", "frobnicate" });
+    try h.expectErr("unknown command \"frobnicate\"");
+}
+
+test "api takes --template and --jq, and refuses them on a body that is not JSON" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/repos/owner/repo", .body = fx.repo },
+        .{ .path = "/api/v1/repos/owner/repo/raw/README.md", .body = "plain text", .content_type = "text/plain" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "api", "/repos/owner/repo", "-t", "{{.full_name}} {{.default_branch}}" });
+    try std.testing.expectEqualStrings("owner/repo main", h.stdout());
+    try h.expectRun(1, &.{ "api", "/repos/owner/repo/raw/README.md", "-t", "{{.x}}" });
+    try h.expectErr("the response is not JSON");
+}
