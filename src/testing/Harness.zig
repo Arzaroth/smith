@@ -59,6 +59,7 @@ pub fn init(h: *Harness, routes: []const Mock.Route, opts: Options) !void {
     try h.env.put("SMITH_EDITOR", "true");
     try h.env.put("GIT_CEILING_DIRECTORIES", std.fs.path.dirname(h.root) orelse h.root);
     try h.env.put("SMITH_KEYRING", "none");
+    try h.env.put("SMITH_EDITOR", "true");
 
     if (opts.config) {
         try h.tmp.dir.createDirPath(io, "config");
