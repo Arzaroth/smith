@@ -98,11 +98,15 @@ pub fn resolve(ctx: *Ctx, args: *const cli.Args) !Repo {
 
     var unknown: std.ArrayList(Repo) = .empty;
     var skipped: std.ArrayList([]const u8) = .empty;
-    for ([_]?[]const u8{ "upstream", "origin", null }) |preferred| {
+    const chosen = try defaultRemote(ctx);
+    const order = [_]?[]const u8{ chosen orelse "upstream", "upstream", "origin", null };
+    for (order, 0..) |preferred, i| {
+        if (i == 1 and chosen == null) continue;
         for (rs) |r| {
             if (preferred) |p| {
                 if (!std.mem.eql(u8, r.name, p)) continue;
-            } else if (std.mem.eql(u8, r.name, "upstream") or std.mem.eql(u8, r.name, "origin")) continue;
+            } else if (std.mem.eql(u8, r.name, "upstream") or std.mem.eql(u8, r.name, "origin") or
+                (chosen != null and std.mem.eql(u8, r.name, chosen.?))) continue;
             const u = r.parse() orelse continue;
             if (cfg.find(u.host)) |h| return .{ .host = try config.withEnv(ctx, cfg, h), .owner = u.owner, .name = u.repo, .remote = r.name };
             if (u.ssh) {
@@ -183,4 +187,18 @@ test parseSpec {
     try testing.expect(parseSpec("host:owner") == null);
     try testing.expect(parseSpec("host:a/b/c") == null);
     try testing.expect(parseSpec(":owner/repo") == null);
+}
+
+/// The remote `repo set-default` chose, recorded as
+/// `remote.<name>.smith-resolved = base` like gh's `gh-resolved`.
+pub fn defaultRemote(ctx: *Ctx) !?[]const u8 {
+    const out = try git.capture(ctx, &.{ "config", "--get-regexp", "^remote\\..+\\.smith-resolved$" }) orelse return null;
+    var lines = std.mem.tokenizeScalar(u8, out, '\n');
+    while (lines.next()) |line| {
+        const space = std.mem.indexOfScalar(u8, line, ' ') orelse continue;
+        if (!std.mem.eql(u8, std.mem.trim(u8, line[space + 1 ..], " "), "base")) continue;
+        const key = line[0..space];
+        return key["remote.".len .. key.len - ".smith-resolved".len];
+    }
+    return null;
 }
