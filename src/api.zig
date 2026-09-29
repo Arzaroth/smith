@@ -129,10 +129,13 @@ pub const Client = struct {
 
     fn readResponse(ctx: *Ctx, host_name: []const u8, response: *std.http.Client.Response, sink: ?*Io.Writer) !Response {
         const status = @intFromEnum(response.head.status);
-        // No body follows these, and without a length std would read the
-        // kept-alive connection until the server drops it.
-        if (response.request.method == .HEAD or status == 204 or status == 304 or status < 200)
+        // No body follows these. Without a length, std would read the kept-alive
+        // connection until the server drops it, here or when the request is
+        // released (`Request.deinit` ignores the rule), so mark the body read.
+        if (response.request.method == .HEAD or status == 204 or status == 304 or status < 200) {
+            response.request.reader.state = .ready;
             return .{ .status = status, .body = "" };
+        }
         var body: Io.Writer.Allocating = .init(ctx.alloc);
         const out = if (sink != null and status >= 200 and status < 300) sink.? else &body.writer;
         var transfer: [64]u8 = undefined;
