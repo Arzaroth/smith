@@ -40,6 +40,18 @@ then `git-credential-oauth`), else the user registers smith once (name smith,
 redirect URI `http://127.0.0.1/`, not confidential) and gives its ID, which is
 then remembered. Forgejo accepts any loopback port for public clients.
 
+The browser route gives up after five minutes without a redirect
+(`SMITH_LOGIN_TIMEOUT` seconds), suggesting `--password`: a timer task shuts
+the listening socket, which is how std lets another task end a blocking
+accept.
+
+## Where the token goes
+
+The system keyring when there is one ([../architecture/config.md](../architecture/config.md#keyring)),
+else `hosts.zon`; `--insecure-storage` insists on the file. Login says which.
+A keyring that refuses the token leaves it in the file, with a warning.
+`logout` removes the account's keyring entries.
+
 ## Discovery
 
 `caps.discover`, with no token sent:

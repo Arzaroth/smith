@@ -4,7 +4,9 @@ Which host and `OWNER/REPO` a command acts on (`repo.resolve`):
 
 1. `-R [HOST/]OWNER/REPO`, `-R HOST:OWNER/REPO` or a clone URL (`repo.parseSpec`;
    `HOST:PORT/OWNER/REPO` keeps the port). Without a host, the default host.
-2. Otherwise the git remotes of the current clone, `upstream` first, then
+2. Otherwise the git remotes of the current clone: the one chosen with
+   `smith repo set-default` (`remote.<name>.smith-resolved = base`) first, then
+   `upstream`, then
    `origin`, then the rest. The first remote whose host is configured (by
    `name` or `ssh_host`) wins. An https remote on an unknown host is the
    fallback, so public instances work without logging in; an unknown SSH host

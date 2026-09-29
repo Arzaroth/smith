@@ -34,7 +34,12 @@ Before using a std API, read it in the pinned toolchain's source
   never sends `privileged_headers`, keeps the authorization header across a
   redirect to another host, and asserts when a POST is sent without a body.
   `refAllDeclsRecursive` is gone; `json.ObjectMap` is unmanaged (`.empty`,
-  allocator per call).
+  allocator per call). `EAGAIN` from `accept` is a debug panic, so end a
+  blocking accept by shutting the socket from another task (`oauth.expire`).
+- A child process's program is found through smith's own `PATH`, not the
+  `environ_map` it is given: a test cannot shadow a real tool by putting a
+  fake on the harness `PATH`. Point at the fake by absolute path instead
+  (`SMITH_KEYRING`, `SMITH_BROWSER`).
 
 ## Tests
 
@@ -53,6 +58,8 @@ mock server started inside the test, git runs in temporary repositories, and
 - Every harness command runs git in the temporary directory, with
   `GIT_CEILING_DIRECTORIES` stopping git from climbing into the checkout
   the tests run from; never set `ctx.cwd` to null in a test.
+- The harness sets `SMITH_KEYRING=none`; a test must never reach the
+  developer's keyring, browser, editor or config.
 
 ## Conventions
 

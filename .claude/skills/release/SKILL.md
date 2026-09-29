@@ -52,5 +52,11 @@ uncommitted: `git checkout -- CHANGELOG.md build.zig.zon`, fix the cause, re-run
 
 - `git tag -l 'v*' | tail -1` and `grep '\.version' build.zig.zon` agree.
 - `zig-out/bin/smith --version` prints the new version.
-- Once the release pipeline exists (ROADMAP P1), watch it with
-  `smith run watch` and check the binaries are attached to the Forgejo release.
+- The tag starts `.github/workflows/release.yml` on both forges. Follow the
+  Forgejo run with `smith run list -e push -L 1` then `smith run watch <id>`,
+  and the GitHub one with `gh run watch -R Arzaroth/smith`.
+- Check both releases carry the four archives and `SHA256SUMS`:
+  `smith release view vX.Y.Z` and `gh release view vX.Y.Z -R Arzaroth/smith`.
+- If the Forgejo publish step fails with 403, the job token cannot create
+  releases there: set a `RELEASE_TOKEN` secret (`smith secret set
+  RELEASE_TOKEN`) and re-run the tag's workflow from the web UI.

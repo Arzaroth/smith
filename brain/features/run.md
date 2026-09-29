@@ -11,13 +11,17 @@ current branch.
 | `run view [--log \| --log-failed] [-j id]` | `GET .../actions/runs/{id}`, `.../runs/{id}/jobs`, `.../actions/jobs/{job}/logs` |
 | `run watch` | polls `GET .../actions/runs/{id}` and its jobs every `-i` seconds (default 3) |
 | `run cancel` | `POST .../actions/runs/{id}/cancel` |
+| `run download` | `GET .../actions/runs/{id}/artifacts`, `GET .../actions/artifacts/{id}/zip` |
 
 - Statuses: `success`; `failure` and `cancelled` count as failed; `skipped`;
   `waiting`, `running`, `blocked` and `unknown` as pending.
 - `--exit-status` exits 1 for a failed run and, on `view`, 8 for one still
   running.
 - Log lines are prefixed with the job name and a tab.
-- No `rerun`: Forgejo's API has no endpoint for it yet.
+- `download` unpacks each artifact into `-D/<name>/` (through a temporary
+  zip file, which `std.zip` needs), `-n` globs pick artifacts, expired ones
+  are skipped with a warning.
+- No `rerun`: Forgejo's API has no endpoint for it.
 
 ## Sources
 

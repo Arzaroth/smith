@@ -23,6 +23,17 @@
     clone reaches through `url.<bare>.insteadOf` (hence remotes being matched
     on their configured URL too).
 - `tests/fixtures.zig` holds the canned API objects.
+- The harness sets `SMITH_KEYRING=none`, so no test reaches the developer's
+  keyring. Keyring tests point `SMITH_KEYRING` at a fake secret-tool script
+  written into the temporary directory: a child's program is looked up in
+  the test binary's own `PATH`, not in the environment handed to it, so a
+  fake placed on the harness `PATH` would lose to the real one.
+- A second `Mock` can be started in a test for two-host scenarios
+  (environment token scoping, off-host redirects, remote probing).
+- `run download` gets a real zip built by the test (one stored entry and its
+  CRC), since no zip writer is assumed on the machine.
+- Browser logins are driven end to end by a `curl` "browser" script
+  (skipped when curl is missing); `--jq` tests are skipped without `jq`.
 - Nothing touches the network or the developer's config. Child processes must
   not write to the test binary's stdout, which is the build runner's protocol
   pipe; git's output goes to stderr for that reason as well.

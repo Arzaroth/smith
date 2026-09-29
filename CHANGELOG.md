@@ -6,6 +6,33 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Tokens are kept in the system keyring (Secret Service on Linux, the keychain
+  on macOS) when there is one, and in `hosts.zon` otherwise or with
+  `auth login --insecure-storage`. The browser login gives up after five
+  minutes without a sign-in.
+- `smith pr review` (approve, request changes, comment), `pr status`,
+  `pr update`, and `pr list --head`.
+- `smith repo create` (also from a local clone, with `--push`), `fork`,
+  `edit`, `sync` (a fork from its parent, a mirror from its source),
+  `archive`, `unarchive`, `delete` and `set-default`.
+- `smith release` list, view, create with assets, edit, upload, download,
+  delete and delete-asset.
+- `smith label` (with `clone` from another repository) and `smith milestone`;
+  `--milestone` on issues and pull requests.
+- `smith run download` unpacks a run's artifacts; `smith workflow list` and
+  `workflow run` dispatch a workflow with inputs.
+- `smith secret` and `smith variable`, for a repository, an organization or
+  your account.
+- `smith search` (repositories, issues, pull requests), `smith status` (what
+  needs you across the host), `smith notification`, `smith ssh-key`,
+  `smith gpg-key` and `smith org list`.
+- `smith alias` and `smith config` (editor, browser, git protocol).
+- `-q/--jq` and `-t/--template` on every command with `--json`.
+- Release archives for Linux and macOS, x86_64 and aarch64, published on
+  both forges when a version is tagged.
+
 ## [0.1.0] - 2026-09-29
 
 ### Added

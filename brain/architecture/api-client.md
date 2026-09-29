@@ -8,8 +8,11 @@
   header override. Two std 0.16 behaviours shape this: `privileged_headers`
   are never sent at all, and the standard authorization header survives a
   redirect to any host. So std's redirect handling is off and `raw` follows
-  301/302/307/308 itself, at most three times and only to the same scheme,
-  host and port; a redirect elsewhere is refused.
+  301/302/303/307/308 itself, at most three times: with the token while the
+  scheme, host and port stay the same, without it once they change (release
+  assets and artifacts redirect to object storage).
+- **Uploads**: `Client.upload` sends a file as the `attachment` field of a
+  multipart form with a random boundary (release assets).
 - **Refresh**: `Client.init` renews a browser login's access token when it
   is within a minute of expiry (`oauth.refreshIfDue`) and saves the new pair.
 - **Bodies**: JSON payloads are anonymous structs stringified with null

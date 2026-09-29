@@ -8,7 +8,7 @@ is looked for first, then the most recently updated closed or merged one.
 
 | Command | Endpoints |
 |---|---|
-| `pr list` | `GET /repos/{o}/{r}/pulls?state=&poster=&base=&labels=<ids>&sort=recentupdate` |
+| `pr list` | `GET /repos/{o}/{r}/pulls?state=&poster=&base=&labels=<ids>&sort=recentupdate`; `--head` filtered client-side |
 | `pr view [--comments]` | `GET .../pulls/{n}` (or the open list, by branch) |
 | `pr diff [--patch] [--name-only]` | `GET .../pulls/{n}.diff`/`.patch`, `GET .../pulls/{n}/files` |
 | `pr create` | `GET .../repos/{o}/{r}` for the default base, `POST .../pulls`, `POST .../pulls/{n}/requested_reviewers` |
@@ -18,6 +18,9 @@ is looked for first, then the most recently updated closed or merged one.
 | `pr ready [--undo]` | `PATCH .../pulls/{n}` `{title}` |
 | `pr comment`, `pr edit` | as for issues, plus `base` on edit |
 | `pr checks [--watch]` | `GET .../commits/{head sha}/status` |
+| `pr review` | `POST .../pulls/{n}/reviews` `{event, body, commit_id}` |
+| `pr update [--rebase]` | `POST .../pulls/{n}/update?style=merge\|rebase` |
+| `pr status` | `GET .../pulls?state=open`, and the current branch's combined status |
 
 - **Drafts** are Forgejo's work-in-progress title prefixes (`WIP:`,
   `[WIP]`, any case): `create --draft` adds `WIP: `,
@@ -56,6 +59,18 @@ is looked for first, then the most recently updated closed or merged one.
   shows, Forgejo Actions included; relative target URLs are made absolute.
   Exit 1 if something failed, 8 if something is pending, 0 otherwise. Piped,
   only the rows are printed.
+
+- **review** takes exactly one of `--approve`, `--request-changes`,
+  `--comment`; the last two need a body (flag, file, or the editor on a
+  terminal). The review is pinned to the head commit.
+- **update** merges the base into the head (or rebases with `--rebase`);
+  409 is reported as a conflict to solve by hand.
+- **status** sorts the repository's open pull requests into the current
+  branch's (with its checks summary), yours, and those requesting your
+  review. "You" is the account's stored user, else `GET /user`.
+- **list --head** filters on `branch` or `owner:branch` after fetching,
+  since Forgejo's list endpoint cannot; like `-s merged`, it fetches up to
+  four times the limit.
 
 ## Sources
 

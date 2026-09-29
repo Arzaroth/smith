@@ -2,11 +2,16 @@
 
 One doc per command group.
 
-| Feature | Doc | Status |
-|---|---|---|
-| Authentication | [auth.md](auth.md) | MVP |
-| Repositories | [repo.md](repo.md) | MVP |
-| Issues | [issue.md](issue.md) | MVP |
-| Pull requests | [pr.md](pr.md) | MVP |
-| Actions runs | [run.md](run.md) | MVP |
-| API, browse, completion | [tools.md](tools.md) | MVP |
+| Feature | Doc |
+|---|---|
+| Authentication, hosts and accounts, keyring | [auth.md](auth.md) |
+| Repositories | [repo.md](repo.md) |
+| Issues | [issue.md](issue.md) |
+| Pull requests | [pr.md](pr.md) |
+| Actions runs | [run.md](run.md) |
+| Workflows, secrets, variables | [actions-settings.md](actions-settings.md) |
+| Releases | [release.md](release.md) |
+| Labels, milestones | [planning.md](planning.md) |
+| Search, status, notifications, keys, organizations | [account.md](account.md) |
+| Preferences and aliases | [settings.md](settings.md) |
+| API, browse, completion, --jq, --template | [tools.md](tools.md) |

@@ -93,36 +93,54 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
 - [x] `browse [<path>|<n>]`, `api <path>` passthrough (`-X`, `-f`/`-F`,
       `--input`, `--paginate`, `-H`, `{owner}`/`{repo}`),
       `completion <bash|zsh|fish>`.
-- [ ] Release pipeline: static binaries for x86_64/aarch64 Linux and macOS,
-      attached to a Forgejo release and mirrored to GitHub.
+- [x] Release pipeline: `mise run dist` cross-compiles stripped static
+      binaries for x86_64/aarch64 Linux (musl) and macOS with `SHA256SUMS`; a
+      `v*` tag runs `.github/workflows/release.yml`, which publishes with `gh
+      release create` on GitHub and with smith's own `release create` on
+      Forgejo. Open question: whether Forgejo's job token may create
+      releases, or a `RELEASE_TOKEN` secret is needed (the workflow uses it
+      when set).
+
 ## P2 - gh parity
 
-- [ ] System keyring for tokens, like gh: Secret Service on Linux, Keychain
-      on macOS; `hosts.zon` keeps only host, user and protocol. Falls back to
-      the 0600 file with a warning when no keyring answers, or on
-      `auth login --insecure-storage`. Open question: talk D-Bus directly or
-      shell out to `secret-tool` / `security` (simpler, keeps the binary
-      static, adds a runtime dependency).
-- [ ] `pr review` (`--approve`, `--request-changes`, `--comment`),
-      `pr status` (mine, review requested, current branch), `pr update`
-      (merge or rebase base into head).
-- [ ] `repo create`, `repo fork [--clone]`, `repo delete`, `repo edit`,
-      `repo sync`, `repo archive`, `repo set-default`.
-- [ ] `release list|view|create|upload|download|delete`.
-- [ ] `label list|create|edit|delete`, `milestone` (glab has it, gh does not).
-- [ ] `run rerun`, `run download` (artifacts), `workflow run` (dispatch).
-- [ ] `secret` and `variable` (repo, org, user scopes).
-- [ ] `search repos|issues|prs`, `status` (cross-repo dashboard),
-      `notification` list and mark read.
-- [ ] `ssh-key`, `gpg-key`, `org list`.
-- [ ] `alias set|list|delete`, `config get|set|list`.
-- [ ] `--jq` filtering on `--json` output, `--template` formatting.
+- [x] System keyring for tokens, like gh: Secret Service on Linux, keychain
+      on macOS; `hosts.zon` keeps the rest of the entry. Falls back to the
+      0600 file with a warning when the keyring refuses, or on `auth login
+      --insecure-storage`. Decided: through `secret-tool` / `security` with
+      secrets on stdin, keeping the binary static.
+- [x] `pr review` (`--approve`, `--request-changes`, `--comment`),
+      `pr status` (current branch with its checks, yours, review requested),
+      `pr update` (merge or rebase the base in), `pr list --head`
+      (client-side).
+- [x] `repo create` (also `--source` a local clone and `--push`), `repo fork
+      [--clone | --remote]`, `repo delete` (typed confirmation), `repo edit`
+      (enable/disable toggles), `repo sync` (fork or mirror), `repo archive`,
+      `repo unarchive`, `repo set-default` (`remote.<name>.smith-resolved`).
+- [x] `release list|view|create|edit|upload|download|delete|delete-asset`,
+      multipart uploads, downloads that follow storage redirects without the
+      token.
+- [x] `label list|create|edit|delete|clone`, `milestone
+      list|view|create|edit|close|reopen|delete` (glab has it, gh does not),
+      `--milestone` on issues and pull requests.
+- [x] `run download` (artifacts unpacked with std.zip), `workflow list`
+      (from the workflow directories) and `workflow run` (dispatch with
+      inputs). `run rerun`: see Not planned.
+- [x] `secret` and `variable` at repository, organization and user scope.
+- [x] `search repos|issues|prs`, `status` (assigned, review requests,
+      mentions across the host), `notification list` and `read`.
+- [x] `ssh-key`, `gpg-key`, `org list`.
+- [x] `alias set|list|delete` (placeholders, `!` shell aliases, never
+      shadowing a command), `config get|set|unset|list` (editor, browser,
+      git_protocol) in `config.zon`.
+- [x] `--jq` on every `--json` (through the system jq), `--template` (a
+      built-in Go-template subset).
 
 ## Later
 
 - `$PAGER` for long output (`pr diff`, `run view --log`).
 - OAuth2 device flow login, if Forgejo gains it.
 - `pr checkout` into a new worktree.
+- `auth logout` revoking a password-route token (needs the password again).
 - Packaging: AUR, Homebrew tap, Nix flake.
 
 ## Not planned
@@ -131,3 +149,5 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
   equivalent.
 - `gist`: Forgejo has no gists.
 - `project`: Forgejo projects have no API.
+- `run rerun`: Forgejo's API has no rerun endpoint (the web UI's is not part
+  of the API).

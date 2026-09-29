@@ -19,3 +19,6 @@
   several, one of them active.
 - **Default host**: the host used outside a clone: `SMITH_HOST`, else
   `default_host`, else the only one.
+- **Keyring account**: an account whose `keyring = true`; its secrets are in
+  the system keyring, the rest of its entry in `hosts.zon`.
+- **Alias**: a shortcut in `config.zon`; `!` ones run with sh.

@@ -71,3 +71,25 @@ rather than be followed), then renamed over `hosts.zon`.
 - `src/config.zig`
 - `src/cmd/auth.zig`
 - `src/api.zig`
+
+## Keyring
+
+`keyring.zig` talks to the system keyring through its command-line helper,
+with secrets on the helper's stdin:
+
+| Backend | Program | Entry |
+|---|---|---|
+| Secret Service (Linux, BSD) | `secret-tool` | attributes `service=smith host=<name> user=<user> kind=token\|refresh` |
+| macOS keychain | `security` (`-i` to keep the secret off argv) | service `smith:<host>`, account `<user>:<kind>` |
+
+`SMITH_KEYRING` overrides the choice: `none` (or `file`), `secret-tool`,
+`security`, or the absolute path of a secret-tool-compatible program (how the
+tests plug in a fake: a child's program is looked up in smith's own `PATH`,
+not the environment passed to it).
+
+An account with `keyring = true` has its token and refresh token in the
+keyring. `save` (`moveSecrets`) writes whatever secrets it holds there and
+strips them from the file, or keeps them in the file and drops the flag when
+the keyring refuses; `withEnv` (through `withSecrets`) reads them back for
+the account in use, unless an environment token applies. The rest of the
+entry, expiry included, stays in the file.

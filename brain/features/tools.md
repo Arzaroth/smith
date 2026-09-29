@@ -27,3 +27,18 @@ command path from the tokens typed.
 - `src/cmd/browse.zig`
 - `src/cmd/completion.zig`
 - `src/tests/tools_test.zig`
+
+## --jq and --template
+
+Every command with `--json` also takes `-q/--jq` and `-t/--template`
+(`cli.implicitFlags`), and either implies `--json`. `api.printJson` applies
+them:
+
+- `--jq EXPR` pipes the JSON through the system `jq -r EXPR` (strings come
+  out raw, like gh). smith does not embed jq; without it installed, the error
+  says so and points at `--template`.
+- `--template` renders the part of Go's text/template gh users reach for
+  (`src/template.zig`): text, `{{.a.b}}`, `{{range .x}}…{{else}}…{{end}}`,
+  `{{if .x}}…{{else}}…{{end}}`, `{{"literal\n"}}`, `{{len .x}}`, `{{join ", "
+  .x}}`, `{{timeago .t}}`, and `{{-`/`-}}` trimming. A missing field renders
+  as nothing; an unknown action is a syntax error before anything prints.

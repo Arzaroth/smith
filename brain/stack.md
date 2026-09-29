@@ -10,9 +10,15 @@
 - **Tasks** (`mise run <task>`): `build`, `run`, `test` (`zig build test
   -Dtest-filter=<text>` for a subset), `fmt`, `check` (the
   gate: `zig fmt --check`, `shellcheck mise-tasks/*`, tests, ReleaseSafe
-  build), `release <x.y.z>` (`mise-tasks/release`).
+  build), `release <x.y.z>` (`mise-tasks/release`), `dist` (`mise-tasks/dist`:
+  stripped ReleaseSafe archives for x86_64 and aarch64 Linux (static musl)
+  and macOS, with `SHA256SUMS`).
 - **CI**: `.github/workflows/ci.yml` runs the gate on Forgejo Actions and,
-  through the mirror, on GitHub Actions.
+  through the mirror, on GitHub Actions. A `v*` tag runs
+  `.github/workflows/release.yml`: the gate, `mise run dist`, then the release
+  notes from `CHANGELOG.md`, published with `gh release create` on GitHub and
+  with `smith release create` itself on Forgejo (the job token, or a
+  `RELEASE_TOKEN` secret).
 
 ## Sources
 
@@ -20,4 +26,5 @@
 - `build.zig`, `build.zig.zon`
 - `src/main.zig`
 - `mise-tasks/release`
-- `.github/workflows/ci.yml`
+- `.github/workflows/ci.yml`, `.github/workflows/release.yml`
+- `mise-tasks/dist`

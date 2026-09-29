@@ -29,3 +29,7 @@
 
 - `src/term.zig`
 - `src/Ctx.zig`
+- **--jq / --template**: applied by `api.printJson` to anything a command
+  would print as JSON; see [../features/tools.md](../features/tools.md#--jq-and---template).
+- **Confirmation**: destructive commands ask on a terminal (`Ctx.confirm`)
+  and need `--yes` without one; `repo delete` wants the full name typed.
