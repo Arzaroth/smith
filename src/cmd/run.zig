@@ -26,7 +26,7 @@ pub const command: cli.Command = .{
                 .{ .long = "event", .short = 'e', .value = "string", .help = "Filter by triggering event, e.g. push or pull_request" },
                 .{ .long = "workflow", .short = 'w', .value = "file", .help = "Filter by workflow file, e.g. ci.yml" },
                 .{ .long = "commit", .short = 'c', .value = "sha", .help = "Filter by commit" },
-                cli.limit_flag,
+                .{ .long = "limit", .short = 'L', .value = "int", .help = "Maximum number of runs to fetch (default 20)" },
                 cli.json_flag,
                 .{ .long = "web", .help = "Open the Actions page in the browser" },
                 cli.repo_flag,

@@ -19,14 +19,14 @@ pub fn refreshIfDue(ctx: *Ctx, host: config.Host) !config.Host {
     const refresh = host.refresh_token orelse return host;
     const expires = host.expires_at orelse return host;
     const client_id = host.oauth_client_id orelse return host;
-    if (ctx.now < expires - 60) return host;
+    if (ctx.now < expires -| 60) return host;
 
     const tokens = exchange(ctx, host, &.{
         .{ "grant_type", "refresh_token" },
         .{ "client_id", client_id },
         .{ "refresh_token", refresh },
     }) catch |e| switch (e) {
-        error.Reported => return ctx.fail("the login to {s} has expired; run `smith auth login --hostname {s}`", .{ host.name, host.name }),
+        error.GrantRejected => return ctx.fail("the login to {s} has expired; run `smith auth login --hostname {s}`", .{ host.name, host.name }),
         else => return e,
     };
     var h = host;
@@ -40,7 +40,7 @@ pub fn refreshIfDue(ctx: *Ctx, host: config.Host) !config.Host {
 fn apply(ctx: *const Ctx, h: *config.Host, t: Tokens) void {
     h.token = t.access_token;
     if (t.refresh_token) |r| h.refresh_token = r;
-    h.expires_at = if (t.expires_in) |s| ctx.now + s else null;
+    h.expires_at = if (t.expires_in) |s| ctx.now +| s else null;
 }
 
 /// Opens the authorization page, waits for the browser to come back with a
@@ -70,13 +70,16 @@ pub fn login(ctx: *Ctx, host: config.Host, client_id: []const u8) !config.Host {
     if (!try ctx.launchBrowser(url)) try ctx.err.writeAll("! could not start a browser; open the address above yourself\n");
 
     const code = try waitForCode(ctx, &server, state, host.name);
-    const tokens = try exchange(ctx, host, &.{
+    const tokens = exchange(ctx, host, &.{
         .{ "grant_type", "authorization_code" },
         .{ "client_id", client_id },
         .{ "code", code },
         .{ "code_verifier", verifier },
         .{ "redirect_uri", redirect_uri },
-    });
+    }) catch |e| switch (e) {
+        error.GrantRejected => return ctx.fail("{s} refused the sign-in code; run the login again", .{host.name}),
+        else => return e,
+    };
     var h = host;
     apply(ctx, &h, tokens);
     h.oauth_client_id = client_id;
@@ -130,6 +133,9 @@ fn page(comptime message: []const u8) []const u8 {
 }
 
 /// POSTs a form to the token endpoint, with no token of our own attached.
+/// A refused grant (an expired or revoked refresh token, a used code) is
+/// `error.GrantRejected`, left to the caller to explain; anything else is
+/// reported here.
 fn exchange(ctx: *Ctx, host: config.Host, fields: []const [2][]const u8) !Tokens {
     var form: std.ArrayList(u8) = .empty;
     for (fields, 0..) |f, i| {
@@ -145,6 +151,7 @@ fn exchange(ctx: *Ctx, host: config.Host, fields: []const [2][]const u8) !Tokens
     if (!r.ok()) {
         const Err = struct { @"error": ?[]const u8 = null, error_description: ?[]const u8 = null };
         const e = std.json.parseFromSliceLeaky(Err, ctx.alloc, r.body, .{ .ignore_unknown_fields = true }) catch Err{};
+        if (e.@"error") |code| if (std.mem.eql(u8, code, "invalid_grant")) return error.GrantRejected;
         return ctx.fail("{s} did not issue a token: {s}", .{ host.name, e.error_description orelse e.@"error" orelse "unknown error" });
     }
     return std.json.parseFromSliceLeaky(Tokens, ctx.alloc, r.body, .{ .ignore_unknown_fields = true }) catch

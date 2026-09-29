@@ -265,7 +265,10 @@ fn account(ctx: *Ctx, cfg: config.Config, stored: config.Host, several: bool, pa
         try ctx.out.print("  X no token stored{s}{s}\n", .{ if (h.user != null) " for " else "", h.user orelse "" });
         return false;
     };
-    var client = try api.Client.init(ctx, h);
+    var client = api.Client.init(ctx, h) catch |e| switch (e) {
+        error.Reported => return false,
+        else => return e,
+    };
     const r = client.raw(.GET, "/user", .{}) catch |e| {
         if (e != error.Reported) return e;
         return false;

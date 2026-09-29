@@ -11,12 +11,21 @@ const types = @import("../types.zig");
 pub const body_flag: cli.Flag = .{ .long = "body", .short = 'b', .value = "string", .help = "Body text" };
 pub const body_file_flag: cli.Flag = .{ .long = "body-file", .short = 'F', .value = "file", .help = "Read the body from a file (\"-\" for standard input)" };
 
-/// `12`, `#12` or a URL ending in `/12`.
+/// A pull request or issue number from `12`, `#12`, or a web URL ending in
+/// `/12`; null for anything else, a branch like `fix/42` included.
+pub fn parseNumber(s: []const u8) ?i64 {
+    var t = s;
+    if (std.mem.indexOf(u8, s, "://") != null) {
+        t = std.mem.trimEnd(u8, s, "/");
+        t = t[(std.mem.lastIndexOfScalar(u8, t, '/') orelse return null) + 1 ..];
+    } else if (t.len > 0 and t[0] == '#') t = t[1..];
+    if (t.len == 0) return null;
+    for (t) |c| if (!std.ascii.isDigit(c)) return null;
+    return std.fmt.parseInt(i64, t, 10) catch null;
+}
+
 pub fn number(ctx: *Ctx, s: []const u8) !i64 {
-    var t = std.mem.trimEnd(u8, s, "/");
-    if (std.mem.lastIndexOfScalar(u8, t, '/')) |i| t = t[i + 1 ..];
-    if (t.len > 0 and t[0] == '#') t = t[1..];
-    return std.fmt.parseInt(i64, t, 10) catch ctx.fail("invalid number: {s}", .{s});
+    return parseNumber(s) orelse ctx.fail("invalid number: {s}", .{s});
 }
 
 /// The body from `--body` or `--body-file`, or null when neither was given.
@@ -103,7 +112,9 @@ pub fn writeBody(ctx: *Ctx, body: ?[]const u8) !void {
 }
 
 pub fn writeComments(ctx: *Ctx, client: *api.Client, r: repo.Repo, n: i64) !void {
-    const values = try client.listValues(try r.path(ctx.alloc, "/issues/{d}/comments", .{n}), 1000, null);
+    // This endpoint returns every comment at once and ignores page/limit.
+    const v = try client.getValue(try r.path(ctx.alloc, "/issues/{d}/comments", .{n}));
+    const values: []const std.json.Value = if (v == .array) v.array.items else &.{};
     const comments = try api.decodeAll(types.Comment, ctx, values);
     for (comments) |c| {
         try ctx.out.writeByte('\n');

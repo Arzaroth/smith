@@ -110,6 +110,11 @@ pub const Client = struct {
     }
 
     fn readResponse(ctx: *Ctx, host_name: []const u8, response: *std.http.Client.Response) !Response {
+        const status = @intFromEnum(response.head.status);
+        // No body follows these, and without a length std would read the
+        // kept-alive connection until the server drops it.
+        if (response.request.method == .HEAD or status == 204 or status == 304 or status < 200)
+            return .{ .status = status, .body = "" };
         var body: Io.Writer.Allocating = .init(ctx.alloc);
         var transfer: [64]u8 = undefined;
         var decompress: std.http.Decompress = undefined;
@@ -120,10 +125,13 @@ pub const Client = struct {
         });
         const reader = response.readerDecompressing(&transfer, &decompress, decompress_buf);
         _ = reader.streamRemaining(&body.writer) catch |e| switch (e) {
-            error.ReadFailed => return ctx.fail("reading the response from {s} failed: {t}", .{ host_name, response.bodyErr().? }),
+            error.ReadFailed => {
+                if (response.bodyErr()) |why| return ctx.fail("reading the response from {s} failed: {t}", .{ host_name, why });
+                return ctx.fail("reading the response from {s} failed (connection or decompression error)", .{host_name});
+            },
             else => |x| return x,
         };
-        return .{ .status = @intFromEnum(response.head.status), .body = body.written() };
+        return .{ .status = status, .body = body.written() };
     }
 
     fn send(req: *std.http.Client.Request, body: ?[]const u8) !void {
@@ -188,7 +196,8 @@ pub const Client = struct {
     pub fn listValues(c: *Client, path: []const u8, limit: u32, field: ?[]const u8) ![]json.Value {
         const ctx = c.ctx;
         var items: std.ArrayList(json.Value) = .empty;
-        const page_size: u32 = @max(1, @min(limit, c.host.page_size orelse 50));
+        var page_size: u32 = @max(1, @min(limit, c.host.page_size orelse 50));
+        var size_known = c.host.page_size != null;
         const sep: u8 = if (std.mem.indexOfScalar(u8, path, '?') != null) '&' else '?';
         var page: u32 = 1;
         while (items.items.len < limit) : (page += 1) {
@@ -203,9 +212,25 @@ pub const Client = struct {
                 if (items.items.len >= limit) break;
                 try items.append(ctx.alloc, item);
             }
-            if (arr.len < page_size) break;
+            if (arr.len >= page_size) continue;
+            // A short page ends the list, unless the server caps pages below
+            // what was asked; learn its cap once before trusting it.
+            if (arr.len == 0 or size_known) break;
+            size_known = true;
+            const max = try c.maxPageSize() orelse break;
+            if (arr.len != max) break;
+            page_size = max;
         }
         return items.toOwnedSlice(ctx.alloc);
+    }
+
+    /// The server's `max_response_items`, when it says.
+    fn maxPageSize(c: *Client) !?u32 {
+        const r = try c.raw(.GET, "/settings/api", .{});
+        if (!r.ok()) return null;
+        const Settings = struct { max_response_items: ?u32 = null };
+        const s = json.parseFromSliceLeaky(Settings, c.ctx.alloc, r.body, .{ .ignore_unknown_fields = true }) catch return null;
+        return s.max_response_items;
     }
 };
 

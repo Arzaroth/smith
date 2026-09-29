@@ -34,7 +34,7 @@ fn run(ctx: *Ctx, args: *const cli.Args) !u8 {
             const info = try api.decode(types.Repository, ctx, try client.getValue(try r.path(ctx.alloc, "", .{})));
             break :default info.default_branch orelse "main";
         };
-        var path = std.mem.trimStart(u8, target, "./");
+        var path = if (std.mem.startsWith(u8, target, "./")) target[2..] else target;
         var anchor: []const u8 = "";
         if (std.mem.lastIndexOfScalar(u8, path, ':')) |c| {
             if (std.fmt.parseInt(u32, path[c + 1 ..], 10)) |line| {

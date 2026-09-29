@@ -48,7 +48,7 @@ test "view without an argument finds the current branch's pull request" {
 
     try h.git(&.{ "-C", "work", "switch", "-q", "-c", "lonely" });
     try h.expectRun(1, &.{ "pr", "view" });
-    try h.expectErr("no open pull request found for branch \"lonely\"");
+    try h.expectErr("no pull request found for branch \"lonely\" of owner");
 }
 
 test "diff prints the raw diff; --name-only lists files" {
@@ -112,7 +112,7 @@ test "create refuses an unpushed branch" {
     try h.clone("work", "owner", "repo");
     try h.git(&.{ "-C", "work", "switch", "-q", "-c", "local-only" });
     try h.expectRun(1, &.{ "pr", "create", "-t", "x", "-b", "y" });
-    try h.expectErr("is not pushed; run `git push -u origin local-only` first");
+    try h.expectErr("is not pushed under its own name; run `git push -u origin local-only` first");
 }
 
 test "merge uses the repository's default style unless told otherwise" {
@@ -120,6 +120,8 @@ test "merge uses the repository's default style unless told otherwise" {
     try h.init(&.{
         .{ .path = pulls ++ "/12", .body = fx.pr_same },
         .{ .path = "/api/v1/repos/owner/repo", .body = fx.repo },
+        .{ .method = .POST, .path = pulls ++ "/12/merge", .body = "", .times = 1 },
+        .{ .method = .POST, .path = pulls ++ "/12/merge", .status = 201, .body = "", .times = 1 },
         .{ .method = .POST, .path = pulls ++ "/12/merge", .body = "" },
     }, .{});
     defer h.deinit();
@@ -135,6 +137,8 @@ test "merge uses the repository's default style unless told otherwise" {
     try std.testing.expect(v.object.get("merge_when_checks_succeed").?.bool);
     try std.testing.expect(v.object.get("delete_branch_after_merge").?.bool);
 
+    try h.expectRun(0, &.{ "pr", "merge", "12", "-R", "owner/repo", "--auto" });
+    try h.expectErr("Merged pull request #12");
     try h.expectRun(1, &.{ "pr", "merge", "12", "-R", "owner/repo", "--rebase", "--squash" });
     try h.expectErr("choose only one");
 }
@@ -264,4 +268,16 @@ test "checkout of a fork's pull request fetches its pull ref" {
     try h.expectRun(0, &.{ "pr", "checkout", "13", "-b", "review-13" });
     try std.testing.expectEqualStrings("fork work", try head(&h));
     try h.expectRun(0, &.{ "pr", "checkout", "13", "-b", "review-13" });
+}
+
+test "create refuses a branch whose upstream is another branch, like origin/main" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.clone("work", "owner", "repo");
+    try h.git(&.{ "-C", "work", "update-ref", "refs/remotes/origin/main", "HEAD" });
+    try h.git(&.{ "-C", "work", "switch", "-q", "-c", "feat", "--track", "origin/main" });
+    try h.expectRun(1, &.{ "pr", "create", "-t", "x", "-b", "y", "--base", "dev" });
+    try h.expectErr("run `git push -u origin feat` first");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.requests.items.len);
 }

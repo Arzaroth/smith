@@ -43,7 +43,7 @@ fn walk(w: *Writer, buf: []u8, len: usize, cmd: *const cli.Command, visit: Visit
 fn bash(w: *Writer, root: *const cli.Command) !void {
     var buf: [256]u8 = undefined;
     @memcpy(buf[0..root.name.len], root.name);
-    try w.writeAll("declare -A _smith_subs _smith_flags\n");
+    try w.writeAll("typeset -gA _smith_subs _smith_flags\n");
     try walk(w, &buf, root.name.len, root, bashEntry);
     try w.writeAll(
         \\_smith() {

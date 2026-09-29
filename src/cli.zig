@@ -37,6 +37,8 @@ pub const Args = struct {
     passthrough: []const []const u8 = &.{},
     names: []const []const u8,
     values: []const []const u8,
+    /// Where to explain a bad flag value; set by `parse`.
+    err: ?*Writer = null,
 
     pub fn has(a: *const Args, long: []const u8) bool {
         for (a.names) |n| if (std.mem.eql(u8, n, long)) return true;
@@ -64,9 +66,16 @@ pub const Args = struct {
         return list.toOwnedSlice(alloc);
     }
 
+    /// A flag's number; `--limit` must be at least 1.
     pub fn int(a: *const Args, long: []const u8, default: u32) !u32 {
         const v = a.get(long) orelse return default;
-        return std.fmt.parseInt(u32, v, 10) catch return error.Usage;
+        const min: u32 = if (std.mem.eql(u8, long, "limit")) 1 else 0;
+        const n = std.fmt.parseInt(u32, v, 10) catch null;
+        if (n == null or n.? < min) {
+            if (a.err) |w| w.print("--{s} takes a whole number{s}, got \"{s}\"\n", .{ long, if (min > 0) " greater than 0" else "", v }) catch {};
+            return error.Usage;
+        }
+        return n.?;
     }
 
     pub fn arg(a: *const Args, i: usize) ?[]const u8 {
@@ -176,6 +185,7 @@ pub fn parse(alloc: Allocator, cmd: *const Command, argv: []const []const u8, er
         .passthrough = passthrough,
         .names = try names.toOwnedSlice(alloc),
         .values = try values.toOwnedSlice(alloc),
+        .err = err,
     };
 }
 

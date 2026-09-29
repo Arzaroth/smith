@@ -98,6 +98,7 @@ pub const command: cli.Command = .{
                 .{ .long = "auto", .help = "Merge once the checks succeed" },
                 .{ .long = "subject", .short = 't', .value = "string", .help = "Subject of the merge commit" },
                 common.body_flag,
+                common.body_file_flag,
                 .{ .long = "admin", .help = "Merge even if the branch protection rules are not met" },
                 cli.repo_flag,
             },
@@ -172,27 +173,58 @@ const Found = struct {
     value: std.json.Value,
 };
 
-/// A pull request by number, URL or branch; the current branch's when `sel` is null.
+/// A pull request by number or URL, by branch (`branch` in this repository,
+/// `owner:branch` in a fork), or, without a selector, the current branch's
+/// as pushed: the owner and branch of its upstream. An open one first, else
+/// the most recently updated closed or merged one.
 fn find(ctx: *Ctx, client: *api.Client, r: repo.Repo, sel: ?[]const u8) !Found {
-    const branch = if (sel) |s| blk: {
-        if (common.number(ctx, s)) |n| {
-            const v = try client.getValue(try r.path(ctx.alloc, "/pulls/{d}", .{n}));
-            return .{ .pr = try api.decode(types.PullRequest, ctx, v), .value = v };
-        } else |_| {}
-        break :blk s;
-    } else try git.currentBranch(ctx) orelse return ctx.fail("not on a branch; name the pull request", .{});
-
-    const values = try client.listValues(try r.path(ctx.alloc, "/pulls?state=open&sort=recentupdate", .{}), 500, null);
-    for (values) |v| {
-        const pr = try api.decode(types.PullRequest, ctx, v);
-        if (std.mem.eql(u8, pr.head.ref, branch)) return .{ .pr = pr, .value = v };
+    if (sel) |s| if (common.parseNumber(s)) |n| {
+        const v = try client.getValue(try r.path(ctx.alloc, "/pulls/{d}", .{n}));
+        return .{ .pr = try api.decode(types.PullRequest, ctx, v), .value = v };
+    };
+    var owner: []const u8 = r.owner;
+    var branch: []const u8 = undefined;
+    if (sel) |s| {
+        branch = s;
+        if (std.mem.indexOfScalar(u8, s, ':')) |c| {
+            owner = s[0..c];
+            branch = s[c + 1 ..];
+        }
+    } else {
+        branch = try git.currentBranch(ctx) orelse return ctx.fail("not on a branch; name the pull request", .{});
+        if (try pushedAs(ctx, branch)) |p| {
+            owner = p.owner;
+            branch = p.branch;
+        }
     }
-    return ctx.fail("no open pull request found for branch \"{s}\"", .{branch});
+    for ([_][]const u8{ "open", "closed" }) |state| {
+        const path = try r.path(ctx.alloc, "/pulls?state={s}&sort=recentupdate", .{state});
+        const values = try client.listValues(path, if (std.mem.eql(u8, state, "open")) 500 else 100, null);
+        for (values) |v| {
+            const pr = try api.decode(types.PullRequest, ctx, v);
+            if (!std.mem.eql(u8, pr.head.ref, branch)) continue;
+            const head_owner = if (pr.head.repo) |hr| (if (hr.owner) |o| o.login else "") else "";
+            if (std.ascii.eqlIgnoreCase(head_owner, owner)) return .{ .pr = pr, .value = v };
+        }
+    }
+    return ctx.fail("no pull request found for branch \"{s}\" of {s}", .{ branch, owner });
+}
+
+/// The owner and branch the current branch is pushed to, from its upstream.
+fn pushedAs(ctx: *Ctx, branch: []const u8) !?struct { owner: []const u8, branch: []const u8 } {
+    const upstream = try git.capture(ctx, &.{ "rev-parse", "--abbrev-ref", "--symbolic-full-name", try std.fmt.allocPrint(ctx.alloc, "{s}@{{upstream}}", .{branch}) }) orelse return null;
+    const slash = std.mem.indexOfScalar(u8, upstream, '/') orelse return null;
+    for (try git.remotes(ctx)) |rem| {
+        if (!std.mem.eql(u8, rem.name, upstream[0..slash])) continue;
+        const u = rem.parse() orelse return null;
+        return .{ .owner = u.owner, .branch = upstream[slash + 1 ..] };
+    }
+    return null;
 }
 
 fn displayState(pr: types.PullRequest) []const u8 {
     if (pr.merged) return "merged";
-    if (std.mem.eql(u8, pr.state, "open") and (pr.draft or std.mem.startsWith(u8, pr.title, draft_prefix))) return "draft";
+    if (std.mem.eql(u8, pr.state, "open") and isDraft(pr)) return "draft";
     return pr.state;
 }
 
@@ -216,7 +248,7 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
     }
     const limit = try args.int("limit", 30);
     const want_merged = std.mem.eql(u8, state, "merged");
-    const fetched = try client.listValues(path, if (want_merged) limit * 4 else limit, null);
+    const fetched = try client.listValues(path, if (want_merged) limit *| 4 else limit, null);
 
     var values: std.ArrayList(std.json.Value) = .empty;
     var prs: std.ArrayList(types.PullRequest) = .empty;
@@ -254,10 +286,10 @@ fn view(ctx: *Ctx, args: *const cli.Args) !u8 {
     const r = try repo.resolve(ctx, args);
     var client = try r.client(ctx);
     if (args.has("web") and args.arg(0) != null) {
-        if (common.number(ctx, args.arg(0).?)) |n| {
+        if (common.parseNumber(args.arg(0).?)) |n| {
             try ctx.openBrowser(try r.webUrl(ctx.alloc, "/pulls/{d}", .{n}));
             return 0;
-        } else |_| {}
+        }
     }
     const f = try find(ctx, &client, r, args.arg(0));
     const pr = f.pr;
@@ -291,7 +323,7 @@ fn view(ctx: *Ctx, args: *const cli.Args) !u8 {
     if (assignees.len > 0) try w.print("Assignees: {s}\n", .{assignees});
     const reviewers = try common.joinUsers(ctx, pr.requested_reviewers);
     if (reviewers.len > 0) try w.print("Reviewers: {s}\n", .{reviewers});
-    if (std.mem.eql(u8, pr.state, "open") and !pr.mergeable) try term.paint(ctx, w, .yellow, "This branch has conflicts with the base branch\n");
+    if (std.mem.eql(u8, pr.state, "open") and !pr.mergeable and !isDraft(pr)) try term.paint(ctx, w, .yellow, "Forgejo cannot merge this automatically yet: conflicts with the base, or still checking\n");
     try w.writeByte('\n');
     try common.writeBody(ctx, pr.body);
     if (args.has("comments")) try common.writeComments(ctx, &client, r, pr.number);
@@ -335,26 +367,33 @@ fn diff(ctx: *Ctx, args: *const cli.Args) !u8 {
     return 0;
 }
 
-/// The head to open a pull request from: `--head`, else the current branch,
-/// prefixed with its owner when it is pushed to a fork.
+/// The head to open a pull request from: `--head`, else the current branch
+/// as pushed to its upstream's remote, prefixed with the owner when that
+/// remote is a fork. The pushed branch must carry the local branch's name: a
+/// branch cut from origin/main tracks main, which is not what it holds.
 fn headFor(ctx: *Ctx, args: *const cli.Args, r: repo.Repo) !struct { head: []const u8, branch: []const u8 } {
     if (args.get("head")) |h| {
         const branch = if (std.mem.indexOfScalar(u8, h, ':')) |i| h[i + 1 ..] else h;
         return .{ .head = h, .branch = branch };
     }
     const branch = try git.currentBranch(ctx) orelse return ctx.fail("not on a branch; pass --head", .{});
+    const push_hint = "branch \"{s}\" is not pushed under its own name; run `git push -u {s} {s}` first";
     const upstream = try git.capture(ctx, &.{ "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}" }) orelse
-        return ctx.fail("branch \"{s}\" is not pushed; run `git push -u origin {s}` first", .{ branch, branch });
-    const slash = std.mem.indexOfScalar(u8, upstream, '/') orelse return .{ .head = branch, .branch = branch };
+        return ctx.fail(push_hint, .{ branch, r.remote orelse "origin", branch });
+    const slash = std.mem.indexOfScalar(u8, upstream, '/') orelse return ctx.fail(push_hint, .{ branch, r.remote orelse "origin", branch });
     const remote_name = upstream[0..slash];
-    const remote_branch = upstream[slash + 1 ..];
+    if (!std.mem.eql(u8, upstream[slash + 1 ..], branch)) {
+        const same_name = try std.fmt.allocPrint(ctx.alloc, "refs/remotes/{s}/{s}", .{ remote_name, branch });
+        if (try git.capture(ctx, &.{ "rev-parse", "--verify", "--quiet", same_name }) == null)
+            return ctx.fail(push_hint, .{ branch, remote_name, branch });
+    }
     for (try git.remotes(ctx)) |rem| {
         if (!std.mem.eql(u8, rem.name, remote_name)) continue;
         const u = rem.parse() orelse break;
         if (!std.ascii.eqlIgnoreCase(u.owner, r.owner))
-            return .{ .head = try std.fmt.allocPrint(ctx.alloc, "{s}:{s}", .{ u.owner, remote_branch }), .branch = remote_branch };
+            return .{ .head = try std.fmt.allocPrint(ctx.alloc, "{s}:{s}", .{ u.owner, branch }), .branch = branch };
     }
-    return .{ .head = remote_branch, .branch = remote_branch };
+    return .{ .head = branch, .branch = branch };
 }
 
 const Fill = struct { title: []const u8, body: []const u8 };
@@ -408,7 +447,7 @@ fn create(ctx: *Ctx, args: *const cli.Args) !u8 {
         (if (fill) |f| f.body else "")
     else
         std.mem.trim(u8, try ctx.editText("PULL_REQUEST.md", if (fill) |f| f.body else ""), " \r\n\t");
-    if (args.has("draft") and !std.mem.startsWith(u8, title, draft_prefix))
+    if (args.has("draft") and std.mem.eql(u8, withoutDraftPrefix(title), title))
         title = try std.fmt.allocPrint(ctx.alloc, draft_prefix ++ "{s}", .{title});
 
     const labels = try common.labelIds(ctx, &client, r, try args.all(ctx.alloc, "label"));
@@ -544,7 +583,7 @@ fn merge(ctx: *Ctx, args: *const cli.Args) !u8 {
         .body = try std.json.Stringify.valueAlloc(ctx.alloc, Payload{
             .Do = method.?,
             .MergeTitleField = args.get("subject"),
-            .MergeMessageField = args.get("body"),
+            .MergeMessageField = try common.bodyFromFlags(ctx, args),
             .delete_branch_after_merge = delete,
             .merge_when_checks_succeed = auto,
             .force_merge = args.has("admin"),
@@ -554,11 +593,13 @@ fn merge(ctx: *Ctx, args: *const cli.Args) !u8 {
         const msg = api.errorMessage(ctx.alloc, resp.body);
         return switch (resp.status) {
             405 => ctx.fail("pull request #{d} is not mergeable: {s}", .{ pr.number, msg orelse "checks, reviews or conflicts are in the way" }),
-            409 => ctx.fail("pull request #{d} changed while merging: {s}", .{ pr.number, msg orelse "try again" }),
+            409 => ctx.fail("pull request #{d} cannot be merged now: {s}", .{ pr.number, msg orelse "it changed while merging, or is already scheduled" }),
             else => client.failStatus(.POST, "/pulls/merge", resp),
         };
     }
-    if (auto) {
+    // Forgejo answers 201 when it schedules the merge, 200 when the checks
+    // already passed and it merged at once.
+    if (auto and resp.status == 201) {
         try ctx.err.print("✓ Pull request #{d} ({s}) will be merged ({s}) once its checks succeed\n", .{ pr.number, pr.title, method.? });
         return 0;
     }
@@ -626,19 +667,31 @@ fn ready(ctx: *Ctx, args: *const cli.Args) !u8 {
     const r = try repo.resolve(ctx, args);
     var client = try r.client(ctx);
     const pr = (try find(ctx, &client, r, args.arg(0))).pr;
-    const is_draft = std.mem.startsWith(u8, pr.title, draft_prefix);
     const undo = args.has("undo");
-    if (undo == is_draft) {
+    if (undo == isDraft(pr)) {
         try ctx.err.print("! Pull request #{d} is already {s}\n", .{ pr.number, if (undo) "a draft" else "ready for review" });
         return 0;
     }
-    const title = if (undo)
-        try std.fmt.allocPrint(ctx.alloc, draft_prefix ++ "{s}", .{pr.title})
-    else
-        pr.title[draft_prefix.len..];
+    const title = if (undo) try std.fmt.allocPrint(ctx.alloc, draft_prefix ++ "{s}", .{pr.title}) else withoutDraftPrefix(pr.title);
     try client.sendNoContent(.PATCH, try r.path(ctx.alloc, "/pulls/{d}", .{pr.number}), .{ .title = title });
     try ctx.err.print("✓ Pull request #{d} is {s}\n", .{ pr.number, if (undo) "a draft again" else "marked as ready for review" });
     return 0;
+}
+
+/// Forgejo's default work-in-progress prefixes, matched as it does:
+/// case-insensitively, at the start of the title.
+const wip_prefixes = [_][]const u8{ "WIP:", "[WIP]" };
+
+fn isDraft(pr: types.PullRequest) bool {
+    return pr.draft or !std.mem.eql(u8, withoutDraftPrefix(pr.title), pr.title);
+}
+
+fn withoutDraftPrefix(title: []const u8) []const u8 {
+    for (wip_prefixes) |p| {
+        if (title.len >= p.len and std.ascii.eqlIgnoreCase(title[0..p.len], p))
+            return std.mem.trimStart(u8, title[p.len..], " ");
+    }
+    return title;
 }
 
 fn edit(ctx: *Ctx, args: *const cli.Args) !u8 {

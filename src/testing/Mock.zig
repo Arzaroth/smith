@@ -54,10 +54,12 @@ pub fn start(m: *Mock, io: Io, routes: []const Route) !void {
         .routes = routes,
         .used = undefined,
     };
+    errdefer m.arena.deinit();
     m.used = try m.arena.allocator().alloc(u32, routes.len);
     @memset(m.used, 0);
     const addr = try Io.net.IpAddress.parse("127.0.0.1", 0);
     m.server = try addr.listen(io, .{ .reuse_address = true });
+    errdefer m.server.deinit(io);
     m.port = m.server.socket.address.getPort();
     m.future = try io.concurrent(serve, .{m});
 }
@@ -91,7 +93,10 @@ pub fn lastBody(m: *const Mock, method: std.http.Method, path: []const u8) ?[]co
 fn serve(m: *Mock) void {
     while (true) {
         const stream = m.server.accept(m.io) catch return;
-        m.handle(stream) catch {};
+        m.handle(stream) catch |e| if (e == error.Canceled) {
+            stream.close(m.io);
+            return;
+        };
         stream.close(m.io);
     }
 }

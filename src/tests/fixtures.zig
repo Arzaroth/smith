@@ -1,5 +1,7 @@
 //! Canned Forgejo API objects for the mock.
 
+const std = @import("std");
+
 pub const repo =
     \\{"id":1,"name":"repo","full_name":"owner/repo","owner":{"login":"owner"},"description":"A test repository",
     \\"html_url":"http://forge.test/owner/repo","ssh_url":"git@forge.test:owner/repo.git","clone_url":"http://forge.test/owner/repo.git",
@@ -27,11 +29,15 @@ pub const comment =
     \\{"id":101,"user":{"login":"me"},"body":"Thanks","created_at":"2026-09-29T12:00:00Z"}
 ;
 
+fn headOwner(comptime repo_id: []const u8) []const u8 {
+    return if (std.mem.eql(u8, repo_id, "1")) "owner" else "alice";
+}
+
 fn pull(comptime number: []const u8, comptime title: []const u8, comptime head: []const u8, comptime head_repo_id: []const u8, comptime state: []const u8, comptime merged: []const u8) []const u8 {
     return "{\"id\":2" ++ number ++ ",\"number\":" ++ number ++ ",\"title\":\"" ++ title ++ "\",\"body\":\"Does things.\",\"state\":\"" ++ state ++
         "\",\"user\":{\"login\":\"alice\"},\"html_url\":\"http://forge.test/owner/repo/pulls/" ++ number ++
         "\",\"head\":{\"ref\":\"" ++ head ++ "\",\"sha\":\"abc123\",\"repo\":{\"id\":" ++ head_repo_id ++
-        ",\"name\":\"repo\",\"full_name\":\"alice/repo\",\"owner\":{\"login\":\"alice\"},\"html_url\":\"x\"}}" ++
+        ",\"name\":\"repo\",\"full_name\":\"" ++ headOwner(head_repo_id) ++ "/repo\",\"owner\":{\"login\":\"" ++ headOwner(head_repo_id) ++ "\"},\"html_url\":\"x\"}}" ++
         ",\"base\":{\"ref\":\"main\",\"sha\":\"def456\",\"repo\":{\"id\":1,\"name\":\"repo\",\"full_name\":\"owner/repo\",\"html_url\":\"x\"}}" ++
         ",\"merged\":" ++ merged ++ ",\"mergeable\":true,\"labels\":[],\"comments\":0,\"additions\":10,\"deletions\":2,\"changed_files\":3" ++
         ",\"created_at\":\"2026-09-28T12:00:00Z\",\"updated_at\":\"2026-09-29T11:30:00Z\"}";

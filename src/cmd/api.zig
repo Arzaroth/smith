@@ -96,6 +96,10 @@ fn host(ctx: *Ctx, args: *const cli.Args) !config.Host {
     const cfg = try config.load(ctx);
     if (args.get("hostname")) |h| return repo.hostFor(ctx, cfg, h);
     if (try inRepo(ctx)) {
+        var discard: std.Io.Writer.Discarding = .init(&.{});
+        const saved = ctx.err;
+        ctx.err = &discard.writer;
+        defer ctx.err = saved;
         if (repo.resolve(ctx, args)) |r| return r.host else |_| {}
     }
     return repo.hostFor(ctx, cfg, null);
