@@ -67,6 +67,7 @@ smith config get | set | unset | list
 smith api <endpoint> [-X METHOD] [-f key=value] [-F key=typed] [--paginate]
 smith browse [<n> | <path>[:<line>]] [--settings] [--actions]
 smith completion bash | zsh | fish
+smith help [<command>] | reference | skill
 ```
 
 Every command has `--help`. Commands that show API objects take `--json` to
@@ -145,6 +146,18 @@ keyring) and `config.zon` (preferences and aliases).
 | `SMITH_PROMPT_DISABLED` | Never prompt, as if `config set prompt disabled` |
 | `SMITH_JQ` | The jq program `--jq` runs |
 | `NO_COLOR`, `CLICOLOR_FORCE` | Colour off, colour on |
+
+## For coding agents
+
+`smith help reference` prints every command, flag, exit code and
+environment variable as one Markdown page, generated from the command tree.
+`smith help skill` prints a skill that teaches Claude Code (or any agent
+that reads `SKILL.md` files) to use smith: install it once with
+
+```sh
+mkdir -p ~/.claude/skills/smith
+smith help skill > ~/.claude/skills/smith/SKILL.md
+```
 
 ## Shell completion
 

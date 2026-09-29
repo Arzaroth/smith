@@ -17,6 +17,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - `issue create` and `pr create` on a terminal end with submit, edit the
   body again, or cancel (exit 2).
 - `SMITH_JQ` picks the jq program; jq's own error message is shown.
+- `smith help reference` prints every command and flag as Markdown;
+  `smith help skill` prints a SKILL.md so coding agents know how to use
+  smith; `smith help <command>` shows a command's help.
+- `smith api` takes `--jq` and `--template`.
 - `--template` covers Go's text/template as gh documents it: pipelines,
   variables, `with`, `else if`, `printf`, comparisons, and gh's `tablerow`,
   `tablerender`, `truncate`, `color`, `autocolor`, `hyperlink`, `timefmt`,
@@ -31,6 +35,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Piping smith into a program that stops reading early (`| head`) no
+  longer ends with `smith: WriteFailed`.
 - A request after a 204 no longer waits for the server to close the
   connection (seconds per `release upload --clobber`, `label delete` and
   similar on a kept-alive connection).

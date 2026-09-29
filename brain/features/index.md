@@ -14,4 +14,4 @@ One doc per command group.
 | Labels, milestones | [planning.md](planning.md) |
 | Search, status, notifications, keys, organizations | [account.md](account.md) |
 | Preferences and aliases | [settings.md](settings.md) |
-| API, browse, completion, --jq, --template | [tools.md](tools.md) |
+| API, browse, completion, help (reference, agent skill), --jq, --template | [tools.md](tools.md) |

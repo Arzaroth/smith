@@ -43,4 +43,4 @@ source of truth: when a doc disagrees with it, fix the doc.
 | label, milestone | list, create, edit, delete, clone; list, view, create, edit, close, reopen, delete | [features/planning.md](features/planning.md) |
 | search, status, notification, ssh-key, gpg-key, org | | [features/account.md](features/account.md) |
 | config, alias | get, set, unset, list; set, list, delete | [features/settings.md](features/settings.md) |
-| api, browse, completion | --jq and --template | [features/tools.md](features/tools.md) |
+| api, browse, completion, help | reference, skill; --jq and --template | [features/tools.md](features/tools.md) |

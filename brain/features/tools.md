@@ -1,4 +1,4 @@
-# api, browse, completion
+# api, browse, completion, help
 
 **`api <endpoint>`**: an authenticated request, printed as received (JSON
 pretty-printed on a terminal). The endpoint is relative to `/api/v1`
@@ -7,7 +7,8 @@ current repository. `-f key=value` adds string fields and `-F` typed ones
 (`true`, `false`, `null`, integers, `@file`); fields make the method POST
 unless `-X` says otherwise, and go in the query string for GET and DELETE.
 `--input` sends a file as the body, `-H` adds headers, `--paginate` fetches
-every page of a list into one array. A non-2xx status prints the body and
+every page of a list into one array. `--jq` and `--template` apply to a JSON
+answer, as on other commands, and are refused on anything else. A non-2xx status prints the body and
 exits 1. The host is `--hostname`, else the current repository's, else the
 default one.
 
@@ -21,11 +22,22 @@ completes subcommands and the flags of the command typed so far; zsh loads
 the bash script through `bashcompinit`; fish uses a helper that works out the
 command path from the tokens typed.
 
+**`help [<command>... | reference | skill]`**: `help pr checks` is
+`pr checks --help`. `help reference` writes the whole command tree as
+Markdown (conventions, exit codes, environment, then every command with its
+usage and flags), walked from `app.root` like completion, so it cannot fall
+behind the code. `help skill` writes a `SKILL.md` that teaches a coding
+agent to drive smith: the non-interactive flags, structured output, exit
+codes, asking before `--yes`, and to read `help reference` rather than
+guess from gh. Install it with
+`smith help skill > ~/.claude/skills/smith/SKILL.md`.
+
 ## Sources
 
 - `src/cmd/api.zig`
 - `src/cmd/browse.zig`
 - `src/cmd/completion.zig`
+- `src/cmd/help.zig`
 - `src/template.zig`, `src/template/`
 - `src/tests/tools_test.zig`
 

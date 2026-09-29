@@ -182,3 +182,11 @@ gh.
 Forgejo's `blocked` is a run from a fork waiting for someone to approve it,
 which waiting will not change, so `run watch` stops with exit 8 (pending, as
 gh reports) and says what it needs; `unknown` stops with exit 1.
+
+## Agents get a reference and a skill, not an MCP server (2026-09-29)
+
+Coding agents already have a shell, and smith already has `--json`, `--jq`
+and non-interactive flags, so an MCP server would only restate the CLI and
+drift from it. Instead `smith help reference` renders the command tree as
+Markdown and `smith help skill` prints a `SKILL.md`; both come from the
+binary, so what an agent reads always matches the smith it runs.
