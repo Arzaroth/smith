@@ -149,3 +149,20 @@ test "download keeps the token from assets on another host and refuses names tha
     try h.expectErr("refusing to write a file named \"../SHA256SUMS\"");
     try std.testing.expectError(error.FileNotFound, h.tmp.dir.access(std.testing.io, "SHA256SUMS", .{}));
 }
+
+test "a kept-alive connection goes on after a 204 without waiting for a body" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try setRoutes(&h, &.{
+        .{ .path = releases ++ "/tags/v1.0.0", .body = try releaseJson(&h), .keep_alive = true },
+        .{ .method = .DELETE, .path = releases ++ "/9/assets/2", .status = 204, .keep_alive = true },
+        .{ .method = .POST, .path = releases ++ "/9/assets", .status = 201, .body = "{}", .keep_alive = true },
+    });
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "SHA256SUMS", .data = "x" });
+    const start = std.Io.Clock.awake.now(std.testing.io);
+    try h.expectRun(0, &.{ "release", "upload", "v1.0.0", try h.path("SHA256SUMS"), "-R", "owner/repo", "--clobber" });
+    const took = start.durationTo(std.Io.Clock.awake.now(std.testing.io));
+    try std.testing.expect(took.toSeconds() < Harness.Mock.idle_seconds);
+    try std.testing.expectEqual(@as(usize, 1), h.mock.count(.POST, releases ++ "/9/assets"));
+}

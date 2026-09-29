@@ -1,5 +1,6 @@
 //! A Forgejo stand-in for tests: canned responses by method and path, served
-//! from a background task on 127.0.0.1, with every request recorded.
+//! from background tasks on 127.0.0.1, one per connection, with every
+//! request recorded.
 const Mock = @This();
 
 const std = @import("std");
@@ -21,7 +22,13 @@ pub const Route = struct {
     authorize_code: ?[]const u8 = null,
     /// How many times the route answers before it stops matching.
     times: ?u32 = null,
+    /// Keeps the connection open for the next request, as real servers do; a
+    /// client that then waits for a body the answer does not have is cut off
+    /// after `idle_seconds`, which a test can notice from the time taken.
+    keep_alive: bool = false,
 };
+
+pub const idle_seconds = 2;
 
 pub const Request = struct {
     method: std.http.Method,
@@ -43,6 +50,7 @@ port: u16,
 routes: []const Route,
 used: []u32,
 requests: std.ArrayList(Request) = .empty,
+lock: Io.Mutex = .init,
 future: ?Io.Future(void) = null,
 
 pub fn start(m: *Mock, io: Io, routes: []const Route) !void {
@@ -91,25 +99,54 @@ pub fn lastBody(m: *const Mock, method: std.http.Method, path: []const u8) ?[]co
 }
 
 fn serve(m: *Mock) void {
+    var connections: Io.Group = .init;
+    defer connections.cancel(m.io);
     while (true) {
         const stream = m.server.accept(m.io) catch return;
-        m.handle(stream) catch |e| if (e == error.Canceled) {
+        connections.concurrent(m.io, connection, .{ m, stream }) catch {
             stream.close(m.io);
             return;
         };
-        stream.close(m.io);
     }
 }
 
+fn connection(m: *Mock, stream: Io.net.Stream) Io.Cancelable!void {
+    defer stream.close(m.io);
+    m.handle(stream) catch |e| if (e == error.Canceled) return error.Canceled;
+}
+
 fn handle(m: *Mock, stream: Io.net.Stream) !void {
-    const alloc = m.arena.allocator();
     var read_buf: [64 * 1024]u8 = undefined;
     var write_buf: [64 * 1024]u8 = undefined;
     var reader = stream.reader(m.io, &read_buf);
     var writer = stream.writer(m.io, &write_buf);
     var server = std.http.Server.init(&reader.interface, &writer.interface);
+    var watchdog: ?Io.Future(void) = null;
+    defer if (watchdog) |*w| w.cancel(m.io);
+    while (true) {
+        var req = server.receiveHead() catch |e| {
+            if (watchdog != null) return;
+            return e;
+        };
+        if (watchdog) |*w| {
+            w.cancel(m.io);
+            watchdog = null;
+        }
+        if (!try m.answer(&req)) return;
+        watchdog = try m.io.concurrent(cutOff, .{ m.io, stream });
+    }
+}
 
-    var req = try server.receiveHead();
+fn cutOff(io: Io, stream: Io.net.Stream) void {
+    io.sleep(.fromSeconds(idle_seconds), .awake) catch return;
+    stream.shutdown(io, .both) catch {};
+}
+
+/// Records and answers one request; true when the connection stays open.
+fn answer(m: *Mock, req: *std.http.Server.Request) !bool {
+    try m.lock.lock(m.io);
+    defer m.lock.unlock(m.io);
+    const alloc = m.arena.allocator();
     const target = try alloc.dupe(u8, req.head.target);
     const method = req.head.method;
     var authorization: ?[]const u8 = null;
@@ -136,6 +173,12 @@ fn handle(m: *Mock, stream: Io.net.Stream) !void {
         if (route.query) |want| if (std.mem.indexOf(u8, query, want) == null) continue;
         if (route.times) |t| if (used.* >= t) continue;
         used.* += 1;
+        if (route.keep_alive and route.status == 204) {
+            req.server.reader.state = .ready;
+            try req.server.out.writeAll("HTTP/1.1 204 No Content\r\n\r\n");
+            try req.server.out.flush();
+            return true;
+        }
         const location = if (route.authorize_code) |code|
             try std.fmt.allocPrint(alloc, "{s}?code={s}&state={s}", .{ try param(alloc, query, "redirect_uri"), code, try param(alloc, query, "state") })
         else
@@ -146,12 +189,13 @@ fn handle(m: *Mock, stream: Io.net.Stream) !void {
         };
         try req.respond(route.body, .{
             .status = if (route.authorize_code != null) .found else @enumFromInt(route.status),
-            .keep_alive = false,
+            .keep_alive = route.keep_alive,
             .extra_headers = if (location != null) &with_location else with_location[0..1],
         });
-        return;
+        return route.keep_alive;
     }
     try req.respond("{\"message\":\"no mock route\"}", .{ .status = .not_found, .keep_alive = false });
+    return false;
 }
 
 fn samePath(target: []const u8, path: []const u8) bool {
