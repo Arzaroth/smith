@@ -536,8 +536,8 @@ fn markedFor(ctx: *Ctx, branch: []const u8, number: i64) !bool {
 }
 
 /// The local branch holding a pull request's head: the one smith checked out
-/// for it, or a branch of the head's name that tracks the head. Anything
-/// else of that name is someone else's branch.
+/// for it, or, for a same-repository pull request, a branch of the head's
+/// name that tracks it. Any other branch of that name belongs to someone else.
 fn localBranchFor(ctx: *Ctx, pr: types.PullRequest) !?[]const u8 {
     const marks = try git.capture(ctx, &.{ "config", "--get-regexp", "^branch\\..+\\.smith-pr$" }) orelse "";
     var lines = std.mem.tokenizeScalar(u8, marks, '\n');
@@ -547,7 +547,8 @@ fn localBranchFor(ctx: *Ctx, pr: types.PullRequest) !?[]const u8 {
         const key = line[0..space];
         return key["branch.".len .. key.len - ".smith-pr".len];
     }
-    if (std.mem.startsWith(u8, pr.head.ref, "refs/") or !try localBranchExists(ctx, pr.head.ref)) return null;
+    const same_repo = if (pr.head.repo) |hr| (if (pr.base.repo) |br| hr.id == br.id else false) else false;
+    if (!same_repo or std.mem.startsWith(u8, pr.head.ref, "refs/") or !try localBranchExists(ctx, pr.head.ref)) return null;
     const upstream = try git.capture(ctx, &.{ "rev-parse", "--abbrev-ref", "--symbolic-full-name", try std.fmt.allocPrint(ctx.alloc, "{s}@{{upstream}}", .{pr.head.ref}) }) orelse return null;
     const slash = std.mem.indexOfScalar(u8, upstream, '/') orelse return null;
     if (!std.mem.eql(u8, upstream[slash + 1 ..], pr.head.ref)) return null;
@@ -618,8 +619,9 @@ fn deleteLocalBranch(ctx: *Ctx, pr: types.PullRequest) !void {
     const branch = try localBranchFor(ctx, pr) orelse return;
     if (try git.currentBranch(ctx)) |cur| if (std.mem.eql(u8, cur, branch)) {
         const base = try git.safeName(ctx, "base branch", pr.base.ref);
-        if (!try localBranchExists(ctx, base)) return;
-        try git.run(ctx, &.{ "switch", base });
+        // git creates the base from its remote-tracking branch when it is not
+        // local yet; without either, the head branch stays.
+        if (try git.capture(ctx, &.{ "switch", base }) == null) return;
     };
     try git.run(ctx, &.{ "branch", "-D", "--", branch });
     try ctx.err.print("✓ Deleted local branch {s}\n", .{branch});
