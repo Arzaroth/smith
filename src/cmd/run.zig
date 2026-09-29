@@ -179,7 +179,7 @@ fn writeRun(ctx: *Ctx, run: types.ActionRun, js: []const types.ActionRunJob) !vo
     for (js) |j| {
         const cell = pr.outcomeCell(outcome(j.status));
         try term.paint(ctx, w, cell.color, cell.text);
-        try w.print(" {s} ", .{j.name});
+        try w.print(" {s} ", .{try term.clean(ctx.alloc, j.name, false)});
         try term.paint(ctx, w, .dim, try std.fmt.allocPrint(ctx.alloc, "(ID {d}, {s})", .{ j.id, j.status }));
         try w.writeByte('\n');
     }

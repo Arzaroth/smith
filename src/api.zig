@@ -9,6 +9,7 @@ const config = @import("config.zig");
 const Host = config.Host;
 const oauth = @import("oauth.zig");
 const template = @import("template.zig");
+const term = @import("term.zig");
 
 pub const Client = struct {
     ctx: *Ctx,
@@ -345,16 +346,23 @@ pub fn printJson(ctx: *Ctx, v: anytype) !void {
     if (ctx.template) |src| {
         const value = try json.parseFromSliceLeaky(json.Value, ctx.alloc, text, .{});
         const t = template.Template.parse(ctx.alloc, src) catch return ctx.fail("invalid --template: {s}", .{src});
-        t.render(ctx.alloc, ctx.out, value, ctx.now) catch |e| switch (e) {
+        var aw: Io.Writer.Allocating = .init(ctx.alloc);
+        t.render(ctx.alloc, &aw.writer, value, ctx.now) catch |e| switch (e) {
             error.TemplateSyntax => return ctx.fail("invalid --template: {s}", .{src}),
             else => |x| return x,
         };
-        return;
+        return writeFiltered(ctx, aw.written());
     }
     try jqFilter(ctx, text, ctx.jq.?);
 }
 
 /// Runs the system jq over `text`, like gh's --jq: strings come out raw.
+/// Output made from server text by --template or --jq, cleaned of control
+/// characters on a terminal and left byte for byte in a pipe.
+fn writeFiltered(ctx: *Ctx, text: []const u8) !void {
+    try ctx.out.writeAll(if (ctx.stdout_tty) try term.clean(ctx.alloc, text, true) else text);
+}
+
 fn jqFilter(ctx: *Ctx, text: []const u8, expr: []const u8) !void {
     try ctx.out.flush();
     var child = std.process.spawn(ctx.io, .{
@@ -366,6 +374,7 @@ fn jqFilter(ctx: *Ctx, text: []const u8, expr: []const u8) !void {
         error.FileNotFound => return ctx.fail("--jq needs jq installed (https://jqlang.org); --template works without it", .{}),
         else => return ctx.fail("cannot run jq: {t}", .{e}),
     };
+    defer child.kill(ctx.io);
     {
         var buf: [4096]u8 = undefined;
         var w = child.stdin.?.writerStreaming(ctx.io, &buf);
@@ -377,9 +386,9 @@ fn jqFilter(ctx: *Ctx, text: []const u8, expr: []const u8) !void {
     var buf: [4096]u8 = undefined;
     var r = child.stdout.?.readerStreaming(ctx.io, &buf);
     const out = try r.interface.allocRemaining(ctx.alloc, .limited(256 * 1024 * 1024));
-    const term = try child.wait(ctx.io);
-    try ctx.out.writeAll(out);
-    if (term != .exited or term.exited != 0) return ctx.fail("jq rejected the expression: {s}", .{expr});
+    const exit = try child.wait(ctx.io);
+    try writeFiltered(ctx, out);
+    if (exit != .exited or exit.exited != 0) return ctx.fail("jq rejected the expression: {s}", .{expr});
 }
 
 /// Percent-encodes a query or path component.

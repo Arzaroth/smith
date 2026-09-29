@@ -937,7 +937,7 @@ fn statusCmd(ctx: *Ctx, args: *const cli.Args) !u8 {
 fn statusLine(ctx: *Ctx, client: *api.Client, r: repo.Repo, pr: types.PullRequest, with_checks: bool) !void {
     try ctx.out.writeAll("  ");
     try term.paint(ctx, ctx.out, common.stateColor(pr.state), try std.fmt.allocPrint(ctx.alloc, "#{d}", .{pr.number}));
-    try ctx.out.print("  {s} [{s}]\n", .{ pr.title, pr.head.ref });
+    try ctx.out.print("  {s} [{s}]\n", .{ try term.clean(ctx.alloc, pr.title, false), try term.clean(ctx.alloc, pr.head.ref, false) });
     if (!with_checks) return;
     const resp = try client.raw(.GET, try r.path(ctx.alloc, "/commits/{s}/status", .{pr.head.sha}), .{});
     if (!resp.ok()) return;

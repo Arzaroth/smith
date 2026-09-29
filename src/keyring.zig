@@ -41,6 +41,7 @@ fn run(ctx: *Ctx, argv: []const []const u8, input: ?[]const u8) Result {
         .stderr = .ignore,
         .environ_map = ctx.env,
     }) catch return .{ .ok = false, .stdout = "" };
+    defer child.kill(ctx.io);
     if (input) |data| {
         var buf: [1024]u8 = undefined;
         var w = child.stdin.?.writerStreaming(ctx.io, &buf);
@@ -80,7 +81,9 @@ pub fn store(ctx: *Ctx, host: []const u8, user: ?[]const u8, kind: Kind, secret:
             return run(ctx, argv.items, secret).ok;
         },
         .security => {
-            for (secret) |c| if (c == '"' or c == '\\' or c == '\n') return false;
+            for ([_][]const u8{ host, user orelse "", secret }) |s| {
+                if (std.mem.indexOfAny(u8, s, "\"\\\n\r") != null) return false;
+            }
             const command = try std.fmt.allocPrint(ctx.alloc, "add-generic-password -U -s \"{s}\" -a \"{s}\" -w \"{s}\"\n", .{ try service(ctx, host), try account(ctx, user, kind), secret });
             return run(ctx, &.{ "security", "-i" }, command).ok;
         },

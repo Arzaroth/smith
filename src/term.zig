@@ -263,6 +263,69 @@ fn isControl(s: []const u8, i: usize, c: u8, lines: bool) bool {
     return c < 0x20 or c == 0x7f;
 }
 
+/// A writer that passes text on to `inner` the way `clean` would with
+/// `lines`, for smith's own messages on a terminal, which quote server text.
+pub const Scrubber = struct {
+    inner: *Writer,
+    held: bool = false,
+    interface: Writer,
+
+    pub fn init(inner: *Writer, buffer: []u8) Scrubber {
+        return .{ .inner = inner, .interface = .{ .vtable = &.{ .drain = drain, .flush = flush }, .buffer = buffer } };
+    }
+
+    fn put(s: *Scrubber, bytes: []const u8) Writer.Error!void {
+        for (bytes) |c| {
+            if (s.held) {
+                s.held = false;
+                if (c >= 0x80 and c <= 0x9f) {
+                    try s.inner.writeByte('?');
+                    continue;
+                }
+                try s.inner.writeByte(0xc2);
+            }
+            if (c == 0xc2) {
+                s.held = true;
+            } else try s.inner.writeByte(if (isControl(&.{c}, 0, c, true)) '?' else c);
+        }
+    }
+
+    fn drain(w: *Writer, data: []const []const u8, splat: usize) Writer.Error!usize {
+        const s: *Scrubber = @alignCast(@fieldParentPtr("interface", w));
+        try s.put(w.buffered());
+        w.end = 0;
+        var n: usize = 0;
+        for (data[0 .. data.len - 1]) |d| {
+            try s.put(d);
+            n += d.len;
+        }
+        const last = data[data.len - 1];
+        for (0..splat) |_| try s.put(last);
+        return n + last.len * splat;
+    }
+
+    fn flush(w: *Writer) Writer.Error!void {
+        const s: *Scrubber = @alignCast(@fieldParentPtr("interface", w));
+        try s.put(w.buffered());
+        w.end = 0;
+        if (s.held) {
+            s.held = false;
+            try s.inner.writeByte(0xc2);
+        }
+        try s.inner.flush();
+    }
+};
+
+test Scrubber {
+    var out: Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    var buf: [4]u8 = undefined;
+    var s: Scrubber = .init(&out.writer, &buf);
+    try s.interface.print("✓ {s}\n", .{"x\x1b]52;c;y\x07 \xc2\x9b2J é"});
+    try s.interface.flush();
+    try testing.expectEqualStrings("✓ x?]52;c;y? ?2J é\n", out.written());
+}
+
 test clean {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
@@ -303,12 +366,26 @@ pub fn size(alloc: Allocator, bytes: i64) ![]const u8 {
 
 /// Shell-style `*` and `?` matching, for asset and name patterns.
 pub fn glob(pattern: []const u8, name: []const u8) bool {
-    if (pattern.len == 0) return name.len == 0;
-    return switch (pattern[0]) {
-        '*' => glob(pattern[1..], name) or (name.len > 0 and glob(pattern, name[1..])),
-        '?' => name.len > 0 and glob(pattern[1..], name[1..]),
-        else => name.len > 0 and name[0] == pattern[0] and glob(pattern[1..], name[1..]),
-    };
+    var p: usize = 0;
+    var n: usize = 0;
+    var star: ?usize = null;
+    var mark: usize = 0;
+    while (n < name.len) {
+        if (p < pattern.len and (pattern[p] == '?' or pattern[p] == name[n])) {
+            p += 1;
+            n += 1;
+        } else if (p < pattern.len and pattern[p] == '*') {
+            star = p;
+            p += 1;
+            mark = n;
+        } else if (star) |s| {
+            p = s + 1;
+            mark += 1;
+            n = mark;
+        } else return false;
+    }
+    while (p < pattern.len and pattern[p] == '*') p += 1;
+    return p == pattern.len;
 }
 
 test size {

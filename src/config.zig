@@ -195,6 +195,7 @@ pub fn withSecrets(ctx: *Ctx, host: Host) !Host {
     if (!host.keyring or host.token != null) return host;
     var h = host;
     h.token = try keyring.lookup(ctx, h.name, h.user, .token);
+    if (h.token == null) try ctx.err.print("! no token for {s} in the system keyring; run `smith auth login --hostname {s}`\n", .{ h.name, h.name });
     if (h.refresh_token == null and h.oauth_client_id != null) h.refresh_token = try keyring.lookup(ctx, h.name, h.user, .refresh);
     return h;
 }
@@ -245,6 +246,7 @@ fn moveSecrets(ctx: *Ctx, config: Config) !Config {
             h.token = null;
             h.refresh_token = null;
         } else {
+            try keyring.remove(ctx, h.name, h.user, .token);
             h.keyring = false;
             try ctx.err.print("! the system keyring did not take the token for {s}; it is kept in hosts.zon\n", .{h.name});
         }

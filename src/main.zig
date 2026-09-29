@@ -18,12 +18,15 @@ pub fn main(init: std.process.Init) !u8 {
     http.initDefaultProxies(alloc, init.environ_map) catch {};
 
     const stdout_tty = Io.File.stdout().isTty(io) catch false;
+    var scrub_buffer: [4096]u8 = undefined;
+    var scrubber: term.Scrubber = .init(&stderr_writer.interface, &scrub_buffer);
+    const stderr_tty = Io.File.stderr().isTty(io) catch false;
     var ctx: Ctx = .{
         .alloc = alloc,
         .io = io,
         .env = init.environ_map,
         .out = &stdout_writer.interface,
-        .err = &stderr_writer.interface,
+        .err = if (stderr_tty) &scrubber.interface else &stderr_writer.interface,
         .stdout_tty = stdout_tty,
         .stdin_tty = Io.File.stdin().isTty(io) catch false,
         .color = term.useColor(init.environ_map, stdout_tty),
