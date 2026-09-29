@@ -13,7 +13,7 @@ pub const ssh_command: cli.Command = .{
     .name = "ssh-key",
     .summary = "Manage the SSH keys of your account.",
     .subs = &.{
-        .{ .name = "list", .summary = "List your SSH keys.", .flags = &.{ cli.json_flag, hostname_flag }, .run = sshList },
+        .{ .name = "list", .pages = true, .summary = "List your SSH keys.", .flags = &.{ cli.json_flag, hostname_flag }, .run = sshList },
         .{
             .name = "add",
             .summary = "Add an SSH public key (a file, or standard input).",
@@ -30,7 +30,7 @@ pub const gpg_command: cli.Command = .{
     .name = "gpg-key",
     .summary = "Manage the GPG keys of your account.",
     .subs = &.{
-        .{ .name = "list", .summary = "List your GPG keys.", .flags = &.{ cli.json_flag, hostname_flag }, .run = gpgList },
+        .{ .name = "list", .pages = true, .summary = "List your GPG keys.", .flags = &.{ cli.json_flag, hostname_flag }, .run = gpgList },
         .{ .name = "add", .summary = "Add an armored GPG public key (a file, or standard input).", .usage = "[<key-file>]", .max_args = 1, .flags = &.{hostname_flag}, .run = gpgAdd },
         .{ .name = "delete", .summary = "Delete a GPG key.", .usage = "<id>", .min_args = 1, .max_args = 1, .flags = &.{ cli.yes_flag, hostname_flag }, .run = gpgDelete },
     },
@@ -40,7 +40,7 @@ pub const org_command: cli.Command = .{
     .name = "org",
     .summary = "List organizations.",
     .subs = &.{
-        .{ .name = "list", .summary = "List your organizations, or a user's.", .usage = "[<user>]", .max_args = 1, .flags = &.{ cli.limit_flag, cli.json_flag, hostname_flag }, .run = orgList },
+        .{ .name = "list", .pages = true, .summary = "List your organizations, or a user's.", .usage = "[<user>]", .max_args = 1, .flags = &.{ cli.limit_flag, cli.json_flag, hostname_flag }, .run = orgList },
     },
 };
 

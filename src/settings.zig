@@ -129,12 +129,54 @@ pub fn parseAliasFile(alloc: Allocator, text: []const u8) ![]const Alias {
         if (line.len == 0 or line[0] == '#') continue;
         if (line[0] == ' ' or line[0] == '\t') return error.InvalidAliasFile;
         const colon = keyEnd(line) orelse return error.InvalidAliasFile;
+        const value = std.mem.trim(u8, line[colon + 1 ..], " \t");
         try out.append(alloc, .{
             .name = try scalar(alloc, std.mem.trim(u8, line[0..colon], " \t")),
-            .expansion = try scalar(alloc, std.mem.trim(u8, line[colon + 1 ..], " \t")),
+            .expansion = if (isBlockHeader(value)) try block(alloc, &lines, value) else try scalar(alloc, value),
         });
     }
     return out.toOwnedSlice(alloc);
+}
+
+fn isBlockHeader(v: []const u8) bool {
+    for ([_][]const u8{ "|", "|-", "|+", ">", ">-", ">+" }) |h| if (std.mem.eql(u8, v, h)) return true;
+    return false;
+}
+
+/// A `|` (lines kept) or `>` (lines joined) block scalar: the indented lines
+/// after its header. `-` drops the final newline, `+` keeps trailing ones.
+fn block(alloc: Allocator, lines: *std.mem.SplitIterator(u8, .scalar), header: []const u8) ![]const u8 {
+    var body: std.ArrayList(u8) = .empty;
+    var indent: ?usize = null;
+    var trailing: usize = 0;
+    while (lines.peek()) |raw| {
+        const line = std.mem.trimEnd(u8, raw, " \t\r");
+        if (line.len == 0) {
+            _ = lines.next();
+            trailing += 1;
+            continue;
+        }
+        const here = line.len - std.mem.trimStart(u8, line, " ").len;
+        if (here == 0) break;
+        const want = indent orelse here;
+        if (here < want) return error.InvalidAliasFile;
+        indent = want;
+        _ = lines.next();
+        if (body.items.len > 0) {
+            if (header[0] == '>' and trailing == 0) {
+                try body.append(alloc, ' ');
+            } else try body.appendNTimes(alloc, '\n', trailing + 1);
+        }
+        trailing = 0;
+        try body.appendSlice(alloc, line[want..]);
+    }
+    if (body.items.len == 0) return error.InvalidAliasFile;
+    switch (if (header.len > 1) header[1] else ' ') {
+        '-' => {},
+        '+' => try body.appendNTimes(alloc, '\n', trailing + 1),
+        else => try body.append(alloc, '\n'),
+    }
+    return body.toOwnedSlice(alloc);
 }
 
 fn keyEnd(line: []const u8) ?usize {
@@ -271,6 +313,20 @@ test parseAliasFile {
     try testing.expectEqualStrings("issue list --label 'bug'", got[1].expansion);
     try testing.expectEqualStrings("say hi", got[2].name);
     try testing.expectEqualStrings("pr view", got[3].expansion);
+    const gh_example = try parseAliasFile(a,
+        \\bugs: issue list --label=bugs
+        \\igrep: '!gh issue list --label="$1" | grep "$2"'
+        \\features: |-
+        \\    issue list
+        \\    --label=enhancement
+        \\folded: >
+        \\  pr list
+        \\  --draft
+        \\
+    );
+    try testing.expectEqualStrings("!gh issue list --label=\"$1\" | grep \"$2\"", gh_example[1].expansion);
+    try testing.expectEqualStrings("issue list\n--label=enhancement", gh_example[2].expansion);
+    try testing.expectEqualStrings("pr list --draft\n", gh_example[3].expansion);
     try testing.expectError(error.InvalidAliasFile, parseAliasFile(a, "co:\n  nested: x\n"));
     try testing.expectError(error.InvalidAliasFile, parseAliasFile(a, "just words\n"));
 }

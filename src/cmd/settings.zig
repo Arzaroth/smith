@@ -87,13 +87,13 @@ fn hostIndexes(ctx: *Ctx, cfg: config.Config, name: []const u8) ![]const usize {
 }
 
 fn get(ctx: *Ctx, args: *const cli.Args) !u8 {
-    const key = try findKey(ctx, args.arg(0).?, args.get("host") != null);
-    if (args.get("host")) |name| {
+    const key = try findKey(ctx, args.arg(0).?, false);
+    if (args.get("host")) |name| if (std.mem.eql(u8, key.name, "git_protocol")) {
         const cfg = try config.load(ctx);
         const i = (try hostIndexes(ctx, cfg, name))[0];
         try ctx.out.print("{t}\n", .{cfg.hosts[i].git_protocol});
         return 0;
-    }
+    };
     try ctx.out.print("{s}\n", .{value(try settings.load(ctx), key.name) orelse key.default});
     return 0;
 }

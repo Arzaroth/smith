@@ -323,6 +323,7 @@ test "gh's string and list helpers" {
     try expectRender("{{pluck \"name\" .labels}}", data, "[\"bug\",\"ui\",null]");
     try expectRender("{{truncate 8 .title}}|{{.title | truncate 20}}|{{truncate 7 .s}}|{{truncate 3 .s}}|{{truncate 5 .missing}}|", data, "Crash...|Crash on start|héll...|hél||");
     try expectRender("{{truncate 2 7}}", "{}", "7");
+    try expectRender("{{truncate 4 .title}}|{{truncate 5 .title}}", data, "Cras|Cr...");
     try expectFail("{{truncate \"x\" .title}}", data, "template: 1:3: error calling truncate: length must be an integer, not string");
     try expectFail("{{truncate 20}}", data, "template: 1:3: wrong number of args for truncate: want 2 got 1");
     try expectFail("{{pluck \"x\" .title}}", data, "template: 1:3: error calling pluck: expected a list, got string");
@@ -339,13 +340,13 @@ test "timefmt" {
     try expectFail("{{timefmt \"2006\" \"yesterday\"}}", data, "template: 1:3: error calling timefmt: cannot parse \"yesterday\" as an RFC 3339 time");
 }
 
-test "color, autocolor and hyperlink follow the output" {
+test "color always colours, autocolor only with colour on, hyperlink only on a terminal" {
     const on: Options = .{ .color = true, .tty = true };
     try expectRenderOpts("{{color \"green\" \"ok\"}}|{{autocolor \"red+b\" .n}}|{{color \"blue+u:white\" \"x\"}}|{{color \"white+h\" \"y\"}}|{{color \"208\" \"z\"}}", "{\"n\":7}", on, "\x1b[32mok\x1b[0m|\x1b[1;31m7\x1b[0m|\x1b[4;34;47mx\x1b[0m|\x1b[97my\x1b[0m|\x1b[38;5;208mz\x1b[0m");
-    try expectRenderOpts("{{color \"green\" \"ok\"}}|{{autocolor \"red+b\" .n}}", "{\"n\":7}", .{}, "ok|7");
+    try expectRenderOpts("{{color \"green\" \"ok\"}}|{{autocolor \"red+b\" .n}}", "{\"n\":7}", .{}, "\x1b[32mok\x1b[0m|7");
     try expectRenderOpts("{{hyperlink .url .title}}|{{hyperlink .url \"\"}}", "{\"url\":\"http://x/1\",\"title\":\"T\"}", on, "\x1b]8;;http://x/1\x1b\\T\x1b]8;;\x1b\\|\x1b]8;;http://x/1\x1b\\http://x/1\x1b]8;;\x1b\\");
     try expectRenderOpts("{{hyperlink .url .title}}", "{\"url\":\"http://x/1\",\"title\":\"T\"}", .{}, "T");
-    try expectFail("{{color \"mauve\" \"x\"}}", "{}", "template: 1:3: error calling color: unknown style \"mauve\"");
+    try expectRenderOpts("{{color \"mauve\" \"x\"}}", "{}", on, "x");
 }
 
 test "tablerow and tablerender" {

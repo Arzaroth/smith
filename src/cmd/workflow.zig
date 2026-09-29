@@ -12,6 +12,7 @@ pub const command: cli.Command = .{
     .subs = &.{
         .{
             .name = "list",
+            .pages = true,
             .summary = "List the workflow files on the default branch.",
             .flags = &.{ cli.json_flag, cli.repo_flag },
             .run = list,

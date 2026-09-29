@@ -8,8 +8,8 @@ const Ctx = @import("../Ctx.zig");
 
 pub const command: cli.Command = .{
     .name = "help",
-    .summary = "Show help for a command; `help reference` prints every command and flag as Markdown, `help skill` a SKILL.md for coding agents.",
-    .usage = "[<command>... | reference | skill]",
+    .summary = "Show help for a command, or a topic: reference (every command and flag as Markdown), skill (a SKILL.md for coding agents), environment, exit-codes, formatting.",
+    .usage = "[<command>... | reference | skill | environment | exit-codes | formatting]",
     .max_args = 8,
     .run = run,
 };
@@ -37,15 +37,41 @@ const exit_codes = [_][2][]const u8{
     .{ "8", "Checks or a run still pending, or a run waiting for approval" },
 };
 
+const formatting =
+    \\Commands that show API objects take:
+    \\
+    \\  --json               the objects as Forgejo sent them (no field list, unlike gh)
+    \\  -q, --jq EXPR        filter them with jq (SMITH_JQ names the program)
+    \\  -t, --template TMPL  format them with a Go text/template
+    \\
+    \\Templates: pipelines (`|`), parentheses, variables (`$x := ...`), `if`,
+    \\`with`, `range` (with `else`, `break`, `continue`), comments and `{{-`/`-}}`.
+    \\
+    \\Go functions: and, or, not, eq, ne, lt, le, gt, ge, len, index, slice,
+    \\print, println, printf.
+    \\
+    \\gh functions: autocolor STYLE TEXT, color STYLE TEXT, contains SUB TEXT,
+    \\hasPrefix, hasSuffix, hyperlink URL TEXT, join SEP LIST, pluck FIELD LIST,
+    \\tablerow FIELDS..., tablerender, timeago TIME, timefmt LAYOUT TIME,
+    \\truncate LENGTH TEXT. Not available: regexMatch, html, js, urlquery,
+    \\define, template, block.
+    \\
+    \\    smith pr list -t '{{range .}}{{tablerow (printf "#%v" .number | autocolor "green") .title}}{{end}}'
+    \\
+;
+
 const conventions =
     \\- **Repository**: inside a clone smith works out the host and `owner/repo`
     \\  from the git remotes; anywhere, `-R [HOST/]OWNER/REPO` names one.
     \\  Commands without a repository take `--hostname`.
-    \\- **Structured output**: commands that show API objects take `--json`
-    \\  (the objects as Forgejo sent them), `-q/--jq EXPR` and
-    \\  `-t/--template TEMPLATE` (Go text/template with gh's helpers). Piped,
-    \\  tables are tab-separated with plain numbers, whole text, raw
-    \\  timestamps and a state column.
+    \\- **Structured output**: commands that show API objects take `--json`,
+    \\  `-q/--jq EXPR` and `-t/--template TEMPLATE`. Unlike gh, `--json`
+    \\  takes no field list and prints the objects as Forgejo sent them, with
+    \\  Forgejo's field names (`.user.login`, `.head.ref`, `.html_url`; `.url`
+    \\  is the API URL): look at one object before filtering. Templates are Go
+    \\  text/template with gh's helpers, less `regexMatch`, `html`,
+    \\  `urlquery` and `define`. Piped, tables are tab-separated with plain
+    \\  numbers, whole text, raw timestamps and a state column.
     \\- **No prompts off a terminal**: pass what a prompt would ask for.
     \\  Creation needs `--title` and `--body` (or `--body-file -`, or
     \\  `pr create --fill`); deletion needs `--yes`; secrets and tokens are read from
@@ -67,6 +93,18 @@ fn run(ctx: *Ctx, args: *const cli.Args) !u8 {
     }
     if (words.len == 1 and std.mem.eql(u8, words[0], "skill")) {
         try skill(ctx.out);
+        return 0;
+    }
+    if (words.len == 1 and std.mem.eql(u8, words[0], "environment")) {
+        for (environment) |e| try ctx.out.print("{s}\n    {s}\n", .{ e[0], e[1] });
+        return 0;
+    }
+    if (words.len == 1 and std.mem.eql(u8, words[0], "exit-codes")) {
+        for (exit_codes) |e| try ctx.out.print("{s}  {s}\n", .{ e[0], e[1] });
+        return 0;
+    }
+    if (words.len == 1 and std.mem.eql(u8, words[0], "formatting")) {
+        try ctx.out.writeAll(formatting);
         return 0;
     }
     const r = try cli.resolve(ctx.alloc, root, words);

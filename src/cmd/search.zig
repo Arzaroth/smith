@@ -16,9 +16,9 @@ pub const command: cli.Command = .{
     .name = "search",
     .summary = "Search repositories, issues and pull requests across a host.",
     .subs = &.{
-        .{ .name = "repos", .summary = "Search repositories.", .usage = "<query>...", .min_args = 1, .max_args = 64, .flags = &.{ owner_flag, .{ .long = "archived", .help = "Include archived repositories" }, cli.limit_flag, cli.json_flag, hostname_flag }, .run = repos },
-        .{ .name = "issues", .summary = "Search issues.", .usage = "<query>...", .min_args = 1, .max_args = 64, .flags = &.{ state_flag, owner_flag, cli.limit_flag, cli.json_flag, hostname_flag }, .run = issues },
-        .{ .name = "prs", .summary = "Search pull requests.", .usage = "<query>...", .min_args = 1, .max_args = 64, .flags = &.{ state_flag, owner_flag, cli.limit_flag, cli.json_flag, hostname_flag }, .run = prs },
+        .{ .name = "repos", .pages = true, .summary = "Search repositories.", .usage = "<query>...", .min_args = 1, .max_args = 64, .flags = &.{ owner_flag, .{ .long = "archived", .help = "Include archived repositories" }, cli.limit_flag, cli.json_flag, hostname_flag }, .run = repos },
+        .{ .name = "issues", .pages = true, .summary = "Search issues.", .usage = "<query>...", .min_args = 1, .max_args = 64, .flags = &.{ state_flag, owner_flag, cli.limit_flag, cli.json_flag, hostname_flag }, .run = issues },
+        .{ .name = "prs", .pages = true, .summary = "Search pull requests.", .usage = "<query>...", .min_args = 1, .max_args = 64, .flags = &.{ state_flag, owner_flag, cli.limit_flag, cli.json_flag, hostname_flag }, .run = prs },
     },
 };
 

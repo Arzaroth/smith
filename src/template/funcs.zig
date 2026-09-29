@@ -158,14 +158,14 @@ pub fn call(e: *Exec, id: Id, pos: usize, args: []const Arg, dot: Value, piped: 
             const s = try text(e, v[1]);
             const limit: usize = @intCast(@max(max, 0));
             if ((std.unicode.utf8CountCodepoints(s) catch s.len) <= limit) return .{ .string = s };
-            if (limit < 4) return .{ .string = format.prefix(s, limit) };
+            if (limit < 5) return .{ .string = format.prefix(s, limit) };
             return .{ .string = try std.fmt.allocPrint(e.alloc, "{s}...", .{format.prefix(s, limit - 3)}) };
         },
         .color, .autocolor => {
             const spec = try text(e, v[0]);
             const s = try text(e, v[1]);
-            const code = try format.style(e.alloc, spec) orelse return c.fail("unknown style \"{s}\"", .{spec});
-            if (!e.opts.color or code.len == 0) return .{ .string = s };
+            const code = try format.style(e.alloc, spec) orelse "";
+            if (code.len == 0 or (!e.opts.color and id == .autocolor)) return .{ .string = s };
             return .{ .string = try std.fmt.allocPrint(e.alloc, "{s}{s}\x1b[0m", .{ code, s }) };
         },
         .hyperlink => {

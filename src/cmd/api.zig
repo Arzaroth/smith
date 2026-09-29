@@ -86,6 +86,10 @@ fn run(ctx: *Ctx, args: *const cli.Args) !u8 {
     }
 
     const resp = try client.raw(method, endpoint, .{ .body = body, .extra_headers = headers.items });
+    if (!resp.ok()) {
+        ctx.jq = null;
+        ctx.template = null;
+    }
     try writeBody(ctx, resp.body);
     if (!resp.ok()) {
         try ctx.err.print("smith: HTTP {d}\n", .{resp.status});

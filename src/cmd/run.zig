@@ -53,7 +53,7 @@ pub const command: cli.Command = .{
         },
         .{
             .name = "watch",
-            .summary = "Follow a run until it finishes; without an id, the latest run of the current branch.",
+            .summary = "Follow a run until it finishes; without an id, the latest run of the current branch. Stops with exit 8 on a run waiting for approval, 1 on an unknown status.",
             .usage = id_usage,
             .max_args = 1,
             .flags = &.{ interval_flag, exit_status_flag, cli.repo_flag },

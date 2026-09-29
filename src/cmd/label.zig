@@ -13,7 +13,7 @@ pub const command: cli.Command = .{
     .name = "label",
     .summary = "Manage labels.",
     .subs = &.{
-        .{ .name = "list", .summary = "List a repository's labels.", .flags = &.{ cli.json_flag, cli.repo_flag }, .run = list },
+        .{ .name = "list", .pages = true, .summary = "List a repository's labels.", .flags = &.{ cli.json_flag, cli.repo_flag }, .run = list },
         .{
             .name = "create",
             .summary = "Create a label.",

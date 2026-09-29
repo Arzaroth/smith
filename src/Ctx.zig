@@ -73,8 +73,12 @@ pub fn interactive(ctx: *const Ctx) bool {
 /// without a pager, or when it cannot start.
 pub fn startPager(ctx: *Ctx) !void {
     if (!ctx.stdout_tty or ctx.paged != null) return;
-    const program = ctx.getenv("SMITH_PAGER") orelse ctx.pager orelse ctx.getenv("PAGER") orelse return;
-    if (std.mem.eql(u8, program, "cat")) return;
+    const program = if (ctx.env.get("SMITH_PAGER")) |p| p else ctx.pager orelse ctx.getenv("PAGER") orelse return;
+    if (program.len == 0 or std.mem.eql(u8, program, "cat")) return;
+    if (!ctx.onPath(program)) {
+        try ctx.err.print("! the pager `{s}` was not found; printing directly\n", .{program});
+        return;
+    }
     var env = try ctx.env.clone(ctx.alloc);
     if (env.get("LESS") == null) try env.put("LESS", "FRX");
     if (env.get("LV") == null) try env.put("LV", "-c");
@@ -88,6 +92,24 @@ pub fn startPager(ctx: *Ctx) !void {
     writer.* = child.stdin.?.writerStreaming(ctx.io, try ctx.alloc.alloc(u8, 16 * 1024));
     ctx.paged = .{ .program = program, .child = child, .writer = writer, .out = ctx.out };
     ctx.out = &writer.interface;
+}
+
+/// Whether the first word of a shell command names a program that exists.
+fn onPath(ctx: *const Ctx, command: []const u8) bool {
+    var words = std.mem.tokenizeAny(u8, command, " \t");
+    const program = words.next() orelse return false;
+    if (std.mem.indexOfScalar(u8, program, '/') != null) {
+        Io.Dir.cwd().access(ctx.io, program, .{}) catch return false;
+        return true;
+    }
+    var dirs = std.mem.tokenizeScalar(u8, ctx.getenv("PATH") orelse return false, ':');
+    while (dirs.next()) |dir| {
+        var buf: [std.fs.max_path_bytes]u8 = undefined;
+        const path = std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, program }) catch continue;
+        Io.Dir.cwd().access(ctx.io, path, .{}) catch continue;
+        return true;
+    }
+    return false;
 }
 
 /// Ends paging: the pager gets end of input and smith waits for it to exit.
@@ -118,20 +140,26 @@ pub fn readStdin(ctx: *Ctx) ![]const u8 {
 
 /// Asks a question on stderr and reads one line from stdin.
 pub fn prompt(ctx: *Ctx, label: []const u8) ![]const u8 {
+    return try ctx.promptOrEnd(label) orelse "";
+}
+
+/// Like `prompt`, but null when input ended (Ctrl-D) instead of an answer.
+pub fn promptOrEnd(ctx: *Ctx, label: []const u8) !?[]const u8 {
     try ctx.err.print("? {s} ", .{label});
     try ctx.err.flush();
     try ctx.out.flush();
     if (ctx.stdin_data) |data| {
+        if (data.len == 0) return null;
         const end = std.mem.indexOfScalar(u8, data, '\n') orelse data.len;
         ctx.stdin_data = data[@min(end + 1, data.len)..];
         return std.mem.trim(u8, data[0..end], " \r\t");
     }
     const r = &(try ctx.stdinReader()).interface;
     const line = r.takeDelimiterInclusive('\n') catch |e| switch (e) {
-        error.EndOfStream => r.buffered(),
+        error.EndOfStream => if (r.buffered().len == 0) return null else r.buffered(),
         else => return e,
     };
-    return ctx.alloc.dupe(u8, std.mem.trim(u8, line, " \r\n\t"));
+    return try ctx.alloc.dupe(u8, std.mem.trim(u8, line, " \r\n\t"));
 }
 
 /// One reader for the whole invocation, so input buffered past one prompt's

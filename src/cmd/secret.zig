@@ -19,7 +19,7 @@ pub const secret_command: cli.Command = .{
     .name = "secret",
     .summary = "Manage Forgejo Actions secrets.",
     .subs = &.{
-        .{ .name = "list", .summary = "List secrets (their names; values cannot be read back).", .flags = &(scope_flags ++ [_]cli.Flag{cli.json_flag}), .run = secretList },
+        .{ .name = "list", .pages = true, .summary = "List secrets (their names; values cannot be read back).", .flags = &(scope_flags ++ [_]cli.Flag{cli.json_flag}), .run = secretList },
         .{ .name = "set", .summary = "Create or replace a secret.", .usage = "<name>", .min_args = 1, .max_args = 1, .flags = &(scope_flags ++ [_]cli.Flag{body_flag}), .run = secretSet },
         .{ .name = "delete", .summary = "Delete a secret.", .usage = "<name>", .min_args = 1, .max_args = 1, .flags = &scope_flags, .run = secretDelete },
     },
@@ -29,7 +29,7 @@ pub const variable_command: cli.Command = .{
     .name = "variable",
     .summary = "Manage Forgejo Actions variables.",
     .subs = &.{
-        .{ .name = "list", .summary = "List variables and their values.", .flags = &(scope_flags ++ [_]cli.Flag{cli.json_flag}), .run = variableList },
+        .{ .name = "list", .pages = true, .summary = "List variables and their values.", .flags = &(scope_flags ++ [_]cli.Flag{cli.json_flag}), .run = variableList },
         .{ .name = "get", .summary = "Print a variable's value.", .usage = "<name>", .min_args = 1, .max_args = 1, .flags = &scope_flags, .run = variableGet },
         .{ .name = "set", .summary = "Create or update a variable.", .usage = "<name>", .min_args = 1, .max_args = 1, .flags = &(scope_flags ++ [_]cli.Flag{body_flag}), .run = variableSet },
         .{ .name = "delete", .summary = "Delete a variable.", .usage = "<name>", .min_args = 1, .max_args = 1, .flags = &scope_flags, .run = variableDelete },
@@ -64,7 +64,7 @@ fn scope(ctx: *Ctx, args: *const cli.Args) !Scope {
 /// The value from `--body`, stdin, or a prompt without echo on a terminal.
 fn value(ctx: *Ctx, args: *const cli.Args, name: []const u8, secret: bool) ![]const u8 {
     if (args.get("body")) |b| return b;
-    if (ctx.stdin_tty) {
+    if (ctx.stdin_tty and ctx.prompts) {
         const label = try std.fmt.allocPrint(ctx.alloc, "Value for {s}:", .{name});
         return if (secret) ctx.promptSecret(label) else ctx.prompt(label);
     }

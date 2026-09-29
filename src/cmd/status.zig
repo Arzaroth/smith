@@ -7,6 +7,7 @@ const search = @import("search.zig");
 
 pub const command: cli.Command = .{
     .name = "status",
+    .pages = true,
     .summary = "What needs you across a host: assigned issues and pull requests, review requests, mentions.",
     .flags = &.{
         .{ .long = "hostname", .value = "string", .help = "The Forgejo host (default: the default host)" },

@@ -50,7 +50,7 @@ pub fn submitOrCancel(ctx: *Ctx, args: *const cli.Args, name: []const u8, body: 
     if (!ctx.interactive() or args.has("fill")) return true;
     if (args.get("title") != null and (args.get("body") != null or args.get("body-file") != null)) return true;
     while (true) {
-        const answer = try ctx.prompt("What's next? [S]ubmit, [e]dit the body, [c]ancel:");
+        const answer = try ctx.promptOrEnd("What's next? [S]ubmit, [e]dit the body, [c]ancel:") orelse "c";
         switch (if (answer.len == 0) 's' else std.ascii.toLower(answer[0])) {
             's' => return true,
             'e' => body.* = std.mem.trim(u8, try ctx.editText(name, body.*), " \r\n\t"),
