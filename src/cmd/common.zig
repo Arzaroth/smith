@@ -180,3 +180,14 @@ pub fn query(ctx: *Ctx, base: []const u8, params: []const [2]?[]const u8) ![]con
     }
     return out.toOwnedSlice(ctx.alloc);
 }
+
+pub const milestone_flag: cli.Flag = .{ .long = "milestone", .short = 'm', .value = "title", .help = "Milestone, by title or id" };
+
+/// A milestone's id from its title or id.
+pub fn milestoneId(ctx: *Ctx, client: *api.Client, r: repo.Repo, name: ?[]const u8) !?i64 {
+    const n = name orelse return null;
+    const resp = try client.raw(.GET, try r.path(ctx.alloc, "/milestones/{s}", .{try api.escape(ctx.alloc, n)}), .{});
+    if (resp.status == 404) return ctx.fail("no milestone \"{s}\" in {s}/{s}", .{ n, r.owner, r.name });
+    if (!resp.ok()) return client.failStatus(.GET, "/milestones", resp);
+    return (try api.decode(types.Milestone, ctx, try client.parseValue(resp.body))).id;
+}

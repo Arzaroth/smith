@@ -22,6 +22,7 @@ pub const command: cli.Command = .{
                 .{ .long = "assignee", .short = 'a', .value = "login", .help = "Filter by assignee" },
                 .{ .long = "author", .short = 'A', .value = "login", .help = "Filter by author" },
                 .{ .long = "mention", .value = "login", .help = "Filter by mention" },
+                common.milestone_flag,
                 .{ .long = "search", .short = 'S', .value = "query", .help = "Search the title and body" },
                 cli.limit_flag,
                 cli.json_flag,
@@ -48,6 +49,7 @@ pub const command: cli.Command = .{
                 common.body_file_flag,
                 .{ .long = "label", .short = 'l', .value = "name", .help = "Add labels by name" },
                 .{ .long = "assignee", .short = 'a', .value = "login", .help = "Assign people by login" },
+                common.milestone_flag,
                 cli.web_flag,
                 cli.repo_flag,
             },
@@ -86,7 +88,7 @@ pub const command: cli.Command = .{
             .usage = number_usage,
             .min_args = 1,
             .max_args = 1,
-            .flags = &(common.edit_flags ++ [_]cli.Flag{cli.repo_flag}),
+            .flags = &(common.edit_flags ++ [_]cli.Flag{ common.milestone_flag, cli.repo_flag }),
             .run = edit,
         },
     },
@@ -108,6 +110,7 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
         .{ "created_by", args.get("author") },
         .{ "assigned_by", args.get("assignee") },
         .{ "mentioned_by", args.get("mention") },
+        .{ "milestones", args.get("milestone") },
     });
     var client = try r.client(ctx);
     const values = try client.listValues(path, try args.int("limit", 30), null);
@@ -194,6 +197,7 @@ fn create(ctx: *Ctx, args: *const cli.Args) !u8 {
         .body = body,
         .labels = labels,
         .assignees = assignees,
+        .milestone = try common.milestoneId(ctx, &client, r, args.get("milestone")),
     });
     const i = try api.decode(types.Issue, ctx, v);
     try ctx.out.print("{s}\n", .{i.html_url});
@@ -238,9 +242,9 @@ fn edit(ctx: *Ctx, args: *const cli.Args) !u8 {
     const n = try common.number(ctx, args.arg(0).?);
     var client = try r.client(ctx);
     const i = try api.decode(types.Issue, ctx, try client.getValue(try r.path(ctx.alloc, "/issues/{d}", .{n})));
-    const Patch = struct { title: ?[]const u8 = null, body: ?[]const u8 = null };
-    const patch: Patch = .{ .title = args.get("title"), .body = try common.bodyFromFlags(ctx, args) };
-    if (patch.title != null or patch.body != null)
+    const Patch = struct { title: ?[]const u8 = null, body: ?[]const u8 = null, milestone: ?i64 = null };
+    const patch: Patch = .{ .title = args.get("title"), .body = try common.bodyFromFlags(ctx, args), .milestone = try common.milestoneId(ctx, &client, r, args.get("milestone")) };
+    if (patch.title != null or patch.body != null or patch.milestone != null)
         try client.sendNoContent(.PATCH, try r.path(ctx.alloc, "/issues/{d}", .{n}), patch);
     try common.editLabelsAndAssignees(ctx, &client, r, args, n, i.assignees);
     try ctx.out.print("{s}\n", .{i.html_url});

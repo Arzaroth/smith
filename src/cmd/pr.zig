@@ -64,6 +64,7 @@ pub const command: cli.Command = .{
                 .{ .long = "fill", .short = 'f', .help = "Take the title and body from the commits" },
                 .{ .long = "label", .short = 'l', .value = "name", .help = "Add labels by name" },
                 .{ .long = "assignee", .short = 'a', .value = "login", .help = "Assign people by login" },
+                common.milestone_flag,
                 .{ .long = "reviewer", .short = 'r', .value = "login", .help = "Request reviews by login" },
                 cli.web_flag,
                 cli.repo_flag,
@@ -461,6 +462,7 @@ fn create(ctx: *Ctx, args: *const cli.Args) !u8 {
         .body = body,
         .labels = labels,
         .assignees = try args.all(ctx.alloc, "assignee"),
+        .milestone = try common.milestoneId(ctx, &client, r, args.get("milestone")),
     });
     const pr = try api.decode(types.PullRequest, ctx, v);
     const reviewers = try args.all(ctx.alloc, "reviewer");

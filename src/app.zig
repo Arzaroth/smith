@@ -18,6 +18,8 @@ pub const root: cli.Command = .{
         @import("cmd/pr.zig").command,
         @import("cmd/run.zig").command,
         @import("cmd/release.zig").command,
+        @import("cmd/label.zig").command,
+        @import("cmd/milestone.zig").command,
         @import("cmd/api.zig").command,
         @import("cmd/browse.zig").command,
         @import("cmd/completion.zig").command,

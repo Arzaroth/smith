@@ -10,6 +10,8 @@ pub const Label = struct {
     id: i64,
     name: []const u8,
     color: ?[]const u8 = null,
+    description: ?[]const u8 = null,
+    exclusive: bool = false,
 };
 
 pub const Repository = struct {
@@ -152,4 +154,14 @@ pub const Release = struct {
     published_at: ?[]const u8 = null,
     author: ?User = null,
     assets: ?[]const Attachment = null,
+};
+
+pub const Milestone = struct {
+    id: i64,
+    title: []const u8,
+    description: ?[]const u8 = null,
+    state: []const u8 = "open",
+    open_issues: i64 = 0,
+    closed_issues: i64 = 0,
+    due_on: ?[]const u8 = null,
 };
