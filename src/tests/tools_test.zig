@@ -117,7 +117,8 @@ test "completion covers every command and flag" {
     try h.init(&.{}, .{});
     defer h.deinit();
     try h.expectRun(0, &.{ "completion", "bash" });
-    try h.expectOut("_smith_subs[\"smith pr\"]=\"list view diff create checkout merge close reopen comment ready edit checks\"");
+    try h.expectOut("_smith_subs[\"smith pr\"]=\"list view diff create checkout merge");
+    try h.expectOut(" review update status checks\"");
     try h.expectOut("_smith_flags[\"smith pr merge\"]=\"--merge -m --squash -s");
     try h.expectRun(0, &.{ "completion", "fish" });
     try h.expectOut("complete -c smith -n 'test \"(__smith_path)\" = \"run\"' -a watch");

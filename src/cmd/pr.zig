@@ -24,6 +24,7 @@ pub const command: cli.Command = .{
                 .{ .long = "author", .short = 'A', .value = "login", .help = "Filter by author" },
                 .{ .long = "label", .short = 'l', .value = "name", .help = "Filter by labels" },
                 .{ .long = "base", .short = 'B', .value = "branch", .help = "Filter by base branch" },
+                .{ .long = "head", .short = 'H', .value = "branch", .help = "Filter by head branch (OWNER:BRANCH for a fork)" },
                 cli.limit_flag,
                 cli.json_flag,
                 cli.web_flag,
@@ -153,6 +154,35 @@ pub const command: cli.Command = .{
             .run = edit,
         },
         .{
+            .name = "review",
+            .summary = "Approve, request changes on, or comment on a pull request.",
+            .usage = selector_usage,
+            .max_args = 1,
+            .flags = &.{
+                .{ .long = "approve", .short = 'a', .help = "Approve the pull request" },
+                .{ .long = "request-changes", .short = 'r', .help = "Request changes" },
+                .{ .long = "comment", .short = 'c', .help = "Leave a review comment" },
+                common.body_flag,
+                common.body_file_flag,
+                cli.repo_flag,
+            },
+            .run = review,
+        },
+        .{
+            .name = "update",
+            .summary = "Bring a pull request's branch up to date with its base.",
+            .usage = selector_usage,
+            .max_args = 1,
+            .flags = &.{ .{ .long = "rebase", .help = "Rebase instead of merging the base in" }, cli.repo_flag },
+            .run = update,
+        },
+        .{
+            .name = "status",
+            .summary = "Show your pull requests in this repository: the current branch's, yours, and those waiting for your review.",
+            .flags = &.{ cli.json_flag, cli.repo_flag },
+            .run = statusCmd,
+        },
+        .{
             .name = "checks",
             .summary = "Show the CI status of a pull request's head commit.",
             .usage = selector_usage,
@@ -249,13 +279,16 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
     }
     const limit = try args.int("limit", 30);
     const want_merged = std.mem.eql(u8, state, "merged");
-    const fetched = try client.listValues(path, if (want_merged) limit *| 4 else limit, null);
+    const head = args.get("head");
+    const filtered = want_merged or head != null;
+    const fetched = try client.listValues(path, if (filtered) limit *| 4 else limit, null);
 
     var values: std.ArrayList(std.json.Value) = .empty;
     var prs: std.ArrayList(types.PullRequest) = .empty;
     for (fetched) |v| {
         const pr = try api.decode(types.PullRequest, ctx, v);
         if (want_merged and !pr.merged) continue;
+        if (head) |want| if (!headMatches(pr, want)) continue;
         if (prs.items.len >= limit) break;
         try values.append(ctx.alloc, v);
         try prs.append(ctx.alloc, pr);
@@ -816,4 +849,109 @@ fn checks(ctx: *Ctx, args: *const cli.Args) !u8 {
         try ctx.out.flush();
         try ctx.io.sleep(.fromSeconds(interval), .awake);
     }
+}
+
+/// `branch` or `owner:branch` against a pull request's head.
+fn headMatches(pr: types.PullRequest, want: []const u8) bool {
+    if (std.mem.indexOfScalar(u8, want, ':')) |c| {
+        const owner = if (pr.head.repo) |r| (if (r.owner) |o| o.login else "") else "";
+        return std.ascii.eqlIgnoreCase(owner, want[0..c]) and std.mem.eql(u8, pr.head.ref, want[c + 1 ..]);
+    }
+    return std.mem.eql(u8, pr.head.ref, want);
+}
+
+fn review(ctx: *Ctx, args: *const cli.Args) !u8 {
+    const r = try repo.resolve(ctx, args);
+    var client = try r.client(ctx);
+    const pr = (try find(ctx, &client, r, args.arg(0))).pr;
+    var chosen: usize = 0;
+    for ([_][]const u8{ "approve", "request-changes", "comment" }) |f| {
+        if (args.has(f)) chosen += 1;
+    }
+    if (chosen != 1) return ctx.fail("choose one of --approve, --request-changes and --comment", .{});
+    const event: []const u8 = if (args.has("approve")) "APPROVED" else if (args.has("request-changes")) "REQUEST_CHANGES" else "COMMENT";
+    const body = try common.bodyOrEditor(ctx, args, "REVIEW.md", "");
+    if (!args.has("approve") and std.mem.trim(u8, body, " \r\n\t").len == 0)
+        return ctx.fail("--request-changes and --comment need a body (--body or --body-file)", .{});
+    _ = try client.sendValue(.POST, try r.path(ctx.alloc, "/pulls/{d}/reviews", .{pr.number}), .{ .event = event, .body = body, .commit_id = pr.head.sha });
+    const verb = if (args.has("approve")) "Approved" else if (args.has("request-changes")) "Requested changes to" else "Reviewed";
+    try ctx.err.print("✓ {s} pull request #{d} ({s})\n", .{ verb, pr.number, pr.title });
+    return 0;
+}
+
+fn update(ctx: *Ctx, args: *const cli.Args) !u8 {
+    const r = try repo.resolve(ctx, args);
+    var client = try r.client(ctx);
+    const pr = (try find(ctx, &client, r, args.arg(0))).pr;
+    const style = if (args.has("rebase")) "rebase" else "merge";
+    const resp = try client.raw(.POST, try r.path(ctx.alloc, "/pulls/{d}/update?style={s}", .{ pr.number, style }), .{});
+    if (resp.status == 409) return ctx.fail("pull request #{d} cannot be updated automatically: {s}", .{ pr.number, api.errorMessage(ctx.alloc, resp.body) orelse "there are conflicts" });
+    if (!resp.ok()) return client.failStatus(.POST, "/pulls/update", resp);
+    try ctx.err.print("✓ Updated pull request #{d} ({s}) with {s} ({s})\n", .{ pr.number, pr.title, pr.base.ref, style });
+    return 0;
+}
+
+fn statusCmd(ctx: *Ctx, args: *const cli.Args) !u8 {
+    const r = try repo.resolve(ctx, args);
+    var client = try r.client(ctx);
+    const me = r.host.user orelse blk: {
+        const u = try api.decode(types.User, ctx, try client.getValue("/user"));
+        break :blk u.login;
+    };
+    const values = try client.listValues(try r.path(ctx.alloc, "/pulls?state=open&sort=recentupdate", .{}), 500, null);
+    const branch = git.currentBranch(ctx) catch null;
+
+    var current: ?std.json.Value = null;
+    var mine: std.ArrayList(std.json.Value) = .empty;
+    var requested: std.ArrayList(std.json.Value) = .empty;
+    for (values) |v| {
+        const pr = try api.decode(types.PullRequest, ctx, v);
+        if (branch) |b| if (std.mem.eql(u8, pr.head.ref, b)) {
+            current = v;
+        };
+        if (pr.user) |u| if (std.ascii.eqlIgnoreCase(u.login, me)) try mine.append(ctx.alloc, v);
+        for (pr.requested_reviewers orelse &.{}) |rv| if (std.ascii.eqlIgnoreCase(rv.login, me)) {
+            try requested.append(ctx.alloc, v);
+            break;
+        };
+    }
+    if (args.has("json")) {
+        try api.printJson(ctx, .{ .current_branch = current, .created_by_you = mine.items, .requesting_your_review = requested.items });
+        return 0;
+    }
+    try ctx.out.print("\nRelevant pull requests in {s}\n\n", .{try r.fullName(ctx.alloc)});
+    try term.paint(ctx, ctx.out, .bold, "Current branch\n");
+    if (current) |v| try statusLine(ctx, &client, r, try api.decode(types.PullRequest, ctx, v), true) else if (branch) |b|
+        try ctx.out.print("  There is no pull request associated with [{s}]\n", .{b})
+    else
+        try ctx.out.writeAll("  Not on a branch\n");
+    try term.paint(ctx, ctx.out, .bold, "\nCreated by you\n");
+    if (mine.items.len == 0) try ctx.out.writeAll("  You have no open pull requests\n");
+    for (mine.items) |v| try statusLine(ctx, &client, r, try api.decode(types.PullRequest, ctx, v), false);
+    try term.paint(ctx, ctx.out, .bold, "\nRequesting a code review from you\n");
+    if (requested.items.len == 0) try ctx.out.writeAll("  You have no pull requests to review\n");
+    for (requested.items) |v| try statusLine(ctx, &client, r, try api.decode(types.PullRequest, ctx, v), false);
+    return 0;
+}
+
+fn statusLine(ctx: *Ctx, client: *api.Client, r: repo.Repo, pr: types.PullRequest, with_checks: bool) !void {
+    try ctx.out.writeAll("  ");
+    try term.paint(ctx, ctx.out, common.stateColor(pr.state), try std.fmt.allocPrint(ctx.alloc, "#{d}", .{pr.number}));
+    try ctx.out.print("  {s} [{s}]\n", .{ pr.title, pr.head.ref });
+    if (!with_checks) return;
+    const resp = try client.raw(.GET, try r.path(ctx.alloc, "/commits/{s}/status", .{pr.head.sha}), .{});
+    if (!resp.ok()) return;
+    const combined = api.decode(types.CombinedStatus, ctx, try client.parseValue(resp.body)) catch return;
+    const statuses = combined.statuses orelse &.{};
+    if (statuses.len == 0) return;
+    const t = Tally.of(statuses);
+    try ctx.out.writeAll("    - ");
+    if (t.failing > 0) {
+        try term.paint(ctx, ctx.out, .red, try std.fmt.allocPrint(ctx.alloc, "{d}/{d} checks failing", .{ t.failing, statuses.len }));
+    } else if (t.pending > 0) {
+        try term.paint(ctx, ctx.out, .yellow, "Checks pending");
+    } else {
+        try term.paint(ctx, ctx.out, .green, "Checks passing");
+    }
+    try ctx.out.writeByte('\n');
 }
