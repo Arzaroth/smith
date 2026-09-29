@@ -78,3 +78,24 @@ work on that prefix.
 `pr checks` reads the head commit's combined status rather than Actions runs,
 so Woodpecker, Drone and anything else that posts statuses shows up next to
 Forgejo Actions.
+
+## Login without handling tokens (2026-09-29)
+
+Creating a token by hand is not a login. `auth login` offers the browser
+(OAuth authorization code with PKCE and a loopback redirect, like gh) and the
+terminal (username, password and TOTP, which create a scoped token, like tea),
+and chooses between them from what the instance and the machine offer.
+Pasting a token stays as `--with-token` for scripts.
+
+For the browser route smith borrows Forgejo's built-in public clients (`tea`,
+then `git-credential-oauth`) rather than asking every user to register an
+application: they exist on default installs and accept any loopback port.
+The cost is a consent screen naming that client. An instance without them
+gets a one-time registration, remembered per host.
+
+## Capabilities probed, not assumed (2026-09-29)
+
+Instances differ by version, fork (Forgejo or Gitea) and configuration. What
+smith depends on is learnt at login from unauthenticated endpoints, including
+whether a built-in OAuth client exists, told apart by the token endpoint's
+`invalid_client` versus any other error for a made-up code.

@@ -47,10 +47,15 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
 
 ## P1 - MVP: clone, pull requests, issues, pipelines
 
-- [x] `auth login` (token pasted without echo or `--with-token` on stdin,
-      checked against `/api/v1/version` and `/api/v1/user`; a token without
-      `read:user` is kept without a username), `auth status`, `auth logout`,
-      `auth token`. `ssh_host` discovered from a repo's `ssh_url` at login.
+- [x] `auth login` without creating a token by hand: the browser (OAuth
+      authorization code, S256 PKCE, loopback redirect, refresh tokens renewed
+      before expiry) or username, password and TOTP (creating a scoped token),
+      chosen from what the instance offers; `--with-token` on stdin for
+      scripts. Decided: borrow the built-in public client (`tea`, then
+      `git-credential-oauth`), else a smith app registered once per host.
+      `auth status`, `auth logout`, `auth token`. Capabilities probed at
+      login: Forgejo or Gitea and version, OAuth with PKCE, built-in clients,
+      page size, and `ssh_host` from a repo's `ssh_url`.
 - [x] `repo clone <owner/repo|repo|url> [dir] [-- <git flags>]`: protocol from
       config; a fork gets an `upstream` remote, like gh. `repo view [--web]`,
       `repo list [owner]`.

@@ -20,7 +20,12 @@
   login` discovers it from a repository's `ssh_url`. Remote URLs are matched
   against both (`Host.matches`).
 - `git_protocol` picks the URL `repo clone` uses.
-- Environment: `SMITH_TOKEN` overrides the stored token of whatever host is
+- `page_size` is the instance's `max_response_items`, read at login (50 when
+  unknown).
+- A browser login also stores `oauth_client_id`, `refresh_token` and
+  `expires_at` (Unix seconds); see [../features/auth.md](../features/auth.md).
+- Environment: `SMITH_TOKEN` overrides the stored token (and turns refreshing
+  off) of whatever host is
   in use; `SMITH_HOST` picks the default host; `SMITH_CONFIG_DIR` moves the
   file.
 - Default host when no repository says otherwise: `SMITH_HOST`, then

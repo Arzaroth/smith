@@ -8,11 +8,17 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `smith auth login`, `status`, `logout` and `token`: a token per Forgejo host,
-  stored in `~/.config/smith/hosts.zon` with mode 0600, checked against the
-  instance at login. Login also finds the SSH hostname the instance
-  advertises, so SSH remotes map back to the right host. `SMITH_TOKEN` and
-  `SMITH_HOST` override the file.
+- `smith auth login` signs you in without making a token by hand: in the
+  browser, like `gh auth login`, or in the terminal with your username,
+  password and two-factor code. It picks the browser when the instance offers
+  it and one can be opened; `--web`, `--password` and `--with-token` choose
+  explicitly. A browser login renews itself.
+- Login looks at what the instance offers first: Forgejo or Gitea and which
+  version, browser sign-in, its page size, and the SSH hostname it advertises,
+  so SSH remotes map back to the right host.
+- `smith auth status`, `logout` and `token`. Logins are kept in
+  `~/.config/smith/hosts.zon` with mode 0600; `SMITH_TOKEN` and `SMITH_HOST`
+  override the file.
 - smith works out the host and repository from the clone's git remotes
   (`upstream` first, then `origin`), or from `-R [HOST/]OWNER/REPO`.
 - `smith repo clone`, `view` and `list`. Cloning a fork adds an `upstream`

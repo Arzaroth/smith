@@ -17,15 +17,17 @@ It is also written in Zig, mostly because why not.
 ## Getting started
 
 ```sh
-smith auth login --hostname git.example.com   # paste a token when asked
+smith auth login --hostname git.example.com   # opens your browser to sign in
 smith repo clone owner/repo
 cd repo
 ```
 
-Create the token under *Settings > Applications* on your instance, with the
-`write:repository`, `write:issue` and `read:user` scopes. Login finds the SSH
-hostname your instance advertises, so `git@ssh.example.com:owner/repo` remotes
-map back to `git.example.com`.
+Login opens the instance's sign-in page in your browser, like `gh auth login`,
+and renews itself afterwards. Without a browser, or with `--password`, it asks
+for your username, password and two-factor code and creates a token for
+smith; `--with-token` reads one from standard input for scripts. It also
+finds the SSH hostname your instance advertises, so
+`git@ssh.example.com:owner/repo` remotes map back to `git.example.com`.
 
 Inside a clone, smith works out the host and `owner/repo` from the git
 remotes (`upstream`, then `origin`); `-R [HOST/]OWNER/REPO` overrides it

@@ -2,24 +2,66 @@
 
 | Command | Does | Endpoints |
 |---|---|---|
-| `auth login` | Stores a token for a host | `GET /version`, `GET /user`, `GET /repos/search?limit=1` |
+| `auth login` | Logs in to a host, then stores the token | discovery (below), then per route; `GET /user`, `GET /repos/search?limit=1` |
 | `auth status` | Checks every stored token | `GET /user` per host |
 | `auth logout` | Forgets a host | none |
 | `auth token` | Prints the token in use | none |
 
-- **login**: the hostname comes from `--hostname`, `SMITH_HOST`, or a prompt;
-  the token from `--with-token` (stdin) or a no-echo prompt on a terminal,
-  never from an argument. `/version` proves it is a Forgejo, `/user` checks
-  the token (401 fails; 403 means no `read:user` scope and is accepted without
-  a username). The SSH hostname is read off a repository's `ssh_url` unless
-  `--ssh-host` gives it. The first host logged in to becomes `default_host`.
+## Login routes
+
+`auth login` first learns what the instance offers ([caps](#discovery)), then
+takes one of three routes:
+
+- **Browser** (`--web`; the default on a terminal when the instance is an
+  OAuth provider with S256 PKCE and a browser can be opened: `SMITH_BROWSER`,
+  `BROWSER`, macOS, or a `DISPLAY`/`WAYLAND_DISPLAY`). smith listens on a
+  random 127.0.0.1 port, opens `/login/oauth/authorize` with a PKCE challenge
+  and a random state, waits for the redirect, checks the state, and trades
+  the code at `/login/oauth/access_token`. The access token (an hour on
+  Forgejo) is stored with its refresh token, expiry and client ID, and is
+  renewed within a minute of expiring by `api.Client.init`, which saves the
+  new pair. A refused refresh asks to log in again.
+- **Password** (`--password`; the default on a terminal otherwise). Username
+  (`-u` or a prompt) and password (no echo) authenticate
+  `POST /users/{user}/tokens` with basic auth to create a token named
+  `smith on <machine> (<time>)` with the scopes `write:repository`,
+  `write:issue`, `read:user`, `read:organization`. A 401 or 403 that is not
+  "password is invalid" / "user does not exist" is taken as a 2FA challenge:
+  smith asks for the code once and retries with `X-Forgejo-OTP` (and
+  `X-Gitea-OTP`). Accounts that sign in only through SSO or only with a
+  security key cannot use this route.
+- **Token** (`--with-token`, the only route without a terminal): read from
+  stdin, never from an argument.
+
+The OAuth client for the browser route: `--client-id`, else the one this host
+used before, else the first built-in public client the instance knows (`tea`,
+then `git-credential-oauth`), else the user registers smith once (name smith,
+redirect URI `http://127.0.0.1/`, not confidential) and gives its ID, which is
+then remembered. Forgejo accepts any loopback port for public clients.
+
+## Discovery
+
+`caps.discover`, with no token sent:
+
+| Learns | From |
+|---|---|
+| Forgejo (vs Gitea) and version | `/api/forgejo/v1/version`, else `/api/v1/version` |
+| Largest page size | `/api/v1/settings/api` `max_response_items`, stored as `page_size` |
+| OAuth with PKCE | `/.well-known/openid-configuration` |
+| Built-in clients | `/login/oauth/access_token` with a made-up code: `invalid_client` means unknown, any other error means known |
+
+## Other commands
+
 - **status** exits 1 if any token is missing or rejected; tokens are shown as
-  their first four characters unless `--show-token`.
-- Differences from gh: no OAuth/device flow (Forgejo has none), no keyring yet
-  (the file is 0600), `--scheme http` for LAN instances.
+  their first four characters unless `--show-token`; a browser login says so.
+- **logout** only forgets the host locally; a token created by the password
+  route stays valid until revoked under Settings > Applications.
+- `SMITH_TOKEN` replaces the stored token and disables refreshing.
 
 ## Sources
 
 - `src/cmd/auth.zig`
+- `src/caps.zig`
+- `src/oauth.zig`
 - `src/config.zig`
-- `src/tests/auth_test.zig`
+- `src/tests/auth_test.zig`, `src/tests/login_test.zig`

@@ -20,3 +20,13 @@ Feature backlog with design notes lives in [ROADMAP.md](ROADMAP.md).
   are never written by `sendHead`, and the overridable authorization header
   is kept across a redirect to another host (`lib/std/http/Client.zig`).
   smith works around both in `api.zig`.
+- **`auth logout` does not revoke anything.** A token made by the password
+  route stays valid until revoked in the web UI; revoking it needs basic auth
+  again (`DELETE /users/{user}/tokens/{id}`), so logout could offer to ask for
+  the password. Browser logins have no revocation endpoint in the API.
+- **The browser login waits forever** for the redirect. A timeout (a few
+  minutes, then a hint about `--password`) would suit SSH sessions where the
+  opener did nothing visible.
+- **Smoke-test the browser and password logins on git.arzaroth.com** with a
+  real account: only the start of the browser flow and a wrong password were
+  tried live.
