@@ -149,9 +149,18 @@ pub fn parse(alloc: Allocator, cmd: *const Command, argv: []const []const u8, er
             const name = if (eq) |e| body[0..e] else body;
             const flag = findLong(cmd, name) orelse return usage(err, "unknown flag: --{s}", .{name});
             if (flag.value == null) {
-                if (eq != null) return usage(err, "flag --{s} takes no value", .{name});
-                try names.append(alloc, flag.long);
-                try values.append(alloc, "");
+                var on = true;
+                if (eq) |e| {
+                    const v = body[e + 1 ..];
+                    if (std.mem.eql(u8, v, "false")) {
+                        on = false;
+                    } else if (!std.mem.eql(u8, v, "true")) return usage(err, "flag --{s} takes true or false, not \"{s}\"", .{ name, v });
+                }
+                const recorded = if (on) flag.long else opposite(cmd, flag.long);
+                if (recorded) |long| {
+                    try names.append(alloc, long);
+                    try values.append(alloc, "");
+                }
             } else if (eq) |e| {
                 try names.append(alloc, flag.long);
                 try values.append(alloc, body[e + 1 ..]);
@@ -216,6 +225,18 @@ pub const yes_flag: Flag = .{ .long = "yes", .short = 'y', .help = "Do not ask f
 pub fn implicitFlags(cmd: *const Command) []const Flag {
     for (cmd.flags) |f| if (std.mem.eql(u8, f.long, "json")) return &.{ jq_flag, template_flag };
     return &.{};
+}
+
+/// The flag that undoes `long` (`--enable-x` and `--disable-x`), so gh's
+/// `--enable-x=false` works; null for a plain boolean, which `=false` leaves off.
+fn opposite(cmd: *const Command, long: []const u8) ?[]const u8 {
+    const pairs = [_][2][]const u8{ .{ "enable-", "disable-" }, .{ "disable-", "enable-" } };
+    for (pairs) |p| if (std.mem.startsWith(u8, long, p[0])) {
+        var buf: [64]u8 = undefined;
+        const other = std.fmt.bufPrint(&buf, "{s}{s}", .{ p[1], long[p[0].len..] }) catch return null;
+        if (findLong(cmd, other)) |f| return f.long;
+    };
+    return null;
 }
 
 fn findLong(cmd: *const Command, name: []const u8) ?Flag {
@@ -316,6 +337,25 @@ test "parse long, short, clustered and = flags" {
     const labels = try p.all(a, "label");
     try testing.expectEqual(@as(usize, 3), labels.len);
     try testing.expectEqualStrings("b", labels[2]);
+}
+
+test "boolean flags take =true and =false, and --enable-x=false means --disable-x" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    try testing.expect((try testParse(a, &.{"--draft=true"})).has("draft"));
+    try testing.expect(!(try testParse(a, &.{"--draft=false"})).has("draft"));
+    try testing.expectError(error.Usage, testParse(a, &.{"--draft=maybe"}));
+    const toggles: Command = .{ .name = "edit", .summary = "", .flags = &.{
+        .{ .long = "enable-wiki", .help = "" },
+        .{ .long = "disable-wiki", .help = "" },
+    } };
+    var buf: [256]u8 = undefined;
+    var w: Writer = .fixed(&buf);
+    const off = try parse(a, &toggles, &.{"--enable-wiki=false"}, &w);
+    try testing.expect(off.has("disable-wiki") and !off.has("enable-wiki"));
+    const on = try parse(a, &toggles, &.{"--disable-wiki=false"}, &w);
+    try testing.expect(on.has("enable-wiki") and !on.has("disable-wiki"));
 }
 
 test "parse rejects unknown flags and extra arguments" {
