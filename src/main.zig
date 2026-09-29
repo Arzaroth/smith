@@ -70,4 +70,5 @@ test {
     _ = @import("tests/run_test.zig");
     _ = @import("tests/tools_test.zig");
     _ = @import("tests/login_test.zig");
+    _ = @import("tests/hosts_test.zig");
 }
