@@ -27,7 +27,7 @@ pub const command: cli.Command = .{
             .summary = "Show a repository's description and details.",
             .usage = "[<repository>]",
             .max_args = 1,
-            .flags = &.{ cli.web_flag, cli.json_flag },
+            .flags = &.{ cli.web_flag, cli.json_flag, cli.repo_flag },
             .run = view,
         },
         .{

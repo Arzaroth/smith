@@ -59,8 +59,9 @@ fn dispatch(ctx: *Ctx, argv: []const []const u8) !u8 {
         return 1;
     }
     if (cmd.run == null) {
-        cli.writeHelp(ctx.out, r.path) catch {};
-        return if (r.rest.len == 0) 0 else 1;
+        const asked = r.rest.len == 0 or std.mem.eql(u8, r.rest[0], "-h") or std.mem.eql(u8, r.rest[0], "--help");
+        try cli.writeHelp(if (asked) ctx.out else ctx.err, r.path);
+        return if (asked) 0 else 1;
     }
 
     const args = cli.parse(ctx.alloc, cmd, r.rest, ctx.err) catch |e| switch (e) {
