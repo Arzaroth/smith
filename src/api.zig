@@ -118,7 +118,7 @@ pub const Client = struct {
     }
 
     fn send(req: *std.http.Client.Request, body: ?[]const u8) !void {
-        if (body) |b| {
+        if (body orelse if (req.method.requestHasBody()) @as([]const u8, "") else null) |b| {
             req.transfer_encoding = .{ .content_length = b.len };
             var bw = try req.sendBodyUnflushed(&.{});
             try bw.writer.writeAll(b);
