@@ -159,9 +159,11 @@ pub const Client = struct {
         switch (r.status) {
             401 => {
                 if (config.tokenWithheld(ctx, c.host)) {
-                    return ctx.fail("authentication failed for {s} ({s}); SMITH_TOKEN only applies to the host SMITH_HOST names, or the default host: set SMITH_HOST={s} or {s}", .{ c.host.name, message orelse "HTTP 401", c.host.name, config.tokenVariable(ctx.alloc, c.host.name) catch "SMITH_TOKEN_<HOST>" });
+                    ctx.err.print("authentication failed for {s} ({s}); SMITH_TOKEN only applies to the host SMITH_HOST names, or the default host: set SMITH_HOST={s} or {s}\n", .{ c.host.name, message orelse "HTTP 401", c.host.name, config.tokenVariable(ctx.alloc, c.host.name) catch "SMITH_TOKEN_<HOST>" }) catch {};
+                } else {
+                    ctx.err.print("authentication failed for {s} ({s}); run `smith auth login --hostname {s}`\n", .{ c.host.name, message orelse "HTTP 401", c.host.name }) catch {};
                 }
-                return ctx.fail("authentication failed for {s} ({s}); run `smith auth login --hostname {s}`", .{ c.host.name, message orelse "HTTP 401", c.host.name });
+                return error.AuthRequired;
             },
             else => {},
         }

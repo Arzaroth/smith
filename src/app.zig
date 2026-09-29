@@ -37,6 +37,7 @@ fn runRoot(ctx: *Ctx, args: *const cli.Args) !u8 {
 pub fn run(ctx: *Ctx, argv: []const []const u8) u8 {
     const code = dispatch(ctx, argv) catch |e| switch (e) {
         error.Reported => 1,
+        error.AuthRequired => 4,
         error.Usage => 1,
         else => blk: {
             ctx.err.print("smith: {t}\n", .{e}) catch {};

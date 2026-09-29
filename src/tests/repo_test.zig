@@ -60,7 +60,7 @@ test "list falls back to the organization endpoint" {
     }, .{});
     defer h.deinit();
     try h.expectRun(0, &.{ "repo", "list", "team" });
-    try h.expectOut("owner/repo\tA test repository\tpublic\tabout 1 hour ago");
+    try h.expectOut("owner/repo\tA test repository\tpublic\t2026-09-29T11:00:00Z");
 }
 
 test "the ssh host maps an ssh remote back to its web host" {

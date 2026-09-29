@@ -272,10 +272,11 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
     for (prs.items) |pr| {
         const st = displayState(pr);
         try table.add(ctx.alloc, &.{
-            .{ .text = try std.fmt.allocPrint(ctx.alloc, "#{d}", .{pr.number}), .color = if (std.mem.eql(u8, st, "draft")) .dim else common.stateColor(st) },
-            .{ .text = if (ctx.stdout_tty) try term.truncate(ctx.alloc, pr.title, 70) else pr.title },
+            .{ .text = try term.num(ctx, pr.number), .color = if (std.mem.eql(u8, st, "draft")) .dim else common.stateColor(st) },
+            .{ .text = try term.fit(ctx, pr.title, 70) },
             .{ .text = pr.head.ref, .color = .cyan },
-            .{ .text = if (ctx.stdout_tty) try term.ago(ctx.alloc, ctx.now, pr.updated_at) else st, .color = .dim },
+            .{ .text = st, .pipe = true },
+            .{ .text = try term.when(ctx, pr.updated_at), .color = .dim },
         });
     }
     try table.write(ctx);
@@ -436,6 +437,8 @@ fn create(ctx: *Ctx, args: *const cli.Args) !u8 {
         return 0;
     }
 
+    if (!ctx.interactive() and !args.has("fill") and (args.get("title") == null or (args.get("body") == null and args.get("body-file") == null)))
+        return ctx.fail("--title and --body (or --fill) are required when not running interactively", .{});
     const fill: ?Fill = if (args.has("fill") or args.get("title") == null)
         try fillFromCommits(ctx, r, base, h.branch)
     else
@@ -761,7 +764,12 @@ fn checks(ctx: *Ctx, args: *const cli.Args) !u8 {
     const watch = args.has("watch");
     const path = try r.path(ctx.alloc, "/commits/{s}/status", .{pr.head.sha});
     var first = true;
+    const outer = ctx.alloc;
     while (true) {
+        var poll: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+        defer poll.deinit();
+        ctx.alloc = poll.allocator();
+        defer ctx.alloc = outer;
         const v = try client.getValue(path);
         if (args.has("json") and !watch) {
             try api.printJson(ctx, v);
@@ -780,8 +788,10 @@ fn checks(ctx: *Ctx, args: *const cli.Args) !u8 {
             "Some checks are still pending"
         else
             "All checks were successful";
-        try term.paint(ctx, ctx.out, .bold, summary);
-        try ctx.out.print("\n{d} failing, {d} successful, {d} skipped, and {d} pending checks\n\n", .{ tally.failing, tally.passing, tally.skipped, tally.pending });
+        if (ctx.stdout_tty) {
+            try term.paint(ctx, ctx.out, .bold, summary);
+            try ctx.out.print("\n{d} failing, {d} successful, {d} skipped, and {d} pending checks\n\n", .{ tally.failing, tally.passing, tally.skipped, tally.pending });
+        }
         var table: term.Table = .{};
         for (statuses) |s| {
             const o = classify(s.status);

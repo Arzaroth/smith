@@ -13,8 +13,8 @@ test "list shows open pull requests with draft and branch" {
     try h.init(&.{.{ .path = pulls, .query = "state=open", .body = fx.pr_list_open }}, .{});
     defer h.deinit();
     try h.expectRun(0, &.{ "pr", "list", "-R", "owner/repo", "-A", "alice" });
-    try h.expectOut("#12\tAdd feature\tfeature\topen\n");
-    try h.expectOut("#13\tWIP: Fork change\tpatch-1\tdraft\n");
+    try h.expectOut("12\tAdd feature\tfeature\topen\t2026-09-29T11:30:00Z\n");
+    try h.expectOut("13\tWIP: Fork change\tpatch-1\tdraft\t2026-09-29T11:30:00Z\n");
     try std.testing.expect(std.mem.indexOf(u8, h.mock.requests.items[0].target, "poster=alice") != null);
 }
 
@@ -23,8 +23,8 @@ test "list --state merged asks for closed ones and keeps the merged" {
     try h.init(&.{.{ .path = pulls, .query = "state=closed", .body = fx.pr_list_closed }}, .{});
     defer h.deinit();
     try h.expectRun(0, &.{ "pr", "list", "-R", "owner/repo", "-s", "merged" });
-    try h.expectOut("#14\tOld change");
-    try std.testing.expect(std.mem.indexOf(u8, h.stdout(), "#15") == null);
+    try h.expectOut("14\tOld change");
+    try std.testing.expect(std.mem.indexOf(u8, h.stdout(), "15\t") == null);
 }
 
 test "view by number shows the fork head as owner:branch" {
@@ -193,17 +193,20 @@ test "checks summarises statuses and exits 1 on failure, 8 while pending, 0 when
     const status = "/api/v1/repos/owner/repo/commits/abc123/status";
     try h.init(&.{
         .{ .path = pulls ++ "/12", .body = fx.pr_same },
-        .{ .path = status, .body = fx.status_mixed, .times = 1 },
+        .{ .path = status, .body = fx.status_mixed, .times = 2 },
         .{ .path = status, .body = fx.status_pending, .times = 1 },
         .{ .path = status, .body = fx.status_green },
     }, .{});
     defer h.deinit();
     try h.expectRun(1, &.{ "pr", "checks", "12", "-R", "owner/repo" });
-    try h.expectOut("Some checks were not successful");
-    try h.expectOut("1 failing, 1 successful, 0 skipped, and 1 pending checks");
-    const link = try std.fmt.allocPrint(h.arena.allocator(), "failure\tci / test\tFailing after 2m\t{s}/owner/repo/actions/runs/1/jobs/1", .{try h.base()});
+    const link = try std.fmt.allocPrint(h.arena.allocator(), "failure\tci / test\tFailing after 2m\t{s}/owner/repo/actions/runs/1/jobs/1\n", .{try h.base()});
+    try std.testing.expect(std.mem.startsWith(u8, h.stdout(), "success\tci / build\t"));
     try h.expectOut(link);
 
+    h.ctx.stdout_tty = true;
+    try h.expectRun(1, &.{ "pr", "checks", "12", "-R", "owner/repo" });
+    try h.expectOut("Some checks were not successful");
+    try h.expectOut("1 failing, 1 successful, 0 skipped, and 1 pending checks");
     try h.expectRun(8, &.{ "pr", "checks", "12", "-R", "owner/repo" });
     try h.expectOut("Some checks are still pending");
     try h.expectRun(0, &.{ "pr", "checks", "12", "-R", "owner/repo" });
@@ -279,5 +282,14 @@ test "create refuses a branch whose upstream is another branch, like origin/main
     try h.git(&.{ "-C", "work", "switch", "-q", "-c", "feat", "--track", "origin/main" });
     try h.expectRun(1, &.{ "pr", "create", "-t", "x", "-b", "y", "--base", "dev" });
     try h.expectErr("run `git push -u origin feat` first");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.requests.items.len);
+}
+
+test "create off a terminal needs --title and --body, or --fill" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.expectRun(1, &.{ "pr", "create", "-R", "owner/repo", "-H", "feature", "-B", "main", "-t", "only a title" });
+    try h.expectErr("--title and --body (or --fill) are required when not running interactively");
     try std.testing.expectEqual(@as(usize, 0), h.mock.requests.items.len);
 }

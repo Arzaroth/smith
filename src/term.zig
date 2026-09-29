@@ -48,6 +48,8 @@ pub fn paint(ctx: *const Ctx, w: *Writer, color: Color, text_in: []const u8) !vo
 pub const Cell = struct {
     text: []const u8,
     color: Color = .none,
+    /// Only printed when piped: what colour says on a terminal (a state).
+    pipe: bool = false,
 };
 
 /// Rows of cells: space-aligned on a TTY, tab-separated otherwise so the
@@ -74,14 +76,24 @@ pub const Table = struct {
             return;
         }
         var widths: [16]usize = @splat(0);
-        for (t.rows.items) |row| for (row, 0..) |cell, i| {
-            widths[i] = @max(widths[i], displayWidth(cell.text));
-        };
+        var columns: usize = 0;
         for (t.rows.items) |row| {
-            for (row, 0..) |cell, i| {
-                if (i > 0) try w.writeAll("  ");
+            var j: usize = 0;
+            for (row) |cell| {
+                if (cell.pipe) continue;
+                widths[j] = @max(widths[j], displayWidth(cell.text));
+                j += 1;
+            }
+            columns = @max(columns, j);
+        }
+        for (t.rows.items) |row| {
+            var j: usize = 0;
+            for (row) |cell| {
+                if (cell.pipe) continue;
+                if (j > 0) try w.writeAll("  ");
                 try paint(ctx, w, cell.color, cell.text);
-                if (i + 1 < row.len) try w.splatByteAll(' ', widths[i] - displayWidth(cell.text));
+                if (j + 1 < columns) try w.splatByteAll(' ', widths[j] - displayWidth(cell.text));
+                j += 1;
             }
             try w.writeByte('\n');
         }
@@ -261,4 +273,20 @@ test clean {
     try testing.expectEqualStrings("a\n\tb?", try clean(a, "a\n\tb\x1b", true));
     try testing.expectEqualStrings("x?y", try clean(a, "x\xc2\x9by", true));
     try testing.expectEqualStrings("été", try clean(a, "été", false));
+}
+
+/// `#12` on a terminal, `12` when piped.
+pub fn num(ctx: *const Ctx, n: i64) ![]const u8 {
+    return std.fmt.allocPrint(ctx.alloc, "{s}{d}", .{ if (ctx.stdout_tty) "#" else "", n });
+}
+
+/// "3 hours ago" on a terminal, the timestamp as the API sent it when piped.
+pub fn when(ctx: *const Ctx, timestamp: ?[]const u8) ![]const u8 {
+    if (!ctx.stdout_tty) return timestamp orelse "";
+    return ago(ctx.alloc, ctx.now, timestamp);
+}
+
+/// Shortened to `max` on a terminal, whole when piped.
+pub fn fit(ctx: *const Ctx, s: []const u8, max: usize) ![]const u8 {
+    return if (ctx.stdout_tty) truncate(ctx.alloc, s, max) else s;
 }

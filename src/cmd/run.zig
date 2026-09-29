@@ -113,13 +113,13 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
     for (runs) |run| {
         try table.add(ctx.alloc, &.{
             statusCell(ctx, run.status),
-            .{ .text = if (ctx.stdout_tty) try term.truncate(ctx.alloc, run.title, 60) else run.title },
+            .{ .text = try term.fit(ctx, run.title, 60) },
             .{ .text = run.workflow_id },
             .{ .text = run.prettyref, .color = .cyan },
             .{ .text = if (run.event.len > 0) run.event else run.trigger_event, .color = .dim },
             .{ .text = try std.fmt.allocPrint(ctx.alloc, "{d}", .{run.id}), .color = .dim },
             .{ .text = try term.duration(ctx.alloc, run.started, run.stopped), .color = .dim },
-            .{ .text = try term.ago(ctx.alloc, ctx.now, run.created), .color = .dim },
+            .{ .text = try term.when(ctx, run.created), .color = .dim },
         });
     }
     try table.write(ctx);
@@ -228,7 +228,12 @@ fn watch(ctx: *Ctx, args: *const cli.Args) !u8 {
     const id = first.run.id;
     const interval = try args.int("interval", 3);
     var last: []const u8 = "";
+    const outer = ctx.alloc;
     while (true) {
+        var poll: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+        defer poll.deinit();
+        ctx.alloc = poll.allocator();
+        defer ctx.alloc = outer;
         const run = try api.decode(types.ActionRun, ctx, try client.getValue(try r.path(ctx.alloc, "/actions/runs/{d}", .{id})));
         const js = try jobs(ctx, &client, r, id);
 
@@ -246,7 +251,7 @@ fn watch(ctx: *Ctx, args: *const cli.Args) !u8 {
             try ctx.out.writeAll(text);
             if (!ctx.stdout_tty) try ctx.out.writeByte('\n');
             try ctx.out.flush();
-            last = text;
+            last = try outer.dupe(u8, text);
         }
         if (outcome(run.status) != .pending) {
             try ctx.err.print("\nRun {d} finished: {s}\n", .{ id, run.status });

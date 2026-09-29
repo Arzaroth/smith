@@ -64,7 +64,10 @@ test "login without a token and without a terminal asks for --with-token" {
 
 test "status reports a working and a rejected token" {
     var h: Harness = undefined;
-    try h.init(&.{.{ .path = "/api/v1/user", .body = fx.user, .times = 1 }}, .{});
+    try h.init(&.{
+        .{ .path = "/api/v1/user", .body = fx.user, .times = 1 },
+        .{ .path = "/api/v1/user", .status = 401, .body = "{\"message\":\"token is expired\"}" },
+    }, .{});
     defer h.deinit();
     try h.expectRun(0, &.{ "auth", "status" });
     try h.expectOut("Logged in to");
@@ -73,6 +76,7 @@ test "status reports a working and a rejected token" {
 
     try h.expectRun(1, &.{ "auth", "status", "--show-token" });
     try h.expectOut("Token: t0ken");
+    try h.expectOut("is invalid or expired");
 }
 
 test "status with no hosts says how to log in" {
@@ -104,7 +108,7 @@ test "an API call sends the token and a 401 points at auth login" {
     var h: Harness = undefined;
     try h.init(&.{.{ .path = "/api/v1/repos/owner/repo/issues", .status = 401, .body = "{\"message\":\"token expired\"}" }}, .{});
     defer h.deinit();
-    try h.expectRun(1, &.{ "issue", "list", "-R", "owner/repo" });
+    try h.expectRun(4, &.{ "issue", "list", "-R", "owner/repo" });
     try h.expectErr("authentication failed");
     try h.expectErr("token expired");
     try h.expectErr("smith auth login --hostname");

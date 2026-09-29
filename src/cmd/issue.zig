@@ -124,10 +124,11 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
     var table: term.Table = .{};
     for (issues) |i| {
         try table.add(ctx.alloc, &.{
-            .{ .text = try std.fmt.allocPrint(ctx.alloc, "#{d}", .{i.number}), .color = common.stateColor(i.state) },
-            .{ .text = if (ctx.stdout_tty) try term.truncate(ctx.alloc, i.title, 70) else i.title },
+            .{ .text = try term.num(ctx, i.number), .color = common.stateColor(i.state) },
+            .{ .text = try term.fit(ctx, i.title, 70) },
             .{ .text = try common.joinLabels(ctx, i.labels), .color = .dim },
-            .{ .text = try term.ago(ctx.alloc, ctx.now, i.updated_at), .color = .dim },
+            .{ .text = i.state, .pipe = true },
+            .{ .text = try term.when(ctx, i.updated_at), .color = .dim },
         });
     }
     try table.write(ctx);
@@ -181,6 +182,8 @@ fn create(ctx: *Ctx, args: *const cli.Args) !u8 {
         try ctx.openBrowser(url);
         return 0;
     }
+    if (!ctx.interactive() and (args.get("title") == null or (args.get("body") == null and args.get("body-file") == null)))
+        return ctx.fail("--title and --body are required when not running interactively", .{});
     const t = try common.title(ctx, args, null);
     const body = try common.bodyOrEditor(ctx, args, "ISSUE.md", "");
     var client = try r.client(ctx);

@@ -27,7 +27,9 @@ cwd: ?[]const u8 = null,
 stdin_data: ?[]const u8 = null,
 stdin_reader: ?*Io.File.Reader = null,
 
-pub const Error = error{Reported};
+/// `Reported`: the message is printed, exit 1. `AuthRequired`: likewise, but
+/// exit 4, as gh does when authentication is what failed.
+pub const Error = error{ Reported, AuthRequired };
 
 /// Prints a message to stderr; the caller returns the error to exit 1.
 pub fn fail(ctx: *const Ctx, comptime fmt: []const u8, args: anytype) Error {

@@ -9,7 +9,7 @@ test "list shows runs and passes the filters as Forgejo names them" {
     try h.init(&.{.{ .path = runs, .body = fx.runs }}, .{});
     defer h.deinit();
     try h.expectRun(0, &.{ "run", "list", "-R", "owner/repo", "-b", "main", "-s", "failure", "-w", "ci.yml", "-L", "5" });
-    try h.expectOut("success\tRun 40\tci.yml\tmain\tpush\t40\t1m 5s\tabout 1 hour ago\n");
+    try h.expectOut("success\tRun 40\tci.yml\tmain\tpush\t40\t1m 5s\t2026-09-29T11:00:00Z\n");
     try h.expectOut("failure\tRun 41\t");
     const target = h.mock.requests.items[0].target;
     for ([_][]const u8{ "ref=refs%2Fheads%2Fmain", "status=failure", "workflow_id=ci.yml", "limit=5" }) |want| {

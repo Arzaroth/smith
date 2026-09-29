@@ -56,7 +56,7 @@ test "a 401 on a host SMITH_TOKEN was kept from says how to aim it" {
     try h.env.put("SMITH_TOKEN", "from-env");
     const b = try std.fmt.allocPrint(h.arena.allocator(), "127.0.0.1:{d}", .{other.port});
     try writeConfig(&h, ".{{ .default_host = \"127.0.0.1:{d}\", .hosts = .{{ .{{ .name = \"{s}\", .scheme = \"http\" }} }} }}\n", .{ h.mock.port, b });
-    try h.expectRun(1, &.{ "issue", "list", "-R", try std.fmt.allocPrint(h.arena.allocator(), "{s}/o/r", .{b}) });
+    try h.expectRun(4, &.{ "issue", "list", "-R", try std.fmt.allocPrint(h.arena.allocator(), "{s}/o/r", .{b}) });
     try h.expectErr("SMITH_TOKEN only applies to the host SMITH_HOST names");
     try h.expectErr(try std.fmt.allocPrint(h.arena.allocator(), "SMITH_TOKEN_127_0_0_1_{d}", .{other.port}));
     try std.testing.expect(other.requests.items[0].authorization == null);
@@ -87,7 +87,7 @@ test "an unconfigured https remote is used only if it answers as a Forgejo" {
     const forge_url = try std.fmt.allocPrint(h.arena.allocator(), "http://127.0.0.1:{d}/o/r.git", .{forge.port});
     try h.git(&.{ "-C", "work", "remote", "add", "upstream", forge_url });
     try h.expectRun(0, &.{ "issue", "list" });
-    try h.expectOut("#7\tCrash on start");
+    try h.expectOut("7\tCrash on start");
     try std.testing.expect(forge.requests.items[1].authorization == null);
 }
 

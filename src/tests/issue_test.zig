@@ -11,7 +11,7 @@ test "list resolves the repository from the origin remote and filters" {
     try h.clone("work", "owner", "repo");
 
     try h.expectRun(0, &.{ "issue", "list", "-l", "bug", "-A", "alice", "-s", "all" });
-    try h.expectOut("#7\tCrash on start\tbug\t");
+    try h.expectOut("7\tCrash on start\tbug\topen\t2026-09-29T09:00:00Z\n");
     const target = h.mock.requests.items[0].target;
     for ([_][]const u8{ "type=issues", "state=all", "labels=bug", "created_by=alice", "page=1", "limit=30" }) |want| {
         if (std.mem.indexOf(u8, target, want) == null) {
@@ -98,7 +98,7 @@ test "create without a title off a terminal fails" {
     try h.init(&.{}, .{});
     defer h.deinit();
     try h.expectRun(1, &.{ "issue", "create", "-R", "owner/repo", "-b", "y" });
-    try h.expectErr("--title is required");
+    try h.expectErr("--title and --body are required when not running interactively");
 }
 
 test "create reads the body from standard input" {

@@ -143,9 +143,9 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
         const kind = if (r.private) "private" else if (r.fork) "fork" else if (r.archived) "archived" else "public";
         try table.add(ctx.alloc, &.{
             .{ .text = r.full_name, .color = .bold },
-            .{ .text = try term.truncate(ctx.alloc, r.description orelse "", 50) },
+            .{ .text = try term.fit(ctx, r.description orelse "", 50) },
             .{ .text = kind, .color = .dim },
-            .{ .text = try term.ago(ctx.alloc, ctx.now, r.updated_at), .color = .dim },
+            .{ .text = try term.when(ctx, r.updated_at), .color = .dim },
         });
     }
     try table.write(ctx);
