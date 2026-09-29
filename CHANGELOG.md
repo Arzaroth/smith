@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-29
+
 ### Added
 
 - Boolean flags take a value as in gh (`=true`, `=false`, `=0`, `-d=false`):
