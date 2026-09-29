@@ -43,7 +43,8 @@
   `field` unwraps endpoints that nest the array (`workflow_runs`).
   `listMatching` takes a filter for what the API cannot filter (merged pull
   requests, a fork's head) and reads whole pages until `limit` items pass
-  it or the list ends.
+  it or the list ends, giving up with a warning after
+  `max_filtered_pages` (100).
   `/issues/{n}/comments` ignores paging and is read in one request.
 
 ## Sources

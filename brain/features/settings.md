@@ -10,8 +10,9 @@ is fixed or deleted.
 show the default of an unset key):
 - `git_protocol`: `ssh` (default) or `https`, given to hosts logged in to
   afterwards. With `-h HOST` (`--host`), `get`, `set` and `list` read or
-  change a logged-in host's own protocol in `hosts.zon` instead, the one
-  key that exists per host. A command that declares its own `-h` keeps
+  change a logged-in host's own protocol in `hosts.zon` instead (every
+  account on it), the one key that exists per host; `get -h` of another
+  key prints its global value. A command that declares its own `-h` keeps
   help on `--help` only, as gh's `config` does.
 - `editor`: used after `SMITH_EDITOR` and before `VISUAL`/`EDITOR`.
 - `browser`: used after `SMITH_BROWSER` and before `BROWSER`.
@@ -20,15 +21,18 @@ show the default of an unset key):
 - `prompt`: `enabled` (default) or `disabled`. Disabled, or with
   `SMITH_PROMPT_DISABLED` set, a terminal behaves like a script: no
   prompts, no editor, `--yes` needed for deletions, `--title` and `--body`
-  needed for creation (`Ctx.interactive`).
+  needed for creation (`Ctx.interactive`). Secrets and variables are then read
+  from standard input.
 
 **alias** `set <name> <expansion>`, `list`, `delete [<name> | --all]`,
 `import [<file> | -]`:
 - `set <name> -` reads the expansion from standard input.
 - `import` reads gh's alias file, a YAML map of `name: expansion` lines
-  (plain, single- or double-quoted values, `#` comments), checks every entry
-  as `set` would before writing any, and needs `--clobber` to replace
-  existing ones. Nested YAML is refused.- `set` refuses to replace an alias without `--clobber`, and `--shell` (`-s`)
+  (plain, single- or double-quoted, or `|` and `>` block values, `#`
+  comments), checks every entry as `set` would before writing any, and, as
+  gh does, skips a name already taken unless `--clobber`, with a warning.
+  Nested YAML is refused.
+- `set` refuses to replace an alias without `--clobber`, and `--shell` (`-s`)
   is the same as a leading `!`, as in gh. An empty expansion or an
   unterminated quote is refused.
 - Expanded in `app.dispatch` when the first word is not a smith command, so

@@ -15,8 +15,10 @@ current branch.
 
 - Statuses: `success`; `failure` and `cancelled` count as failed; `skipped`;
   `waiting`, `running`, `blocked` and `unknown` as pending. `watch` stops
-  on `blocked` (a run from a fork waiting for approval, which no amount of
-  waiting fixes) with exit 8, and on `unknown` with exit 1.
+  on a `blocked` run with `need_approval` (a run from a fork waiting for
+  someone to approve it, which no amount of waiting fixes) with exit 8, and
+  on `unknown` with exit 1; a run `blocked` only because a job waits on
+  another (`needs:`) is watched on.
 - `--exit-status` exits 1 for a failed run and, on `view`, 8 for one still
   running.
 - Log lines are prefixed with the job name and a tab.

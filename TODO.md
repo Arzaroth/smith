@@ -47,4 +47,9 @@ live on git.arzaroth.com and codeberg.org.
      for an existing report first.
 - **`--template` leftovers**: `define`/`template`/`block`, gh's `regexMatch`
   (needs a regex engine), `html`/`js`/`urlquery`; tables are not cut to the
-  terminal width.
+  terminal width. `truncate` and `tablerow` count codepoints where gh counts
+  display width (wide characters misalign, and truncating coloured text
+  can cut its escape); `%e` rounds the shortest decimal rather than the
+  exact binary value (`%f` is exact); `timefmt` lacks `002` (day of year)
+  and wants a non-letter after `January`/`Monday`; `{{089}}` is refused
+  where Go reads a float.

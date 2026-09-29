@@ -19,7 +19,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - `SMITH_JQ` picks the jq program; jq's own error message is shown.
 - `smith help reference` prints every command and flag as Markdown;
   `smith help skill` prints a SKILL.md so coding agents know how to use
-  smith; `smith help <command>` shows a command's help.
+  smith; `smith help <command>` shows a command's help, and `help
+  environment`, `exit-codes` and `formatting` are gh's help topics.
 - `smith api` takes `--jq` and `--template`.
 - `--template` covers Go's text/template as gh documents it: pipelines,
   variables, `with`, `else if`, `printf`, comparisons, and gh's `tablerow`,
@@ -28,7 +29,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- `run watch` stops on a run waiting for approval (exit 8) or whose status
+- `run watch` stops on a run that needs approval (exit 8) or whose status
   Forgejo does not know (exit 1) instead of waiting forever.
 - `pr list -s merged` and `--head` read on until they have `-L` results;
   `--head` lets Forgejo 16 narrow the list on the server.

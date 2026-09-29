@@ -16,7 +16,8 @@
   a terminal (`SMITH_EDITOR`, `VISUAL`, `EDITOR`, `vi`), else empty. A title
   is prompted for on a terminal; without one, `--title` and `--body` are
   both required, as in gh. `create` on a terminal, unless both came as
-  flags, ends with submit, edit the body again, or cancel (exit 2).
+  flags, ends with submit, edit the body again, or cancel (exit 2); Ctrl-D
+  cancels too.
 - Closing an already closed issue warns and does nothing.
 - The issue endpoints also back pull request comments, labels and assignees
   ([pr.md](pr.md)); the shared code is `cmd/common.zig`.

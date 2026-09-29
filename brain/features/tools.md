@@ -7,9 +7,10 @@ current repository. `-f key=value` adds string fields and `-F` typed ones
 (`true`, `false`, `null`, integers, `@file`); fields make the method POST
 unless `-X` says otherwise, and go in the query string for GET and DELETE.
 `--input` sends a file as the body, `-H` adds headers, `--paginate` fetches
-every page of a list into one array. `--jq` and `--template` apply to a JSON
-answer, as on other commands, and are refused on anything else. A non-2xx status prints the body and
-exits 1. The host is `--hostname`, else the current repository's, else the
+every page of a list into one array. `--jq` and `--template` apply to a 2xx JSON
+answer, as on other commands, and are refused on anything else; like gh,
+an error answer is printed as sent, unfiltered, with its status, and exits
+1. The host is `--hostname`, else the current repository's, else the
 default one.
 
 **`browse [<number> | <path>[:<line>]]`**: opens the repository, an issue or
@@ -22,8 +23,9 @@ completes subcommands and the flags of the command typed so far; zsh loads
 the bash script through `bashcompinit`; fish uses a helper that works out the
 command path from the tokens typed.
 
-**`help [<command>... | reference | skill]`**: `help pr checks` is
-`pr checks --help`. `help reference` writes the whole command tree as
+**`help [<command>... | reference | skill | environment | exit-codes |
+formatting]`**: `help pr checks` is `pr checks --help`; the last three
+are gh's help topics, each a section of the reference. `help reference` writes the whole command tree as
 Markdown (conventions, exit codes, environment, then every command with its
 usage and flags), walked from `app.root` like completion, so it cannot fall
 behind the code. `help skill` writes a `SKILL.md` that teaches a coding
@@ -62,8 +64,11 @@ them:
   `pluck`, `join`, `contains`). A missing field renders as nothing.
   Syntax errors, argument counts included, are found before anything
   prints, and every error names its position (`template: 1:14: function
-  "foo" not defined`). On a terminal only the strings from the JSON are
-  cleaned of control characters, so the template's own colours and links
-  survive; colour follows smith's colour setting, links need a terminal.
+  "foo" not defined`). On a terminal the output keeps only colour
+  sequences and OSC 8 links to http(s) URLs; any other control character,
+  whether it came from the data or was built by the template (`printf
+  "%c"`, byte `slice`), becomes `?`. As in gh, `color` always colours and
+  `autocolor` only with colour on; `hyperlink` links only on a terminal and
+  only to http(s) URLs, and `color` ignores a style it does not know.
   Left out: `define`/`template`/`block` (refused with a clear error),
   `html`, `js`, `urlquery`, `call` and gh's `regexMatch`.

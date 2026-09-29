@@ -38,7 +38,7 @@ is looked for first, then the most recently updated closed or merged one.
   `<remote>/<base>..HEAD`. Without a terminal, `--title` and `--body` (or
   `--fill`) are required, as in gh. On a terminal, unless both came as
   flags or with `--fill`, it ends with gh's question: submit, edit the body
-  again, or cancel (exit 2, nothing sent).
+  again, or cancel (exit 2, nothing sent); Ctrl-D cancels too.
 - **checkout**: a same-repository head is fetched into
   `refs/remotes/<remote>/<branch>` and checked out tracking it (fast-forward
   if it exists, `-f` resets). A fork's head, or a head that is itself a ref

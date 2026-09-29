@@ -12,8 +12,9 @@
   (`term.clean`), so an escape sequence cannot write to the clipboard or
   forge a line; table cells also lose tabs and newlines. `--json`, `api` and
   piped `pr diff` stay byte-exact. On a terminal, `--jq` output is
-  cleaned the same way, `--template` cleans the JSON strings it is given
-  (keeping its own colours and links), and stderr goes through
+  cleaned the same way, `--template` output keeps only its own colour
+  (SGR) sequences and OSC 8 links to http(s) URLs (`term.cleanStyled`,
+  whatever built the bytes, data or template), and stderr goes through
   `term.Scrubber`, so the names and titles quoted in smith's own messages
   are covered too.
 - **stdout vs stderr**: stdout carries what a command produces (tables,
@@ -25,10 +26,14 @@
 - **Watching**: `pr checks --watch` and `run watch` redraw the screen on a
   terminal and append snapshots otherwise; each poll allocates from its own
   arena, freed before the next.
-- **Pager**: lists, views and `pr diff` on a terminal write through
-  `SMITH_PAGER`, then `config set pager`, then `PAGER` (`cat` means none),
-  run with `sh -c` and `LESS=FRX`, `LV=-c` unless set, as gh does. Watch
-  modes and prompts never page.
+- **Pager**: lists, views, `status` and `pr diff` on a terminal write
+  through `SMITH_PAGER`, then `config set pager`, then `PAGER` (`cat`, or an
+  empty `SMITH_PAGER`, means none), run with `sh -c` and `LESS=FRX`,
+  `LV=-c` unless set, as gh does. The pager starts with the first output,
+  so an error raised before it reaches the terminal directly; a pager
+  whose program is not on `PATH` is skipped with a warning, and one that
+  exits with a failure makes smith exit 1. Watch modes and prompts never
+  page.
 - **Browser**: `--web` runs `$SMITH_BROWSER`, `$BROWSER`, else `xdg-open`
   (`open` on macOS), detached so that a browser started directly does not
   hold smith, and only for http(s) URLs, since some come from the server.

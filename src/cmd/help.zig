@@ -23,7 +23,7 @@ const environment = [_][2][]const u8{
     .{ "SMITH_LOGIN_TIMEOUT", "Seconds the browser login waits (default 300)" },
     .{ "SMITH_EDITOR, VISUAL, EDITOR", "Editor for bodies" },
     .{ "SMITH_BROWSER, BROWSER", "Browser for --web" },
-    .{ "SMITH_PAGER, PAGER", "Pager for lists, views and diffs on a terminal (cat for none)" },
+    .{ "SMITH_PAGER, PAGER", "Pager for lists, views and diffs on a terminal (cat, or an empty SMITH_PAGER, for none)" },
     .{ "SMITH_PROMPT_DISABLED", "Never prompt, as if `config set prompt disabled`" },
     .{ "SMITH_JQ", "The jq program --jq runs" },
     .{ "NO_COLOR, CLICOLOR_FORCE", "Colour off, colour on" },

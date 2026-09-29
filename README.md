@@ -142,7 +142,7 @@ keyring) and `config.zon` (preferences and aliases).
 | `SMITH_LOGIN_TIMEOUT` | Seconds the browser login waits (default 300) |
 | `SMITH_EDITOR`, `VISUAL`, `EDITOR` | Editor for bodies (`config set editor` sits after `SMITH_EDITOR`) |
 | `SMITH_BROWSER`, `BROWSER` | Browser for `--web` (`config set browser` sits after `SMITH_BROWSER`) |
-| `SMITH_PAGER`, `PAGER` | Pager for lists, views and diffs on a terminal (`config set pager` sits between them; `cat` for none) |
+| `SMITH_PAGER`, `PAGER` | Pager for lists, views and diffs on a terminal (`config set pager` sits between them; `cat`, or `SMITH_PAGER=` empty, for none) |
 | `SMITH_PROMPT_DISABLED` | Never prompt, as if `config set prompt disabled` |
 | `SMITH_JQ` | The jq program `--jq` runs |
 | `NO_COLOR`, `CLICOLOR_FORCE` | Colour off, colour on |

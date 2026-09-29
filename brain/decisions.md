@@ -167,8 +167,9 @@ half-written.
 `pr list -s merged` and `--head` used to fetch four times `-L` and filter,
 coming back short in busy repositories. They now read whole pages until `-L`
 items pass or the list ends, which can mean many requests for a rare match;
-a correct answer was preferred over a bounded cost, as gh does for its own
-client-side filters.
+a correct answer was preferred over a small bound. The max review added
+a ceiling of 100 pages (with a warning) so a hostile or enormous server
+cannot keep smith paging forever.
 
 ## Opt-in paging (2026-09-29)
 
