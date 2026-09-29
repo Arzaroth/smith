@@ -93,3 +93,28 @@ test "issue create --milestone sends its id; an unknown one fails first" {
     try h.expectRun(1, &.{ "issue", "create", "-R", "owner/repo", "-t", "x", "-b", "y", "-m", "nope" });
     try h.expectErr("no milestone \"nope\"");
 }
+
+test "due dates are days in the local zone, whatever zone Forgejo answers in" {
+    var h: Harness = undefined;
+    const paris = "{\"id\":5,\"title\":\"winter\",\"state\":\"open\",\"open_issues\":0,\"closed_issues\":0,\"due_on\":\"2026-12-31T23:59:59+01:00\"}";
+    const tokyo = "{\"id\":6,\"title\":\"summer\",\"state\":\"open\",\"open_issues\":0,\"closed_issues\":0,\"due_on\":\"2026-07-15T06:59:59+09:00\"}";
+    try h.init(&.{
+        .{ .path = milestones, .body = "[" ++ paris ++ "," ++ tokyo ++ "]" },
+        .{ .method = .POST, .path = milestones, .status = 201, .body = paris },
+    }, .{});
+    defer h.deinit();
+    try h.env.put("TZ", "CET-1CEST,M3.5.0,M10.5.0/3");
+    try h.expectRun(0, &.{ "milestone", "create", "winter", "--due", "2026-12-31", "-R", "owner/repo" });
+    try h.expectRun(0, &.{ "milestone", "create", "summer", "--due", "2026-07-14", "-R", "owner/repo" });
+    var bodies: [2][]const u8 = undefined;
+    var n: usize = 0;
+    for (h.mock.requests.items) |r| if (r.method == .POST) {
+        bodies[n] = r.body;
+        n += 1;
+    };
+    try std.testing.expect(std.mem.indexOf(u8, bodies[0], "\"due_on\":\"2026-12-31T22:59:59Z\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bodies[1], "\"due_on\":\"2026-07-14T21:59:59Z\"") != null);
+    try h.expectRun(0, &.{ "milestone", "list", "-R", "owner/repo" });
+    try h.expectOut("winter\t0/0 closed (0%)\tdue 2026-12-31\topen\n");
+    try h.expectOut("summer\t0/0 closed (0%)\tdue 2026-07-14\topen\n");
+}

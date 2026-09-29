@@ -353,9 +353,12 @@ test "merge -d deletes the pull request's own branch and leaves a same-named str
     defer h.deinit();
     try forgeRepo(&h);
     try h.expectRun(0, &.{ "pr", "checkout", "12" });
+    try h.git(&.{ "-C", "seed", "switch", "-q", "main" });
+    try h.git(&.{ "-C", "seed", "commit", "-q", "--allow-empty", "-m", "merged upstream" });
+    try h.git(&.{ "-C", "seed", "push", "-q", try h.path("forge.git"), "main" });
     try h.expectRun(0, &.{ "pr", "merge", "12", "-d" });
     try h.expectErr("Deleted local branch feature");
-    try std.testing.expectEqualStrings("init", try head(&h));
+    try std.testing.expectEqualStrings("merged upstream", try head(&h));
     try std.testing.expectError(error.GitFailed, h.git(&.{ "-C", "work", "rev-parse", "--verify", "--quiet", "refs/heads/feature" }));
 
     try h.expectRun(0, &.{ "pr", "merge", "13", "-d" });
@@ -529,4 +532,31 @@ test "list -s merged gives up after a hundred pages, asking for full pages" {
     try h.expectErr("stopped after 100 pages with 0 matches");
     try std.testing.expectEqual(@as(usize, 100), h.mock.count(.GET, pulls));
     try std.testing.expect(std.mem.indexOf(u8, h.mock.requests.items[0].target, "limit=50") != null);
+}
+
+test "merge waits while Forgejo is still checking the branch" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = pulls ++ "/12", .body = fx.pr_same },
+        .{ .path = "/api/v1/repos/owner/repo", .body = fx.repo },
+        .{ .method = .POST, .path = pulls ++ "/12/merge", .status = 405, .body = "{\"message\":\"Please try again later\"}", .times = 1 },
+        .{ .method = .POST, .path = pulls ++ "/12/merge", .body = "" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "pr", "merge", "12", "-R", "owner/repo", "--merge" });
+    try h.expectErr("still checking #12");
+    try h.expectErr("Merged pull request #12");
+    try std.testing.expectEqual(@as(usize, 2), h.mock.count(.POST, pulls ++ "/12/merge"));
+}
+
+test "views show the milestone" {
+    var h: Harness = undefined;
+    const with_milestone = comptime blk: {
+        const s: []const u8 = fx.pr_same;
+        break :blk s[0 .. s.len - 1] ++ ",\"milestone\":{\"title\":\"v1.0\"}}";
+    };
+    try h.init(&.{.{ .path = pulls ++ "/12", .body = with_milestone }}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "pr", "view", "12", "-R", "owner/repo" });
+    try h.expectOut("Milestone: v1.0\n");
 }
