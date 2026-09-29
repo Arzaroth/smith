@@ -33,3 +33,12 @@ test "a command outside a clone cannot see the checkout the tests run from" {
     try h.expectErr("not in a git repository with remotes");
     try std.testing.expectEqual(@as(usize, 0), h.mock.requests.items.len);
 }
+
+test "--version works with no HOME and no config directory" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    for ([_][]const u8{ "HOME", "XDG_CONFIG_HOME", "SMITH_CONFIG_DIR" }) |name| _ = h.env.swapRemove(name);
+    try h.expectRun(0, &.{"--version"});
+    try h.expectOut("smith ");
+}

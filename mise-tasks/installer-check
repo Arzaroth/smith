@@ -1,11 +1,57 @@
 #!/usr/bin/env bash
-#MISE description="Lint install.sh and check it builds --dev with the Zig version .mise.toml pins"
+#MISE description="Lint install.sh, check its Zig version against .mise.toml's, and run it offline against a fixture release"
 set -euo pipefail
 
-shellcheck install.sh
+shellcheck -s sh install.sh
 pinned="$(sed -n 's/^zig = "\(.*\)"$/\1/p' .mise.toml)"
 installer="$(sed -n 's/^zig_version="\(.*\)"$/\1/p' install.sh)"
 if [[ "${pinned}" != "${installer}" ]]; then
   echo "install.sh builds --dev with Zig ${installer}, .mise.toml pins ${pinned}: update zig_version and its checksums" >&2
   exit 1
 fi
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "${tmp}"' EXIT
+case "$(uname -s)" in Linux) os=linux-musl ;; Darwin) os=macos ;; *) echo "skipping the install run on $(uname -s)" >&2; exit 0 ;; esac
+case "$(uname -m)" in x86_64 | amd64) arch=x86_64 ;; aarch64 | arm64) arch=aarch64 ;; *) echo "skipping the install run on $(uname -m)" >&2; exit 0 ;; esac
+
+# A release of a stub smith; with a second argument, its SHA256SUMS lists
+# that file's hash instead of the archive's.
+release() {
+  local version="$1" sum_of="${2:-}"
+  local dir="${tmp}/forge/releases/download/v${version}" name="smith-${version}-${arch}-${os}"
+  mkdir -p "${dir}/${name}"
+  printf '#!/bin/sh\necho "smith %s"\n' "${version}" >"${dir}/${name}/smith"
+  chmod 755 "${dir}/${name}/smith"
+  tar -C "${dir}" -czf "${dir}/${name}.tar.gz" "${name}"
+  rm -r "${dir:?}/${name}"
+  local sum
+  sum="$(sha256sum -- "${sum_of:-${dir}/${name}.tar.gz}" | cut -d' ' -f1)"
+  printf '%s  %s\n' "${sum}" "${name}.tar.gz" >"${dir}/SHA256SUMS"
+}
+
+expect() {
+  local want_status="$1" want_text="$2"
+  shift 2
+  local out status=0
+  out="$(SMITH_INSTALL_URL="file://${tmp}/forge" "$@" 2>&1)" || status=$?
+  if [[ "${status}" != "${want_status}" || "${out}" != *"${want_text}"* ]]; then
+    printf 'install.sh check failed: %s\nwanted exit %s and "%s", got exit %s:\n%s\n' "$*" "${want_status}" "${want_text}" "${status}" "${out}" >&2
+    exit 1
+  fi
+}
+
+release 1.2.3
+printf 'tampered\n' >"${tmp}/tampered"
+release 1.2.4 "${tmp}/tampered"
+
+expect 0 "Installed smith 1.2.3" sh install.sh --version 1.2.3 --dir "${tmp}/bin"
+expect 0 "smith 1.2.3 is already installed" sh install.sh --version v1.2.3 --dir "${tmp}/bin"
+expect 1 "does not match the release's SHA256SUMS" sh install.sh --version 1.2.4 --dir "${tmp}/bin"
+[[ "$("${tmp}/bin/smith")" == "smith 1.2.3" ]] || { echo "a failed install replaced the binary" >&2; exit 1; }
+[[ -z "$(find "${tmp}/bin" -name '.smith.*')" ]] || { echo "a failed install left a staged file" >&2; exit 1; }
+expect 1 "no release v9.9.9" sh install.sh --version 9.9.9 --dir "${tmp}/bin"
+expect 1 "--version takes X.Y.Z" sh install.sh --version 1.2 --dir "${tmp}/bin"
+expect 0 "Installed smith 1.2.3" env -u HOME sh install.sh --version 1.2.3 --dir "${tmp}/nohome"
+expect 0 "" sh -c "sed '\$d' install.sh | sh -s -- --version 1.2.3 --dir '${tmp}/cut'"
+[[ ! -e "${tmp}/cut" ]] || { echo "a truncated install.sh still ran" >&2; exit 1; }
