@@ -49,13 +49,16 @@ fn due(ctx: *Ctx, args: *const cli.Args) !?[]const u8 {
     const d = args.get("due") orelse return null;
     const midnight = term.parseTime(try std.fmt.allocPrint(ctx.alloc, "{s}T00:00:00Z", .{d})) orelse
         return ctx.fail("--due takes a date as YYYY-MM-DD, got \"{s}\"", .{d});
-    return try localtime.utc(ctx.alloc, localtime.endOfDay(ctx, @divFloor(midnight, 86400)));
+    return localtime.utc(ctx.alloc, localtime.endOfDay(ctx, @divFloor(midnight, 86400))) catch |e| switch (e) {
+        error.OutOfRange => ctx.fail("--due {s} is out of range", .{d}),
+        else => |x| x,
+    };
 }
 
 /// The local day a due date falls on; Forgejo reports it in its own zone.
 fn dueDate(ctx: *Ctx, stamp: []const u8) ![]const u8 {
-    const unix = term.parseTime(stamp) orelse return stamp[0..@min(10, stamp.len)];
-    var buf: [10]u8 = undefined;
+    const unix = term.parseTime(stamp) orelse return term.clean(ctx.alloc, stamp[0..@min(10, stamp.len)], false);
+    var buf: [16]u8 = undefined;
     return ctx.alloc.dupe(u8, localtime.date(ctx, unix, &buf));
 }
 

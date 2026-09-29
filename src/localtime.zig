@@ -1,45 +1,59 @@
 //! The machine's offset from UTC, for dates a user types or reads: `TZ` (a
-//! POSIX rule, a zone name or a zone file) or `/etc/localtime`, through
-//! `std.tz`. Past a zone file's last transition, which is where current
-//! dates fall in slim zone files, its POSIX rule footer decides.
+//! zone name or file, else a POSIX rule; empty means UTC, as in glibc) or
+//! `/etc/localtime`, through `std.tz`. Past a zone file's last transition,
+//! which is where current dates fall in slim zone files, its POSIX rule
+//! footer decides.
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 
 /// Seconds east of UTC at `unix`; 0 when the zone cannot be read.
 pub fn offset(ctx: *Ctx, unix: i64) i32 {
-    const path = if (ctx.getenv("TZ")) |tz| blk: {
-        const spec = if (tz[0] == ':') tz[1..] else tz;
-        if (spec.len == 0) break :blk "/etc/localtime";
-        if (rule(spec, unix)) |o| return o;
-        if (spec[0] == '/') break :blk spec;
-        break :blk std.fmt.allocPrint(ctx.alloc, "/usr/share/zoneinfo/{s}", .{spec}) catch return 0;
-    } else "/etc/localtime";
-    return fromFile(ctx, path, unix) orelse 0;
+    const tz = ctx.env.get("TZ") orelse return fromFile(ctx, "/etc/localtime", unix) orelse 0;
+    const spec = if (tz.len > 0 and tz[0] == ':') tz[1..] else tz;
+    if (spec.len == 0) return 0;
+    const path = if (spec[0] == '/')
+        spec
+    else if (std.mem.indexOf(u8, spec, "..") == null)
+        std.fmt.allocPrint(ctx.alloc, "/usr/share/zoneinfo/{s}", .{spec}) catch return 0
+    else
+        "";
+    if (path.len > 0) if (fromFile(ctx, path, unix)) |o| return o;
+    return rule(spec, unix) orelse 0;
 }
 
 /// `YYYY-MM-DD` of the local day `unix` falls on.
-pub fn date(ctx: *Ctx, unix: i64, buf: *[10]u8) []const u8 {
+pub fn date(ctx: *Ctx, unix: i64, buf: *[16]u8) []const u8 {
     const d = civil(@divFloor(unix + offset(ctx, unix), 86400));
-    return std.fmt.bufPrint(buf, "{d:0>4}-{d:0>2}-{d:0>2}", .{ @as(u64, @intCast(@max(d.year, 0))), d.month, d.day }) catch unreachable;
+    return std.fmt.bufPrint(buf, "{d:0>4}-{d:0>2}-{d:0>2}", .{ @as(u64, @intCast(std.math.clamp(d.year, 0, 99999))), d.month, d.day }) catch unreachable;
 }
 
-/// The UTC second at which the local day `days` (since the epoch) ends.
+/// The UTC second at which the local day `days` (since the epoch) ends: the
+/// later one when a fall-back makes 23:59:59 happen twice.
 pub fn endOfDay(ctx: *Ctx, days: i64) i64 {
     const local = days * 86400 + 86399;
-    const guess = local - offset(ctx, local);
-    return local - offset(ctx, guess);
+    var best: ?i64 = null;
+    for ([_]i64{ local - 86400, local, local + 86400 }) |near| {
+        const o = offset(ctx, near);
+        const candidate = local - o;
+        if (offset(ctx, candidate) == o and (best == null or candidate > best.?)) best = candidate;
+    }
+    return best orelse local - offset(ctx, local - offset(ctx, local));
 }
 
-/// `unix` as an RFC 3339 UTC timestamp.
+/// `unix` as an RFC 3339 UTC timestamp; an error outside years 0 to 9999.
 pub fn utc(alloc: std.mem.Allocator, unix: i64) ![]const u8 {
     const days = @divFloor(unix, 86400);
     const secs = unix - days * 86400;
     const d = civil(days);
-    return std.fmt.allocPrint(alloc, "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}Z", .{ @as(u64, @intCast(@max(d.year, 0))), d.month, d.day, @as(u64, @intCast(@divFloor(secs, 3600))), @as(u64, @intCast(@mod(@divFloor(secs, 60), 60))), @as(u64, @intCast(@mod(secs, 60))) });
+    if (d.year < 0 or d.year > 9999) return error.OutOfRange;
+    return std.fmt.allocPrint(alloc, "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}Z", .{ @as(u64, @intCast(d.year)), d.month, d.day, @as(u64, @intCast(@divFloor(secs, 3600))), @as(u64, @intCast(@mod(@divFloor(secs, 60), 60))), @as(u64, @intCast(@mod(secs, 60))) });
 }
 
 fn fromFile(ctx: *Ctx, path: []const u8, unix: i64) ?i32 {
-    const bytes = std.Io.Dir.cwd().readFileAlloc(ctx.io, path, ctx.alloc, .limited(1024 * 1024)) catch return null;
+    const cwd = std.Io.Dir.cwd();
+    const stat = cwd.statFile(ctx.io, path, .{}) catch return null;
+    if (stat.kind != .file) return null;
+    const bytes = cwd.readFileAlloc(ctx.io, path, ctx.alloc, .limited(1024 * 1024)) catch return null;
     var reader: std.Io.Reader = .fixed(bytes);
     const tz = std.tz.Tz.parse(ctx.alloc, &reader) catch return null;
     var i = tz.transitions.len;
@@ -49,7 +63,8 @@ fn fromFile(ctx: *Ctx, path: []const u8, unix: i64) ?i32 {
     return if (tz.timetypes.len > 0) tz.timetypes[0].offset else null;
 }
 
-/// Evaluates a POSIX TZ rule such as `CET-1CEST,M3.5.0,M10.5.0/3` at `unix`.
+/// Evaluates a POSIX TZ rule such as `CET-1CEST,M3.5.0,M10.5.0/3` at `unix`;
+/// a daylight name without dates takes the US rules, as glibc does.
 fn rule(s: []const u8, unix: i64) ?i32 {
     var p: Parser = .{ .s = s };
     if (!p.name()) return null;
@@ -58,6 +73,7 @@ fn rule(s: []const u8, unix: i64) ?i32 {
     if (!p.name()) return std_off;
     var dst_off = std_off + 3600;
     if (p.i < s.len and s[p.i] != ',') dst_off = -(p.offset() orelse return null);
+    if (p.i == s.len) p = .{ .s = ",M3.2.0,M11.1.0" };
     if (!p.eat(',')) return std_off;
     const start = p.rule() orelse return null;
     if (!p.eat(',')) return null;
@@ -124,9 +140,11 @@ const Parser = struct {
         return p.i - start >= 3;
     }
 
+    /// Up to six digits: every field of a rule is smaller.
     fn number(p: *Parser) ?i64 {
         const start = p.i;
         while (p.i < p.s.len and std.ascii.isDigit(p.s[p.i])) p.i += 1;
+        if (p.i - start > 6) return null;
         return std.fmt.parseInt(i64, p.s[start..p.i], 10) catch null;
     }
 

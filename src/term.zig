@@ -128,7 +128,10 @@ pub fn parseTime(s: []const u8) ?i64 {
     const hour = std.fmt.parseInt(i64, s[11..13], 10) catch return null;
     const minute = std.fmt.parseInt(i64, s[14..16], 10) catch return null;
     const second = std.fmt.parseInt(i64, s[17..19], 10) catch return null;
-    if (month < 1 or month > 12 or day < 1 or day > 31) return null;
+    if (month < 1 or month > 12 or day < 1) return null;
+    const leap = @mod(year, 4) == 0 and (@mod(year, 100) != 0 or @mod(year, 400) == 0);
+    const days_in_month = [_]u8{ 31, if (leap) 29 else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+    if (day > days_in_month[month - 1] or hour > 23 or minute > 59 or second > 60) return null;
 
     var rest = s[19..];
     if (rest.len > 0 and rest[0] == '.') {
