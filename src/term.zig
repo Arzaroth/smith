@@ -263,6 +263,55 @@ fn isControl(s: []const u8, i: usize, c: u8, lines: bool) bool {
     return c < 0x20 or c == 0x7f;
 }
 
+/// Like `clean` with `lines`, but keeps the escapes `--template` itself
+/// writes: colour (`ESC [ digits ; m`) and OSC 8 links to http(s) URLs.
+/// Everything else that could steer the terminal becomes `?`, whether it
+/// came from the server or was pieced together by the template.
+pub fn cleanStyled(alloc: Allocator, s: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    var i: usize = 0;
+    while (i < s.len) {
+        if (s[i] == 0x1b) if (styleEscape(s[i..])) |n| {
+            try out.appendSlice(alloc, s[i..][0..n]);
+            i += n;
+            continue;
+        };
+        if (isControl(s, i, s[i], true)) {
+            try out.append(alloc, '?');
+            i += if (s[i] == 0xc2) 2 else 1;
+            continue;
+        }
+        try out.append(alloc, s[i]);
+        i += 1;
+    }
+    return out.toOwnedSlice(alloc);
+}
+
+/// The length of the SGR or OSC 8 sequence `s` starts with, if it is one.
+fn styleEscape(s: []const u8) ?usize {
+    if (std.mem.startsWith(u8, s, "\x1b[")) {
+        var n: usize = 2;
+        while (n < s.len and (std.ascii.isDigit(s[n]) or s[n] == ';')) n += 1;
+        return if (n < s.len and s[n] == 'm') n + 1 else null;
+    }
+    if (!std.mem.startsWith(u8, s, "\x1b]8;;")) return null;
+    const end = std.mem.indexOf(u8, s, "\x1b\\") orelse return null;
+    const url = s[5..end];
+    for (url) |c| if (c <= 0x20 or c >= 0x7f) return null;
+    if (url.len > 0 and !std.mem.startsWith(u8, url, "https://") and !std.mem.startsWith(u8, url, "http://")) return null;
+    return end + 2;
+}
+
+test cleanStyled {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const link = "\x1b]8;;https://x.test/1\x1b\\one\x1b]8;;\x1b\\";
+    try testing.expectEqualStrings("\x1b[32m#7\x1b[0m " ++ link ++ "\n", try cleanStyled(a, "\x1b[32m#7\x1b[0m " ++ link ++ "\n"));
+    try testing.expectEqualStrings("?]52;c;eA==? ?2J ?", try cleanStyled(a, "\x1b]52;c;eA==\x07 \xc2\x9b2J \x1b"));
+    try testing.expectEqualStrings("?]8;;file:///etc?\\x", try cleanStyled(a, "\x1b]8;;file:///etc\x1b\\x"));
+}
+
 /// A writer that passes text on to `inner` the way `clean` would with
 /// `lines`, for smith's own messages on a terminal, which quote server text.
 pub const Scrubber = struct {

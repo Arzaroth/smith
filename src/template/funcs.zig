@@ -172,7 +172,7 @@ pub fn call(e: *Exec, id: Id, pos: usize, args: []const Arg, dot: Value, piped: 
             const url = try text(e, v[0]);
             const label = try text(e, v[1]);
             const shown = if (label.len > 0) label else url;
-            if (!e.opts.tty) return .{ .string = shown };
+            if (!e.opts.tty or !linkable(url)) return .{ .string = shown };
             return .{ .string = try std.fmt.allocPrint(e.alloc, "\x1b]8;;{s}\x1b\\{s}\x1b]8;;\x1b\\", .{ url, shown }) };
         },
         .tablerow => {
@@ -313,4 +313,11 @@ pub fn table(e: *Exec) Error![]const u8 {
         try w.writeByte('\n');
     }
     return out.written();
+}
+
+/// Links go only to http(s) URLs with nothing a terminal could misread.
+fn linkable(url: []const u8) bool {
+    if (!std.mem.startsWith(u8, url, "https://") and !std.mem.startsWith(u8, url, "http://")) return false;
+    for (url) |c| if (c <= 0x20 or c >= 0x7f) return false;
+    return true;
 }

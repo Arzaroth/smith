@@ -289,6 +289,9 @@ pub const Client = struct {
     /// Like `listValues`, keeping only the items `filter.keep` accepts and
     /// reading on until `limit` of them were found or the list ends: for
     /// filters the API lacks.
+    /// How far `listMatching` reads before giving up on finding `limit` items.
+    pub const max_filtered_pages = 100;
+
     pub fn listMatching(c: *Client, path: []const u8, limit: u32, field: ?[]const u8, filter: anytype) ![]json.Value {
         return c.list(path, limit, field, std.math.maxInt(u32), filter);
     }
@@ -301,6 +304,10 @@ pub const Client = struct {
         const sep: u8 = if (std.mem.indexOfScalar(u8, path, '?') != null) '&' else '?';
         var page: u32 = 1;
         while (items.items.len < limit) : (page += 1) {
+            if (page > max_filtered_pages and batch == std.math.maxInt(u32)) {
+                try ctx.err.print("! stopped after {d} pages with {d} matches; narrow the search\n", .{ max_filtered_pages, items.items.len });
+                break;
+            }
             const p = try std.fmt.allocPrint(ctx.alloc, "{s}{c}page={d}&limit={d}", .{ path, sep, page, page_size });
             const v = try c.getValue(p);
             const arr = switch (if (field) |f| (if (v == .object) v.object.get(f) orelse .null else .null) else v) {
@@ -375,7 +382,7 @@ pub fn printJson(ctx: *Ctx, v: anytype) !void {
             error.TemplateSyntax, error.TemplateExec => return ctx.fail("invalid --template: {s}", .{diag.message}),
             else => |x| return x,
         };
-        return ctx.out.writeAll(aw.written());
+        return ctx.out.writeAll(if (ctx.stdout_tty) try term.cleanStyled(ctx.alloc, aw.written()) else aw.written());
     }
     try jqFilter(ctx, text, ctx.jq.?);
 }
