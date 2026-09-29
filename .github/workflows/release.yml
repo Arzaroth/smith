@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      MISE_YES: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: mise
+        run: |
+          curl -fsSL https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Toolchain
+        run: |
+          mise trust
+          mise install
+
+      - name: Gate
+        run: mise run check
+
+      - name: Archives
+        run: mise run dist
+
+      - name: Notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          awk -v v="$version" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > notes.md
+          test -s notes.md
+
+      - name: Publish on GitHub
+        if: github.server_url == 'https://github.com'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/*.tar.gz dist/SHA256SUMS --title "smith ${TAG#v}" --notes-file notes.md --repo "${{ github.repository }}"
+
+      - name: Publish on Forgejo
+        if: github.server_url != 'https://github.com'
+        env:
+          SMITH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          SERVER: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          host="${SERVER#*://}"
+          export SMITH_HOST="$host"
+          zig-out/bin/smith release create "$TAG" dist/*.tar.gz dist/SHA256SUMS \
+            --title "smith ${TAG#v}" --notes-file notes.md -R "$host/$REPOSITORY"
