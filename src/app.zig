@@ -35,6 +35,7 @@ pub const root: cli.Command = .{
         @import("cmd/api.zig").command,
         @import("cmd/browse.zig").command,
         @import("cmd/completion.zig").command,
+        @import("cmd/help.zig").command,
     },
     .run = runRoot,
 };
