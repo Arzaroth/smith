@@ -27,20 +27,33 @@ test "search repos narrows to an owner by id; search issues and prs send the typ
 
 test "status fills each section from its own search" {
     var h: Harness = undefined;
+    const a = comptime found("1");
+    const b = comptime found("2");
+    const c = comptime found("3");
+    const d = comptime found("4");
     try h.init(&.{
-        .{ .path = "/api/v1/repos/issues/search", .query = "review_requested=true", .body = "[" ++ found_issue ++ "]" },
-        .{ .path = "/api/v1/repos/issues/search", .body = "[]" },
+        .{ .path = "/api/v1/repos/issues/search", .query = "type=issues&assigned=true", .body = "[" ++ a ++ "]" },
+        .{ .path = "/api/v1/repos/issues/search", .query = "type=pulls&assigned=true", .body = "[" ++ b ++ "]" },
+        .{ .path = "/api/v1/repos/issues/search", .query = "type=pulls&review_requested=true", .body = "[" ++ c ++ "]" },
+        .{ .path = "/api/v1/repos/issues/search", .query = "type=issues&mentioned=true", .body = "[" ++ d ++ "]" },
     }, .{});
     defer h.deinit();
     try h.expectRun(0, &.{"status"});
     const out = h.stdout();
-    const review = std.mem.indexOf(u8, out, "Review requests").?;
-    const mentions = std.mem.indexOf(u8, out, "Mentions").?;
-    try std.testing.expect(std.mem.indexOf(u8, out[review..mentions], "team/app\t3") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out[0..review], "Nothing here") != null);
+    const titles = [_][]const u8{ "Assigned issues", "Assigned pull requests", "Review requests", "Mentions" };
+    for (titles, 0..) |t, i| {
+        const start = std.mem.indexOf(u8, out, t).?;
+        const end = if (i + 1 < titles.len) std.mem.indexOf(u8, out, titles[i + 1]).? else out.len;
+        const want = try std.fmt.allocPrint(h.arena.allocator(), "team/app\t{d}\t", .{i + 1});
+        try std.testing.expect(std.mem.indexOf(u8, out[start..end], want) != null);
+    }
     try h.expectRun(0, &.{ "status", "--json" });
     const v = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
-    try std.testing.expectEqual(@as(usize, 1), v.object.get("review_requests").?.array.items.len);
+    try std.testing.expectEqual(@as(i64, 3), v.object.get("review_requests").?.array.items[0].object.get("number").?.integer);
+}
+
+fn found(comptime n: []const u8) []const u8 {
+    return "{\"number\":" ++ n ++ ",\"title\":\"Item\",\"state\":\"open\",\"updated_at\":\"2026-09-29T10:00:00Z\",\"repository\":{\"full_name\":\"team/app\"}}";
 }
 
 test "notifications: list unread, mark one or all as read" {

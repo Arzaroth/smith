@@ -83,12 +83,32 @@ test "--template and --jq shape the JSON of any command that has --json" {
     try h.expectRun(1, &.{ "issue", "list", "-R", "owner/repo", "--template", "{{range .}}" });
     try h.expectErr("invalid --template");
 
-    const probe = std.process.run(h.arena.allocator(), std.testing.io, .{ .argv = &.{ "jq", "--version" }, .environ_map = &h.env }) catch return;
-    if (probe.term != .exited or probe.term.exited != 0) return;
-    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo", "-q", ".[].user.login" });
-    try std.testing.expectEqualStrings("alice\n", h.stdout());
     try h.expectRun(0, &.{ "issue", "list", "--help" });
     try h.expectOut("-q, --jq expression");
+}
+
+test "--jq hands the JSON and the expression to jq and reports its complaints" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .path = "/api/v1/repos/owner/repo/issues", .body = fx.issue_list }}, .{});
+    defer h.deinit();
+    const fake =
+        \\#!/bin/sh
+        \\[ "$1" = -r ] || exit 9
+        \\case $2 in
+        \\  bad) echo "jq: error: syntax error, unexpected INVALID_CHARACTER" >&2; exit 3 ;;
+        \\  *) printf '%s:' "$2"; head -c 1; echo ;;
+        \\esac
+        \\
+    ;
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "jq", .data = fake, .flags = .{ .permissions = .fromMode(0o755) } });
+    try h.env.put("SMITH_JQ", try h.path("jq"));
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo", "-q", ".[].user.login" });
+    try std.testing.expectEqualStrings(".[].user.login:[\n", h.stdout());
+    try h.expectRun(1, &.{ "issue", "list", "-R", "owner/repo", "-q", "bad" });
+    try h.expectErr("jq: error: syntax error");
+    try h.env.put("SMITH_JQ", try h.path("no-such-jq"));
+    try h.expectRun(1, &.{ "issue", "list", "-R", "owner/repo", "-q", "." });
+    try h.expectErr("--jq needs jq installed");
 }
 
 test "browse prints the URLs it would open" {
