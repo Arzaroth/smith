@@ -11,8 +11,8 @@ test "config set, get, list and unset; unknown keys and values are refused" {
     try h.expectRun(0, &.{ "config", "get", "editor" });
     try std.testing.expectEqualStrings("nano -w\n", h.stdout());
     try h.expectRun(0, &.{ "config", "list" });
-    try std.testing.expectEqualStrings("editor=nano -w\nbrowser=\ngit_protocol=https\n", h.stdout());
-    try h.expectRun(1, &.{ "config", "set", "pager", "less" });
+    try std.testing.expectEqualStrings("git_protocol=https\neditor=nano -w\nbrowser=\npager=\nprompt=enabled\n", h.stdout());
+    try h.expectRun(1, &.{ "config", "set", "spinner", "off" });
     try h.expectErr("unknown key");
     try h.expectRun(1, &.{ "config", "set", "git_protocol", "ftp" });
     try h.expectRun(0, &.{ "config", "unset", "editor" });
@@ -79,7 +79,7 @@ test "alias set refuses empty expansions and open quotes, and replaces only with
     try h.init(&.{}, .{});
     defer h.deinit();
     try h.expectRun(1, &.{ "alias", "set", "e", "" });
-    try h.expectErr("the expansion is empty");
+    try h.expectErr("the expansion of e is empty");
     try h.expectRun(1, &.{ "alias", "set", "e", "!" });
     try h.expectRun(1, &.{ "alias", "set", "q", "issue list --label 'bug" });
     try h.expectErr("unterminated quote");

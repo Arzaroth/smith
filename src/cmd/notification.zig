@@ -13,6 +13,7 @@ pub const command: cli.Command = .{
     .subs = &.{
         .{
             .name = "list",
+            .pages = true,
             .summary = "List unread notifications (all of them with --all).",
             .flags = &.{ .{ .long = "all", .short = 'a', .help = "Include read ones" }, cli.limit_flag, cli.json_flag, hostname_flag },
             .run = list,

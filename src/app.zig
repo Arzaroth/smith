@@ -59,6 +59,7 @@ pub fn run(ctx: *Ctx, argv: []const []const u8) u8 {
             break :blk 1;
         },
     };
+    ctx.stopPager();
     ctx.out.flush() catch {};
     ctx.err.flush() catch {};
     return code;
@@ -68,6 +69,8 @@ fn dispatch(ctx: *Ctx, argv_in: []const []const u8) !u8 {
     const prefs = try settings.loadLenient(ctx);
     ctx.editor = prefs.editor;
     ctx.browser = prefs.browser;
+    ctx.pager = prefs.pager;
+    ctx.prompts = prefs.prompt != .disabled and ctx.getenv("SMITH_PROMPT_DISABLED") == null;
     var argv = argv_in;
     if (argv.len > 0 and argv[0].len > 0 and argv[0][0] != '-' and !isCommand(argv[0])) {
         if (prefs.alias(argv[0])) |a| {
@@ -106,6 +109,7 @@ fn dispatch(ctx: *Ctx, argv_in: []const []const u8) !u8 {
         },
         else => |x| return x,
     };
+    if (cmd.pages) try ctx.startPager();
     ctx.jq = args.get("jq");
     ctx.template = args.get("template");
     if ((ctx.jq != null or ctx.template != null) and !args.has("json")) args = try args.with(ctx.alloc, "json", "");

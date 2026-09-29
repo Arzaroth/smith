@@ -18,6 +18,10 @@ pub const Settings = struct {
     browser: ?[]const u8 = null,
     /// Git protocol given to hosts logged in to from now on.
     git_protocol: ?config.Protocol = null,
+    /// Pager for long output on a terminal, after `SMITH_PAGER` and before `PAGER`.
+    pager: ?[]const u8 = null,
+    /// `disabled` makes smith behave as in a script: no prompts, no editor.
+    prompt: ?Prompt = null,
     aliases: []const Alias = &.{},
 
     pub fn alias(s: Settings, name: []const u8) ?Alias {
@@ -26,7 +30,7 @@ pub const Settings = struct {
     }
 };
 
-pub const keys = [_][]const u8{ "editor", "browser", "git_protocol" };
+pub const Prompt = enum { enabled, disabled };
 
 fn path(ctx: *Ctx) ![]const u8 {
     return std.fs.path.join(ctx.alloc, &.{ try config.dir(ctx), "config.zon" });
@@ -115,6 +119,87 @@ pub fn split(alloc: Allocator, s: []const u8) ![]const []const u8 {
     return words.toOwnedSlice(alloc);
 }
 
+/// Reads gh's alias file: a YAML map, one `name: expansion` per line, each
+/// side plain, 'single' or "double" quoted; `#` starts a comment.
+pub fn parseAliasFile(alloc: Allocator, text: []const u8) ![]const Alias {
+    var out: std.ArrayList(Alias) = .empty;
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |raw| {
+        const line = std.mem.trimEnd(u8, raw, " \t\r");
+        if (line.len == 0 or line[0] == '#') continue;
+        if (line[0] == ' ' or line[0] == '\t') return error.InvalidAliasFile;
+        const colon = keyEnd(line) orelse return error.InvalidAliasFile;
+        try out.append(alloc, .{
+            .name = try scalar(alloc, std.mem.trim(u8, line[0..colon], " \t")),
+            .expansion = try scalar(alloc, std.mem.trim(u8, line[colon + 1 ..], " \t")),
+        });
+    }
+    return out.toOwnedSlice(alloc);
+}
+
+fn keyEnd(line: []const u8) ?usize {
+    var quote: ?u8 = null;
+    for (line, 0..) |c, i| {
+        if (quote) |q| {
+            if (c == q) quote = null;
+        } else if (c == '\'' or c == '"') {
+            quote = c;
+        } else if (c == ':' and (i + 1 == line.len or line[i + 1] == ' ' or line[i + 1] == '\t')) return i;
+    }
+    return null;
+}
+
+/// A quoted scalar up to its closing quote, when only a comment follows.
+fn withoutComment(v: []const u8) ![]const u8 {
+    if (v.len == 0 or (v[0] != '\'' and v[0] != '"')) return v;
+    var i: usize = 1;
+    while (i < v.len) : (i += 1) {
+        if (v[0] == '"' and v[i] == '\\') {
+            i += 1;
+        } else if (v[i] == v[0]) {
+            if (v[0] == '\'' and i + 1 < v.len and v[i + 1] == '\'') {
+                i += 1;
+                continue;
+            }
+            const rest = std.mem.trimStart(u8, v[i + 1 ..], " \t");
+            if (rest.len > 0 and rest[0] != '#') return error.InvalidAliasFile;
+            return v[0 .. i + 1];
+        }
+    }
+    return error.InvalidAliasFile;
+}
+
+fn scalar(alloc: Allocator, raw: []const u8) ![]const u8 {
+    const v = try withoutComment(raw);
+    if (v.len == 0) return error.InvalidAliasFile;
+    if (v[0] == '\'') {
+        if (v.len < 2 or v[v.len - 1] != '\'') return error.InvalidAliasFile;
+        return std.mem.replaceOwned(u8, alloc, v[1 .. v.len - 1], "''", "'");
+    }
+    if (v[0] == '"') {
+        if (v.len < 2 or v[v.len - 1] != '"') return error.InvalidAliasFile;
+        var out: std.ArrayList(u8) = .empty;
+        var i: usize = 1;
+        while (i < v.len - 1) : (i += 1) {
+            if (v[i] != '\\') {
+                try out.append(alloc, v[i]);
+                continue;
+            }
+            i += 1;
+            if (i >= v.len - 1) return error.InvalidAliasFile;
+            try out.append(alloc, switch (v[i]) {
+                'n' => '\n',
+                't' => '\t',
+                '"', '\\', '/' => v[i],
+                else => return error.InvalidAliasFile,
+            });
+        }
+        return out.toOwnedSlice(alloc);
+    }
+    const end = std.mem.indexOf(u8, v, " #") orelse v.len;
+    return std.mem.trimEnd(u8, v[0..end], " \t");
+}
+
 /// The argument vector an alias expands to: `$1`… take the arguments given
 /// after the alias, and those no placeholder used are appended.
 pub fn expand(alloc: Allocator, expansion: []const u8, rest: []const []const u8) ![]const []const u8 {
@@ -167,4 +252,25 @@ test expand {
     try testing.expectEqualStrings("12", plain[2]);
     try testing.expectError(error.NotEnoughArguments, expand(a, "release list -R $2", &.{"x"}));
     try testing.expectError(error.UnterminatedQuote, split(a, "pr \"x"));
+}
+
+test parseAliasFile {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const got = try parseAliasFile(a,
+        \\# exported by gh
+        \\co: pr checkout
+        \\bugs: 'issue list --label ''bug'''
+        \\"say hi": "!echo \"hi\"\tthere" # trailing
+        \\pv: pr view # a comment
+        \\
+    );
+    try testing.expectEqual(@as(usize, 4), got.len);
+    try testing.expectEqualStrings("pr checkout", got[0].expansion);
+    try testing.expectEqualStrings("issue list --label 'bug'", got[1].expansion);
+    try testing.expectEqualStrings("say hi", got[2].name);
+    try testing.expectEqualStrings("pr view", got[3].expansion);
+    try testing.expectError(error.InvalidAliasFile, parseAliasFile(a, "co:\n  nested: x\n"));
+    try testing.expectError(error.InvalidAliasFile, parseAliasFile(a, "just words\n"));
 }

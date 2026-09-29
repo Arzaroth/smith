@@ -18,6 +18,7 @@ pub const command: cli.Command = .{
     .subs = &.{
         .{
             .name = "list",
+            .pages = true,
             .summary = "List pull requests in a repository.",
             .flags = &.{
                 .{ .long = "state", .short = 's', .value = "open|closed|merged|all", .help = "Filter by state (default open)" },
@@ -34,6 +35,7 @@ pub const command: cli.Command = .{
         },
         .{
             .name = "view",
+            .pages = true,
             .summary = "Show a pull request; without an argument, the one for the current branch.",
             .usage = selector_usage,
             .max_args = 1,
@@ -42,6 +44,7 @@ pub const command: cli.Command = .{
         },
         .{
             .name = "diff",
+            .pages = true,
             .summary = "Show the changes of a pull request.",
             .usage = selector_usage,
             .max_args = 1,

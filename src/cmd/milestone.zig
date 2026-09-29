@@ -17,6 +17,7 @@ pub const command: cli.Command = .{
     .subs = &.{
         .{
             .name = "list",
+            .pages = true,
             .summary = "List a repository's milestones.",
             .flags = &.{ .{ .long = "state", .short = 's', .value = "open|closed|all", .help = "Filter by state (default open)" }, cli.json_flag, cli.repo_flag },
             .run = list,

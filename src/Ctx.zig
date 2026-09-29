@@ -32,6 +32,18 @@ template: ?[]const u8 = null,
 /// Preferences from config.zon (`smith config`).
 editor: ?[]const u8 = null,
 browser: ?[]const u8 = null,
+pager: ?[]const u8 = null,
+/// False when prompts are turned off (`config set prompt disabled`,
+/// `SMITH_PROMPT_DISABLED`): commands then act as they do in a script.
+prompts: bool = true,
+/// The pager standard output goes through, while one runs.
+paged: ?Paged = null,
+
+const Paged = struct {
+    child: std.process.Child,
+    writer: *Io.File.Writer,
+    out: *Writer,
+};
 
 /// `Reported`: the message is printed, exit 1. `AuthRequired`: likewise, but
 /// exit 4, as gh does when authentication is what failed.
@@ -50,7 +62,40 @@ pub fn getenv(ctx: *const Ctx, name: []const u8) ?[]const u8 {
 }
 
 pub fn interactive(ctx: *const Ctx) bool {
-    return ctx.stdin_tty and ctx.stdout_tty;
+    return ctx.stdin_tty and ctx.stdout_tty and ctx.prompts;
+}
+
+/// Sends standard output through the pager (`SMITH_PAGER`, `config set
+/// pager`, then `PAGER`) until `stopPager`; nothing happens off a terminal,
+/// without a pager, or when it cannot start.
+pub fn startPager(ctx: *Ctx) !void {
+    if (!ctx.stdout_tty or ctx.paged != null) return;
+    const program = ctx.getenv("SMITH_PAGER") orelse ctx.pager orelse ctx.getenv("PAGER") orelse return;
+    if (std.mem.eql(u8, program, "cat")) return;
+    var env = try ctx.env.clone(ctx.alloc);
+    if (env.get("LESS") == null) try env.put("LESS", "FRX");
+    if (env.get("LV") == null) try env.put("LV", "-c");
+    try ctx.out.flush();
+    const child = std.process.spawn(ctx.io, .{
+        .argv = &.{ "sh", "-c", program },
+        .stdin = .pipe,
+        .environ_map = &env,
+    }) catch return;
+    const writer = try ctx.alloc.create(Io.File.Writer);
+    writer.* = child.stdin.?.writerStreaming(ctx.io, try ctx.alloc.alloc(u8, 16 * 1024));
+    ctx.paged = .{ .child = child, .writer = writer, .out = ctx.out };
+    ctx.out = &writer.interface;
+}
+
+/// Ends paging: the pager gets end of input and smith waits for it to exit.
+pub fn stopPager(ctx: *Ctx) void {
+    var p = ctx.paged orelse return;
+    ctx.paged = null;
+    ctx.out.flush() catch {};
+    ctx.out = p.out;
+    p.child.stdin.?.close(ctx.io);
+    p.child.stdin = null;
+    _ = p.child.wait(ctx.io) catch {};
 }
 
 pub fn readStdin(ctx: *Ctx) ![]const u8 {

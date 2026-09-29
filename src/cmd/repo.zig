@@ -24,6 +24,7 @@ pub const command: cli.Command = .{
         },
         .{
             .name = "view",
+            .pages = true,
             .summary = "Show a repository's description and details.",
             .usage = "[<repository>]",
             .max_args = 1,
@@ -102,6 +103,7 @@ pub const command: cli.Command = .{
         },
         .{
             .name = "list",
+            .pages = true,
             .summary = "List the repositories of a user or organization.",
             .usage = "[<owner>]",
             .max_args = 1,

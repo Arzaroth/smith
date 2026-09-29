@@ -18,12 +18,14 @@ pub const command: cli.Command = .{
     .subs = &.{
         .{
             .name = "list",
+            .pages = true,
             .summary = "List releases in a repository.",
             .flags = &.{ cli.limit_flag, cli.json_flag, cli.repo_flag },
             .run = list,
         },
         .{
             .name = "view",
+            .pages = true,
             .summary = "Show a release; without a tag, the latest one.",
             .usage = "[<tag>]",
             .max_args = 1,

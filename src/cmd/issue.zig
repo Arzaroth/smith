@@ -15,6 +15,7 @@ pub const command: cli.Command = .{
     .subs = &.{
         .{
             .name = "list",
+            .pages = true,
             .summary = "List issues in a repository.",
             .flags = &.{
                 .{ .long = "state", .short = 's', .value = "open|closed|all", .help = "Filter by state (default open)" },
@@ -33,6 +34,7 @@ pub const command: cli.Command = .{
         },
         .{
             .name = "view",
+            .pages = true,
             .summary = "Show an issue.",
             .usage = number_usage,
             .min_args = 1,

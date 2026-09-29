@@ -19,6 +19,7 @@ pub const command: cli.Command = .{
     .subs = &.{
         .{
             .name = "list",
+            .pages = true,
             .summary = "List recent workflow runs.",
             .flags = &.{
                 .{ .long = "branch", .short = 'b', .value = "string", .help = "Filter by branch" },
@@ -35,6 +36,7 @@ pub const command: cli.Command = .{
         },
         .{
             .name = "view",
+            .pages = true,
             .summary = "Show a run and its jobs; without an id, the latest run of the current branch.",
             .usage = id_usage,
             .max_args = 1,
