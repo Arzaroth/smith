@@ -390,3 +390,75 @@ test "lookup by branch wants this repository's branch; fix/42 is a branch, not #
     try h.expectOut("WIP: Fork change #13");
     try std.testing.expect(std.mem.indexOf(u8, h.stderr(), "invalid number") == null);
 }
+
+test "list --head filters on the head branch, OWNER:BRANCH for a fork" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .path = pulls, .body = fx.pr_list_open }}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "pr", "list", "-R", "owner/repo", "-H", "alice:patch-1" });
+    try std.testing.expectEqualStrings("13\tWIP: Fork change\tpatch-1\tdraft\t2026-09-29T11:30:00Z\n", h.stdout());
+    try h.expectRun(0, &.{ "pr", "list", "-R", "owner/repo", "--head", "feature" });
+    try std.testing.expectEqualStrings("12\tAdd feature\tfeature\topen\t2026-09-29T11:30:00Z\n", h.stdout());
+}
+
+test "review approves, requests changes with a body, and refuses two verdicts" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = pulls ++ "/12", .body = fx.pr_same },
+        .{ .method = .POST, .path = pulls ++ "/12/reviews", .body = "{}" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "pr", "review", "12", "-R", "owner/repo", "-a" });
+    try h.expectErr("Approved pull request #12");
+    try std.testing.expectEqualStrings("{\"event\":\"APPROVED\",\"body\":\"\",\"commit_id\":\"abc123\"}", h.mock.lastBody(.POST, pulls ++ "/12/reviews").?);
+    try h.expectRun(1, &.{ "pr", "review", "12", "-R", "owner/repo", "-r" });
+    try h.expectErr("need a body");
+    try h.expectRun(0, &.{ "pr", "review", "12", "-R", "owner/repo", "-r", "-b", "Please rename" });
+    try std.testing.expect(std.mem.indexOf(u8, h.mock.lastBody(.POST, pulls ++ "/12/reviews").?, "\"event\":\"REQUEST_CHANGES\",\"body\":\"Please rename\"") != null);
+    try h.expectRun(1, &.{ "pr", "review", "12", "-R", "owner/repo", "-a", "-c" });
+    try h.expectErr("choose one of");
+}
+
+test "update merges or rebases the base in and explains a conflict" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = pulls ++ "/12", .body = fx.pr_same },
+        .{ .method = .POST, .path = pulls ++ "/12/update", .query = "style=merge", .body = "" },
+        .{ .method = .POST, .path = pulls ++ "/12/update", .query = "style=rebase", .status = 409, .body = "{\"message\":\"merge conflict\"}" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "pr", "update", "12", "-R", "owner/repo" });
+    try h.expectErr("Updated pull request #12 (Add feature) with main (merge)");
+    try h.expectRun(1, &.{ "pr", "update", "12", "-R", "owner/repo", "--rebase" });
+    try h.expectErr("cannot be updated automatically: merge conflict");
+}
+
+test "status lists the current branch's, yours, and those waiting for your review" {
+    var h: Harness = undefined;
+    const requested = comptime blk: {
+        const s: []const u8 = fx.pr_fork;
+        const i = std.mem.indexOf(u8, s, "\"labels\":[]").?;
+        break :blk s[0..i] ++ "\"requested_reviewers\":[{\"login\":\"me\"}],\"labels\":[]" ++ s[i + "\"labels\":[]".len ..];
+    };
+    const mine = comptime blk: {
+        const s: []const u8 = fx.pr_same;
+        const i = std.mem.indexOf(u8, s, "\"login\":\"alice\"").?;
+        break :blk s[0..i] ++ "\"login\":\"me\"" ++ s[i + "\"login\":\"alice\"".len ..];
+    };
+    try h.init(&.{
+        .{ .path = pulls, .body = "[" ++ mine ++ "," ++ requested ++ "]" },
+        .{ .path = "/api/v1/repos/owner/repo/commits/abc123/status", .body = fx.status_mixed },
+    }, .{});
+    defer h.deinit();
+    try h.clone("work", "owner", "repo");
+    try h.git(&.{ "-C", "work", "switch", "-q", "-c", "feature" });
+    try h.expectRun(0, &.{ "pr", "status" });
+    const out = h.stdout();
+    const current = std.mem.indexOf(u8, out, "Current branch").?;
+    const created = std.mem.indexOf(u8, out, "Created by you").?;
+    const review = std.mem.indexOf(u8, out, "Requesting a code review from you").?;
+    try std.testing.expect(std.mem.indexOf(u8, out[current..created], "#12  Add feature [feature]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out[current..created], "1/3 checks failing") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out[created..review], "#12") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out[review..], "#13  WIP: Fork change") != null);
+}
