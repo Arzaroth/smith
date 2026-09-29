@@ -33,11 +33,17 @@
   `types.zig`, ignoring unknown fields.
 - **Bodies read only when there is one**: HEAD, 204 and 304 answers carry
   none, and reading one anyway would wait on the kept-alive connection.
+  std's `Request.deinit` makes the same mistake when it releases the
+  connection (a DELETE's 204 without a length is read until the server
+  hangs up), so smith marks such a body read first.
 - **Pagination**: `listValues` requests `page`/`limit` (at most the host's
   `page_size`, 50 by default) until it has `limit` items or a page comes
   back short. A short first page on a host whose page size is unknown
   triggers one look at `/settings/api` before it is taken as the end.
   `field` unwraps endpoints that nest the array (`workflow_runs`).
+  `listMatching` takes a filter for what the API cannot filter (merged pull
+  requests, a fork's head) and reads whole pages until `limit` items pass
+  it or the list ends.
   `/issues/{n}/comments` ignores paging and is read in one request.
 
 ## Sources

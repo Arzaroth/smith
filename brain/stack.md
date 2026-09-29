@@ -18,7 +18,10 @@
   `.github/workflows/release.yml`: the gate, `mise run dist`, then the release
   notes from `CHANGELOG.md`, published with `gh release create` on GitHub and
   with `smith release create` itself on Forgejo (the job token, or a
-  `RELEASE_TOKEN` secret).
+  `RELEASE_TOKEN` secret). The Forgejo runner reaches its server as
+  `http://server:3000`, so that step writes smith a `hosts.zon` naming it
+  with its scheme before `SMITH_TOKEN` can apply. `actions/checkout` is
+  pinned to a commit that GitHub and Forgejo's action mirrors share.
 
 ## Sources
 

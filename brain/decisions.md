@@ -161,3 +161,24 @@ Uploads and downloads used to be read whole into memory (up to 2 GiB for an
 upload). They now stream between the file and the socket, and downloads land
 in a temporary file renamed into place, so a failed transfer leaves nothing
 half-written.
+
+## Filtered lists read until they have enough (2026-09-29)
+
+`pr list -s merged` and `--head` used to fetch four times `-L` and filter,
+coming back short in busy repositories. They now read whole pages until `-L`
+items pass or the list ends, which can mean many requests for a rare match;
+a correct answer was preferred over a bounded cost, as gh does for its own
+client-side filters.
+
+## Opt-in paging (2026-09-29)
+
+Commands ask for the pager (`cli.Command.pages`) rather than smith paging
+everything on a terminal: prompts, the editor, watch modes and `api` output
+would fight a pager for the terminal. Lists, views and `pr diff` page, as in
+gh.
+
+## A blocked run ends the watch (2026-09-29)
+
+Forgejo's `blocked` is a run from a fork waiting for someone to approve it,
+which waiting will not change, so `run watch` stops with exit 8 (pending, as
+gh reports) and says what it needs; `unknown` stops with exit 1.

@@ -32,7 +32,9 @@ Before using a std API, read it in the pinned toolchain's source
   (`refAll`) so `zig build test` compiles all of it.
 - Known std 0.16 traps, all worked around in `api.zig`: the HTTP client
   never sends `privileged_headers`, keeps the authorization header across a
-  redirect to another host, and asserts when a POST is sent without a body.
+  redirect to another host, asserts when a POST is sent without a body, and
+  on releasing a request reads a DELETE's length-less 204 until the server
+  hangs up.
   `refAllDeclsRecursive` is gone; `json.ObjectMap` is unmanaged (`.empty`,
   allocator per call). `EAGAIN` from `accept` is a debug panic, so end a
   blocking accept by shutting the socket from another task (`oauth.expire`).

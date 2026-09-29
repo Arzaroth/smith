@@ -24,6 +24,10 @@
 - **Watching**: `pr checks --watch` and `run watch` redraw the screen on a
   terminal and append snapshots otherwise; each poll allocates from its own
   arena, freed before the next.
+- **Pager**: lists, views and `pr diff` on a terminal write through
+  `SMITH_PAGER`, then `config set pager`, then `PAGER` (`cat` means none),
+  run with `sh -c` and `LESS=FRX`, `LV=-c` unless set, as gh does. Watch
+  modes and prompts never page.
 - **Browser**: `--web` runs `$SMITH_BROWSER`, `$BROWSER`, else `xdg-open`
   (`open` on macOS), detached so that a browser started directly does not
   hold smith, and only for http(s) URLs, since some come from the server.

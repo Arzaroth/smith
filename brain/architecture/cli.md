@@ -10,9 +10,13 @@ exists everywhere once it is declared.
   booleans (`-dl bug`), repeatable flags whose values are also split on commas
   (`Args.all`), negative numbers kept as positionals, `--` passthrough for
   commands that declare `passthrough` (`repo clone ... -- --depth 1`).
+  `-h` is help unless the command declares its own `-h` (`config --host`);
+  `--help` always is.
 - **Dispatch** (`app.run`): walks the leading words down the tree
   (`cli.resolve`), prints help for a group, rejects unknown subcommands, then
-  parses and calls `run`. A command returns its exit code.
+  parses and calls `run`. A command returns its exit code. A command with
+  `pages` set (lists, views, `pr diff`) starts the pager first, and
+  `app.run` stops it after flushing.
 - **Exit codes**: 0 ok, 1 failure or usage error, 4 authentication failed
   (a 401, `error.AuthRequired`), 8 checks still pending
   (`pr checks`, `run view --exit-status`), following gh.

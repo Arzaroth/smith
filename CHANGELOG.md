@@ -6,6 +6,33 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `smith config` has `pager` (with `SMITH_PAGER` and `PAGER`; lists, views
+  and diffs page on a terminal) and `prompt` (`disabled`, or
+  `SMITH_PROMPT_DISABLED`, never asks), and `-h HOST` for a host's own
+  `git_protocol`.
+- `smith alias import` reads gh's alias file; `alias set NAME -` reads the
+  expansion from standard input; `alias delete --all`.
+- `issue create` and `pr create` on a terminal end with submit, edit the
+  body again, or cancel (exit 2).
+- `SMITH_JQ` picks the jq program; jq's own error message is shown.
+
+### Changed
+
+- `run watch` stops on a run waiting for approval (exit 8) or whose status
+  Forgejo does not know (exit 1) instead of waiting forever.
+- `pr list -s merged` and `--head` read on until they have `-L` results;
+  `--head` lets Forgejo 16 narrow the list on the server.
+
+### Fixed
+
+- A request after a 204 no longer waits for the server to close the
+  connection (seconds per `release upload --clobber`, `label delete` and
+  similar on a kept-alive connection).
+- The release workflow can publish on Forgejo, whose runner reaches the
+  server over plain http.
+
 ## [0.2.0] - 2026-09-29
 
 ### Added

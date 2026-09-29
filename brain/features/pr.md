@@ -25,8 +25,10 @@ is looked for first, then the most recently updated closed or merged one.
 - **Drafts** are Forgejo's work-in-progress title prefixes (`WIP:`,
   `[WIP]`, any case): `create --draft` adds `WIP: `,
   `ready` removes it, `--undo` puts it back. The list shows them as `draft`.
-- **merged** is not a Forgejo state: `list -s merged` asks for closed ones and
-  keeps those with `merged`, fetching up to four times the limit.
+- **merged** is not a Forgejo state: `list -s merged` asks for closed ones,
+  most recently closed first (`sort=recentclose`), and keeps those with
+  `merged`, reading on page by page until it has `-L` of them or the list
+  ends (`Client.listMatching`).
 - **create** takes the current branch as pushed: its upstream's remote must
   hold a branch of the same name (a branch cut from `origin/main` tracks
   `main`, which is refused with the `git push -u` to run). If that remote
@@ -34,7 +36,9 @@ is looked for first, then the most recently updated closed or merged one.
   `--fill` (and the defaults offered on a terminal) take one commit's
   subject and body, or the branch name and a list of subjects, from
   `<remote>/<base>..HEAD`. Without a terminal, `--title` and `--body` (or
-  `--fill`) are required, as in gh.
+  `--fill`) are required, as in gh. On a terminal, unless both came as
+  flags or with `--fill`, it ends with gh's question: submit, edit the body
+  again, or cancel (exit 2, nothing sent).
 - **checkout**: a same-repository head is fetched into
   `refs/remotes/<remote>/<branch>` and checked out tracking it (fast-forward
   if it exists, `-f` resets). A fork's head, or a head that is itself a ref
@@ -68,10 +72,13 @@ is looked for first, then the most recently updated closed or merged one.
 - **status** sorts the repository's open pull requests into the current
   branch's (with its checks summary), yours, and those requesting your
   review. The current branch is matched as pushed, owner included, like
-  `find`, so a fork's branch of the same name is not taken for it. "You" is the account's stored user, else `GET /user`.
-- **list --head** filters on `branch` or `owner:branch` after fetching,
-  since Forgejo's list endpoint cannot; like `-s merged`, it fetches up to
-  four times the limit.
+  `find`, so a fork's branch of the same name is not taken for it. "You" is
+  the account's stored user, else `GET /user`.
+- **list --head** filters on `branch` or `owner:branch`. The branch goes to
+  the server as `head`, which Forgejo 16 and later use to narrow the list
+  (by branch name only, from any fork) and older versions ignore; smith
+  matches the owner itself and, like `-s merged`, reads on until it has `-L`
+  matches.
 
 ## Sources
 

@@ -62,7 +62,7 @@ smith notification list | read
 smith ssh-key | gpg-key list | add | delete
 smith org list
 smith auth login | status | switch | logout | token
-smith alias set | list | delete
+smith alias set | list | delete | import
 smith config get | set | unset | list
 smith api <endpoint> [-X METHOD] [-f key=value] [-F key=typed] [--paginate]
 smith browse [<n> | <path>[:<line>]] [--settings] [--actions]
@@ -111,14 +111,18 @@ smith alias set co 'pr checkout'
 smith alias set bugs 'issue list --label bug --assignee $1'
 smith alias set standup '!smith status && smith notification list'
 smith config set editor 'nvim'
+smith config set pager 'less -R'
+smith config set -h git.example.com git_protocol https
+smith alias import aliases.yml             # gh's alias file
 ```
 
 `$1`… take the alias's arguments (a missing one is an error), extra
 arguments are appended, and a leading `!` (or `--shell`) runs the rest with
 `sh`. An alias can never take a smith command's name, and replacing one
-needs `--clobber`.
-Preferences (`editor`, `browser`, `git_protocol` for new logins) and aliases
-live in `config.zon`.
+needs `--clobber`; `alias import` reads gh's YAML alias file.
+Preferences (`git_protocol` for new logins, or per host with `-h`,
+`editor`, `browser`, `pager`, and `prompt disabled` to never ask) and
+aliases live in `config.zon`.
 
 ## Configuration
 
@@ -136,6 +140,9 @@ keyring) and `config.zon` (preferences and aliases).
 | `SMITH_LOGIN_TIMEOUT` | Seconds the browser login waits (default 300) |
 | `SMITH_EDITOR`, `VISUAL`, `EDITOR` | Editor for bodies (`config set editor` sits after `SMITH_EDITOR`) |
 | `SMITH_BROWSER`, `BROWSER` | Browser for `--web` (`config set browser` sits after `SMITH_BROWSER`) |
+| `SMITH_PAGER`, `PAGER` | Pager for lists, views and diffs on a terminal (`config set pager` sits between them; `cat` for none) |
+| `SMITH_PROMPT_DISABLED` | Never prompt, as if `config set prompt disabled` |
+| `SMITH_JQ` | The jq program `--jq` runs |
 | `NO_COLOR`, `CLICOLOR_FORCE` | Colour off, colour on |
 
 ## Shell completion

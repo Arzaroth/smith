@@ -36,7 +36,8 @@ them:
 
 - `--jq EXPR` pipes the JSON through the system `jq -r EXPR` (strings come
   out raw, like gh). smith does not embed jq; without it installed, the error
-  says so and points at `--template`.
+  says so and points at `--template`. `SMITH_JQ` names another jq program.
+  When jq fails, its own message is smith's error.
 - `--template` renders the part of Go's text/template gh users reach for
   (`src/template.zig`): text, `{{.a.b}}`, `{{range .x}}…{{else}}…{{end}}`,
   `{{if .x}}…{{else}}…{{end}}`, `{{"literal\n"}}`, `{{len .x}}`, `{{join ", "

@@ -7,10 +7,14 @@
 - **Invocation tests** (`src/tests/*_test.zig`) run whole `smith ...` commands
   through `app.run` with a `Harness`:
   - `testing/Mock.zig` is a Forgejo stand-in on 127.0.0.1, served from an
-    `io.concurrent` task: routes by method, exact path, optional query
-    substring and a use count (`times`, for polling), with an optional
-    `Location`. It records every request (target, body, authorization) for
-    assertions; one request per connection.
+    `io.concurrent` task that gives each connection a task of its own:
+    routes by method, exact path, optional query substring and a use count
+    (`times`, for polling), with an optional `Location`. It records every
+    request (target, body, headers) for assertions. A route answers and
+    closes the connection, or with `keep_alive` keeps it for the next
+    request, answering a 204 the way Forgejo (Go) does, without a length;
+    a kept connection left idle for `Mock.idle_seconds` is cut, which a
+    test notices from the time taken.
   - `testing/Harness.zig` gives each test a temporary directory used as the
     git working directory (with `GIT_CEILING_DIRECTORIES` so git never climbs
     into the checkout the tests run from), `TMPDIR`,
@@ -33,7 +37,10 @@
 - `run download` gets a real zip built by the test (one stored entry and its
   CRC), since no zip writer is assumed on the machine.
 - Browser logins are driven end to end by a `curl` "browser" script
-  (skipped when curl is missing); `--jq` tests are skipped without `jq`.
+  (skipped when curl is missing). `--jq` tests point `SMITH_JQ` at a
+  stand-in script, so they run whether or not jq is installed. The pager
+  test does the same with `SMITH_PAGER`, a command writing to a file,
+  never to stdout.
 - Nothing touches the network or the developer's config. Child processes must
   not write to the test binary's stdout, which is the build runner's protocol
   pipe; git's output goes to stderr for that reason as well.
