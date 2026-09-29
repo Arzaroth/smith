@@ -61,4 +61,10 @@ test {
 
 test {
     _ = @import("tests/smoke_test.zig");
+    _ = @import("tests/auth_test.zig");
+    _ = @import("tests/issue_test.zig");
+    _ = @import("tests/repo_test.zig");
+    _ = @import("tests/pr_test.zig");
+    _ = @import("tests/run_test.zig");
+    _ = @import("tests/tools_test.zig");
 }
