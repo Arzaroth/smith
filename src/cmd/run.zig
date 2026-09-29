@@ -58,6 +58,18 @@ pub const command: cli.Command = .{
             .run = watch,
         },
         .{
+            .name = "download",
+            .summary = "Download a run's artifacts, each unpacked into a directory of its name.",
+            .usage = id_usage,
+            .max_args = 1,
+            .flags = &.{
+                .{ .long = "name", .short = 'n', .value = "glob", .help = "Only artifacts matching the name (repeatable)" },
+                .{ .long = "dir", .short = 'D', .value = "directory", .help = "Where to unpack them (default: here)" },
+                cli.repo_flag,
+            },
+            .run = download,
+        },
+        .{
             .name = "cancel",
             .summary = "Cancel a workflow run.",
             .usage = "<run-id>",
@@ -268,5 +280,57 @@ fn cancel(ctx: *Ctx, args: *const cli.Args) !u8 {
     if (outcome(run.status) != .pending) return ctx.fail("run {d} has already finished ({s})", .{ run.id, run.status });
     _ = try client.call(.POST, try r.path(ctx.alloc, "/actions/runs/{d}/cancel", .{run.id}), .{});
     try ctx.err.print("✓ Cancelled run {d}\n", .{run.id});
+    return 0;
+}
+
+const Artifact = struct {
+    id: i64,
+    name: []const u8,
+    size_in_bytes: i64 = 0,
+    expired: bool = false,
+};
+
+fn download(ctx: *Ctx, args: *const cli.Args) !u8 {
+    const r = try repo.resolve(ctx, args);
+    var client = try r.client(ctx);
+    const run = (try pick(ctx, &client, r, args.arg(0))).run;
+    const v = try client.getValue(try r.path(ctx.alloc, "/actions/runs/{d}/artifacts", .{run.id}));
+    const items: []const std.json.Value = switch (v) {
+        .array => |a| a.items,
+        .object => |o| if (o.get("artifacts")) |x| (if (x == .array) x.array.items else &.{}) else &.{},
+        else => &.{},
+    };
+    const artifacts = try api.decodeAll(Artifact, ctx, items);
+    const names = try args.all(ctx.alloc, "name");
+    const dir = args.get("dir") orelse ".";
+    const cwd = std.Io.Dir.cwd();
+    var count: usize = 0;
+    for (artifacts) |a| {
+        if (names.len > 0) {
+            for (names) |n| {
+                if (term.glob(n, a.name)) break;
+            } else continue;
+        }
+        if (a.expired) {
+            try ctx.err.print("! {s} has expired\n", .{a.name});
+            continue;
+        }
+        const resp = try client.call(.GET, try r.path(ctx.alloc, "/actions/artifacts/{d}/zip", .{a.id}), .{ .accept = "*/*" });
+        const dest = try std.fs.path.join(ctx.alloc, &.{ dir, a.name });
+        cwd.createDirPath(ctx.io, dest) catch |e| return ctx.fail("cannot create {s}: {t}", .{ dest, e });
+        const zip_path = try std.fmt.allocPrint(ctx.alloc, "{s}.zip.part", .{dest});
+        cwd.writeFile(ctx.io, .{ .sub_path = zip_path, .data = resp.body }) catch |e| return ctx.fail("cannot write {s}: {t}", .{ zip_path, e });
+        defer cwd.deleteFile(ctx.io, zip_path) catch {};
+        var zip_file = try cwd.openFile(ctx.io, zip_path, .{});
+        defer zip_file.close(ctx.io);
+        var buf: [16 * 1024]u8 = undefined;
+        var reader = zip_file.reader(ctx.io, &buf);
+        var dest_dir = try cwd.openDir(ctx.io, dest, .{});
+        defer dest_dir.close(ctx.io);
+        std.zip.extract(dest_dir, &reader, .{}) catch |e| return ctx.fail("cannot unpack {s}: {t}", .{ a.name, e });
+        try ctx.err.print("✓ Downloaded {s} into {s}\n", .{ a.name, dest });
+        count += 1;
+    }
+    if (count == 0) return ctx.fail("no artifacts to download from run {d}", .{run.id});
     return 0;
 }
