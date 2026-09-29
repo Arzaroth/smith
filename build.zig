@@ -6,7 +6,8 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const options = b.addOptions();
-    options.addOption([]const u8, "version", zon.version);
+    const version = b.option([]const u8, "version", "Version to report (default: build.zig.zon's)") orelse zon.version;
+    options.addOption([]const u8, "version", version);
 
     const exe = b.addExecutable(.{
         .name = "smith",
