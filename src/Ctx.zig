@@ -101,9 +101,9 @@ pub fn promptSecret(ctx: *Ctx, label: []const u8) ![]const u8 {
 pub fn editText(ctx: *Ctx, name: []const u8, initial: []const u8) ![]const u8 {
     const editor = ctx.getenv("SMITH_EDITOR") orelse ctx.getenv("VISUAL") orelse ctx.getenv("EDITOR") orelse "vi";
     const dir = ctx.getenv("TMPDIR") orelse "/tmp";
-    const path = try std.fmt.allocPrint(ctx.alloc, "{s}/smith-{d}-{s}", .{ dir, std.posix.system.getpid(), name });
+    const path = try std.fmt.allocPrint(ctx.alloc, "{s}/smith-{s}-{s}", .{ dir, try ctx.nonce(), name });
     const cwd = Io.Dir.cwd();
-    try cwd.writeFile(ctx.io, .{ .sub_path = path, .data = initial, .flags = .{ .permissions = .fromMode(0o600) } });
+    try cwd.writeFile(ctx.io, .{ .sub_path = path, .data = initial, .flags = .{ .permissions = .fromMode(0o600), .exclusive = true } });
     defer cwd.deleteFile(ctx.io, path) catch {};
 
     try ctx.out.flush();
@@ -117,13 +117,9 @@ pub fn editText(ctx: *Ctx, name: []const u8, initial: []const u8) ![]const u8 {
 /// Opens a URL in the browser; `SMITH_BROWSER` or `BROWSER` override the
 /// platform opener.
 pub fn openBrowser(ctx: *Ctx, url: []const u8) !void {
-    const opener = ctx.browserOpener();
     if (ctx.stdout_tty) try ctx.err.print("Opening {s} in your browser.\n", .{url});
     try ctx.err.flush();
-    const result = std.process.run(ctx.alloc, ctx.io, .{ .argv = &.{ opener, url }, .environ_map = ctx.env }) catch |e|
-        return ctx.fail("could not run {s} to open {s}: {t}", .{ opener, url, e });
-    if (result.term != .exited or result.term.exited != 0)
-        return ctx.fail("{s} failed to open {s}", .{ opener, url });
+    if (!try ctx.launchBrowser(url)) return ctx.fail("could not run {s} to open {s}", .{ ctx.browserOpener(), url });
 }
 
 fn browserOpener(ctx: *const Ctx) []const u8 {
@@ -139,14 +135,27 @@ pub fn canOpenBrowser(ctx: *const Ctx) bool {
     return ctx.getenv("DISPLAY") != null or ctx.getenv("WAYLAND_DISPLAY") != null;
 }
 
-/// Starts the browser on `url` without waiting for it; the caller waits on
-/// the returned child once it is done. Null when the opener cannot start.
-pub fn launchBrowser(ctx: *Ctx, url: []const u8) ?std.process.Child {
-    return std.process.spawn(ctx.io, .{
+/// Starts the browser on `url` and leaves it running: a browser started
+/// directly (not through xdg-open) would otherwise hold smith until it
+/// quits. Only http(s) URLs are opened, since some come from the server and
+/// an opener would hand `file:` or a custom scheme to a local handler.
+/// False when the opener cannot start.
+pub fn launchBrowser(ctx: *Ctx, url: []const u8) !bool {
+    if (!std.mem.startsWith(u8, url, "https://") and !std.mem.startsWith(u8, url, "http://"))
+        return ctx.fail("refusing to open {s}: not an http(s) URL", .{url});
+    _ = std.process.spawn(ctx.io, .{
         .argv = &.{ ctx.browserOpener(), url },
         .stdin = .ignore,
         .stdout = .ignore,
         .stderr = .ignore,
         .environ_map = ctx.env,
-    }) catch null;
+    }) catch return false;
+    return true;
+}
+
+/// Random hex for names other users must not guess (temporary files).
+pub fn nonce(ctx: *Ctx) ![]const u8 {
+    var b: [12]u8 = undefined;
+    ctx.io.random(&b);
+    return std.fmt.allocPrint(ctx.alloc, "{x}", .{&b});
 }

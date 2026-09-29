@@ -67,11 +67,12 @@ fn clone(ctx: *Ctx, args: *const cli.Args) !u8 {
     var client = try t.client(ctx);
     const info = try api.decode(types.Repository, ctx, try client.getValue(try t.path(ctx.alloc, "", .{})));
     const url = cloneUrl(info, t.host.git_protocol) orelse return ctx.fail("{s} has no clone URL", .{info.full_name});
-    const dir = args.arg(1) orelse info.name;
+    const dir = args.arg(1) orelse try cloneDir(ctx, info.name);
 
     var argv: std.ArrayList([]const u8) = .empty;
-    try argv.appendSlice(ctx.alloc, &.{ "clone", url, dir });
+    try argv.append(ctx.alloc, "clone");
     try argv.appendSlice(ctx.alloc, args.passthrough);
+    try argv.appendSlice(ctx.alloc, &.{ "--", url, dir });
     try git.run(ctx, argv.items);
 
     if (info.fork) if (info.parent) |parent| {
@@ -149,4 +150,13 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
     }
     try table.write(ctx);
     return 0;
+}
+
+/// The directory a clone lands in when none is given: the repository's name,
+/// which comes from the server and must stay a plain name here.
+fn cloneDir(ctx: *Ctx, name: []const u8) ![]const u8 {
+    _ = try git.safeName(ctx, "directory", name);
+    if (std.mem.indexOfAny(u8, name, "/\\") != null or std.mem.eql(u8, name, ".") or std.mem.eql(u8, name, ".."))
+        return ctx.fail("refusing directory \"{s}\" from the server; name one", .{name});
+    return name;
 }

@@ -160,14 +160,23 @@ pub fn tokenVariable(alloc: Allocator, name: []const u8) ![]const u8 {
 
 /// Applies a token from the environment: `SMITH_TOKEN_<HOST>` for this host,
 /// else `SMITH_TOKEN` when this is the host `SMITH_HOST` names or, without
-/// it, the default host. A token meant for one host never reaches another.
+/// it, the default host. A token meant for one host never reaches another:
+/// the name must match exactly, port included; the host must be configured
+/// or be the default one (so a lookalike whose variable name collides gets
+/// nothing); and it goes over plain http only to a host configured that way.
 pub fn withEnv(ctx: *const Ctx, cfg: Config, host: Host) !Host {
-    var token = ctx.getenv(try tokenVariable(ctx.alloc, host.name));
-    if (token == null) if (ctx.getenv("SMITH_TOKEN")) |t| {
-        if (cfg.defaultName(ctx)) |d| if (host.matches(d) or std.ascii.eqlIgnoreCase(d, host.name)) {
-            token = t;
-        };
-    };
+    const configured: ?Host = for (cfg.hosts) |c| {
+        if (std.ascii.eqlIgnoreCase(c.name, host.name)) break c;
+    } else null;
+    const default = cfg.defaultName(ctx);
+    const is_default = default != null and std.ascii.eqlIgnoreCase(default.?, host.name);
+    const scheme_ok = std.mem.eql(u8, host.scheme, "https") or
+        (configured != null and std.mem.eql(u8, configured.?.scheme, host.scheme));
+    var token: ?[]const u8 = null;
+    if (scheme_ok and (configured != null or is_default)) {
+        token = ctx.getenv(try tokenVariable(ctx.alloc, host.name));
+        if (token == null and is_default) token = ctx.getenv("SMITH_TOKEN");
+    }
     var h = host;
     if (token) |t| {
         h.token = t;
@@ -212,8 +221,8 @@ pub fn save(ctx: *Ctx, config: Config) !void {
     try aw.writer.writeByte('\n');
 
     const path = try std.fs.path.join(ctx.alloc, &.{ d, "hosts.zon" });
-    const tmp = try std.fmt.allocPrint(ctx.alloc, "{s}.tmp", .{path});
-    cwd.writeFile(ctx.io, .{ .sub_path = tmp, .data = aw.written(), .flags = .{ .permissions = .fromMode(0o600) } }) catch |e|
+    const tmp = try std.fmt.allocPrint(ctx.alloc, "{s}.{s}.tmp", .{ path, try ctx.nonce() });
+    cwd.writeFile(ctx.io, .{ .sub_path = tmp, .data = aw.written(), .flags = .{ .permissions = .fromMode(0o600), .exclusive = true } }) catch |e|
         return ctx.fail("cannot write {s}: {t}", .{ tmp, e });
     cwd.rename(tmp, cwd, path, ctx.io) catch |e| return ctx.fail("cannot write {s}: {t}", .{ path, e });
 }

@@ -69,14 +69,14 @@ pub fn joinLabels(ctx: *Ctx, labels: ?[]const types.Label) ![]const u8 {
     const ls = labels orelse return "";
     var names: std.ArrayList([]const u8) = .empty;
     for (ls) |l| try names.append(ctx.alloc, l.name);
-    return std.mem.join(ctx.alloc, ", ", names.items);
+    return term.clean(ctx.alloc, try std.mem.join(ctx.alloc, ", ", names.items), false);
 }
 
 pub fn joinUsers(ctx: *Ctx, users: ?[]const types.User) ![]const u8 {
     const us = users orelse return "";
     var names: std.ArrayList([]const u8) = .empty;
     for (us) |u| try names.append(ctx.alloc, u.login);
-    return std.mem.join(ctx.alloc, ", ", names.items);
+    return term.clean(ctx.alloc, try std.mem.join(ctx.alloc, ", ", names.items), false);
 }
 
 pub fn stateColor(state: []const u8) term.Color {
@@ -98,7 +98,7 @@ pub fn writeBody(ctx: *Ctx, body: ?[]const u8) !void {
         try term.paint(ctx, ctx.out, .dim, "No description provided");
         try ctx.out.writeByte('\n');
     } else {
-        try ctx.out.print("{s}\n", .{b});
+        try ctx.out.print("{s}\n", .{try term.clean(ctx.alloc, b, true)});
     }
 }
 
@@ -109,7 +109,7 @@ pub fn writeComments(ctx: *Ctx, client: *api.Client, r: repo.Repo, n: i64) !void
         try ctx.out.writeByte('\n');
         try term.paint(ctx, ctx.out, .bold, if (c.user) |u| u.login else "ghost");
         try ctx.out.print(" commented {s}\n", .{try term.ago(ctx.alloc, ctx.now, c.created_at)});
-        try ctx.out.print("{s}\n", .{std.mem.trim(u8, c.body, " \r\n\t")});
+        try ctx.out.print("{s}\n", .{try term.clean(ctx.alloc, std.mem.trim(u8, c.body, " \r\n\t"), true)});
     }
 }
 

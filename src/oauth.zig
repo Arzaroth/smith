@@ -67,10 +67,7 @@ pub fn login(ctx: *Ctx, host: config.Host, client_id: []const u8) !config.Host {
     });
     try ctx.err.print("Opening {s} in your browser.\nIf it does not open, visit it yourself; smith waits for the sign-in to finish.\n", .{url});
     try ctx.err.flush();
-    var browser = ctx.launchBrowser(url);
-    defer if (browser) |*b| {
-        _ = b.wait(ctx.io) catch {};
-    };
+    if (!try ctx.launchBrowser(url)) try ctx.err.writeAll("! could not start a browser; open the address above yourself\n");
 
     const code = try waitForCode(ctx, &server, state, host.name);
     const tokens = try exchange(ctx, host, &.{

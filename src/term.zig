@@ -36,7 +36,8 @@ pub fn useColor(env: *const std.process.Environ.Map, tty: bool) bool {
     return tty;
 }
 
-pub fn paint(ctx: *const Ctx, w: *Writer, color: Color, text: []const u8) !void {
+pub fn paint(ctx: *const Ctx, w: *Writer, color: Color, text_in: []const u8) !void {
+    const text = try clean(ctx.alloc, text_in, true);
     if (ctx.color and color != .none) {
         try w.print("{s}{s}\x1b[0m", .{ color.code(), text });
     } else {
@@ -55,7 +56,9 @@ pub const Table = struct {
     rows: std.ArrayList([]const Cell) = .empty,
 
     pub fn add(t: *Table, alloc: Allocator, cells: []const Cell) !void {
-        try t.rows.append(alloc, try alloc.dupe(Cell, cells));
+        const copy = try alloc.dupe(Cell, cells);
+        for (copy) |*c| c.text = try clean(alloc, c.text, false);
+        try t.rows.append(alloc, copy);
     }
 
     pub fn write(t: *const Table, ctx: *const Ctx) !void {
@@ -207,4 +210,55 @@ test truncate {
     try testing.expectEqualStrings("abcdefg", try truncate(a, "abcdefg", 10));
     try testing.expectEqualStrings("abc...", try truncate(a, "abcdefghij", 6));
     try testing.expectEqualStrings("été...", try truncate(a, "étéàèùìò", 6));
+}
+
+/// Server text made safe to print: control characters, which could carry
+/// terminal escape sequences (clipboard writes, forged lines), become `?`.
+/// `lines` keeps newlines and tabs, for bodies and logs; table cells lose
+/// them so piped output keeps one row per line.
+pub fn clean(alloc: Allocator, s: []const u8, lines: bool) ![]const u8 {
+    var dirty = false;
+    for (s, 0..) |c, i| {
+        if (isControl(s, i, c, lines)) {
+            dirty = true;
+            break;
+        }
+    }
+    if (!dirty) return s;
+    var out = try alloc.alloc(u8, s.len);
+    var n: usize = 0;
+    var i: usize = 0;
+    while (i < s.len) : (i += 1) {
+        const c = s[i];
+        if (c == 0xc2 and i + 1 < s.len and s[i + 1] >= 0x80 and s[i + 1] <= 0x9f) {
+            out[n] = '?';
+            n += 1;
+            i += 1;
+        } else if (isControl(s, i, c, lines)) {
+            out[n] = if (!lines and (c == '\t' or c == '\n')) ' ' else '?';
+            n += 1;
+        } else {
+            out[n] = c;
+            n += 1;
+        }
+    }
+    return out[0..n];
+}
+
+fn isControl(s: []const u8, i: usize, c: u8, lines: bool) bool {
+    if (c == 0xc2 and i + 1 < s.len and s[i + 1] >= 0x80 and s[i + 1] <= 0x9f) return true;
+    if (lines and (c == '\n' or c == '\t')) return false;
+    return c < 0x20 or c == 0x7f;
+}
+
+test clean {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    try testing.expectEqualStrings("plain", try clean(a, "plain", false));
+    try testing.expectEqualStrings("?]52;c;cm0gLXJmIH4=?x", try clean(a, "\x1b]52;c;cm0gLXJmIH4=\x07x", false));
+    try testing.expectEqualStrings("a b", try clean(a, "a\tb", false));
+    try testing.expectEqualStrings("a\n\tb?", try clean(a, "a\n\tb\x1b", true));
+    try testing.expectEqualStrings("x?y", try clean(a, "x\xc2\x9by", true));
+    try testing.expectEqualStrings("été", try clean(a, "été", false));
 }

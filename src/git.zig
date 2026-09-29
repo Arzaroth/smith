@@ -83,6 +83,15 @@ pub fn parseRemotes(alloc: Allocator, out: []const u8) ![]Remote {
     return list.toOwnedSlice(alloc);
 }
 
+/// Refuses a name from the server (a branch, a directory) that git would
+/// read as an option or that is not a plain name: `git switch -Cmain` resets
+/// main, whatever a fork chose to call its branch.
+pub fn safeName(ctx: *const Ctx, what: []const u8, name: []const u8) ![]const u8 {
+    if (name.len == 0 or name[0] == '-') return ctx.fail("refusing {s} \"{s}\": git would read it as an option", .{ what, name });
+    for (name) |c| if (c < 0x20 or c == 0x7f or c == ' ') return ctx.fail("refusing {s} with control characters or spaces", .{what});
+    return name;
+}
+
 pub fn currentBranch(ctx: *Ctx) !?[]const u8 {
     return capture(ctx, &.{ "symbolic-ref", "--quiet", "--short", "HEAD" });
 }

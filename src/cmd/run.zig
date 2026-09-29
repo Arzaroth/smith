@@ -209,7 +209,7 @@ fn view(ctx: *Ctx, args: *const cli.Args) !u8 {
             var lines = std.mem.splitScalar(u8, std.mem.trimEnd(u8, resp.body, "\n"), '\n');
             while (lines.next()) |line| {
                 try term.paint(ctx, ctx.out, .cyan, j.name);
-                try ctx.out.print("\t{s}\n", .{line});
+                try ctx.out.print("\t{s}\n", .{try term.clean(ctx.alloc, line, true)});
             }
         }
         return exitFor(run, args);

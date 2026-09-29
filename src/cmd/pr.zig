@@ -314,7 +314,7 @@ fn diff(ctx: *Ctx, args: *const cli.Args) !u8 {
     const kind = if (args.has("patch")) "patch" else "diff";
     const resp = try client.call(.GET, try r.path(ctx.alloc, "/pulls/{d}.{s}", .{ pr.number, kind }), .{ .accept = "text/plain" });
     if (!ctx.color) {
-        try ctx.out.writeAll(resp.body);
+        try ctx.out.writeAll(if (ctx.stdout_tty) try term.clean(ctx.alloc, resp.body, true) else resp.body);
         return 0;
     }
     var lines = std.mem.splitScalar(u8, resp.body, '\n');
@@ -445,13 +445,22 @@ fn checkout(ctx: *Ctx, args: *const cli.Args) !u8 {
     const pr = (try find(ctx, &client, r, args.arg(0))).pr;
     const remote = try baseRemote(ctx, r);
     const headless = std.mem.startsWith(u8, pr.head.ref, "refs/");
-    const branch = args.get("branch") orelse if (headless) try std.fmt.allocPrint(ctx.alloc, "pr-{d}", .{pr.number}) else pr.head.ref;
+    if (!headless) _ = try git.safeName(ctx, "head branch", pr.head.ref);
+    const same_repo = !headless and if (pr.head.repo) |hr| (if (pr.base.repo) |br| hr.id == br.id else true) else false;
     const force = args.has("force");
+
+    // A fork's branch is often named like one of ours (main, fix); taking it
+    // would fast-forward or reset our branch onto the fork's commits.
+    var branch = args.get("branch") orelse if (headless) try std.fmt.allocPrint(ctx.alloc, "pr-{d}", .{pr.number}) else pr.head.ref;
+    if (args.get("branch") == null and !same_repo and !headless and try localBranchExists(ctx, branch) and !try markedFor(ctx, branch, pr.number)) {
+        branch = try std.fmt.allocPrint(ctx.alloc, "pr-{d}", .{pr.number});
+        try ctx.err.print("! a local branch named {s} already exists; using {s}\n", .{ pr.head.ref, branch });
+    }
+    _ = try git.safeName(ctx, "branch", branch);
     const exists = try localBranchExists(ctx, branch);
     const current = try git.currentBranch(ctx);
     const on_branch = current != null and std.mem.eql(u8, current.?, branch);
 
-    const same_repo = !headless and if (pr.head.repo) |hr| (if (pr.base.repo) |br| hr.id == br.id else true) else false;
     if (same_repo) {
         const tracking = try std.fmt.allocPrint(ctx.alloc, "{s}/{s}", .{ remote, pr.head.ref });
         try git.run(ctx, &.{ "fetch", remote, try std.fmt.allocPrint(ctx.alloc, "+refs/heads/{s}:refs/remotes/{s}", .{ pr.head.ref, tracking }) });
@@ -473,8 +482,34 @@ fn checkout(ctx: *Ctx, args: *const cli.Args) !u8 {
             try git.run(ctx, &.{ "fetch", remote, spec });
             try git.run(ctx, &.{ "switch", branch });
         }
+        _ = try git.capture(ctx, &.{ "config", try std.fmt.allocPrint(ctx.alloc, "branch.{s}.smith-pr", .{branch}), try std.fmt.allocPrint(ctx.alloc, "{d}", .{pr.number}) });
     }
     return 0;
+}
+
+/// Whether `pr checkout` created `branch` for pull request `number`.
+fn markedFor(ctx: *Ctx, branch: []const u8, number: i64) !bool {
+    const v = try git.capture(ctx, &.{ "config", "--get", try std.fmt.allocPrint(ctx.alloc, "branch.{s}.smith-pr", .{branch}) }) orelse return false;
+    return (std.fmt.parseInt(i64, v, 10) catch return false) == number;
+}
+
+/// The local branch holding a pull request's head: the one smith checked out
+/// for it, or a branch of the head's name that tracks the head. Anything
+/// else of that name is someone else's branch.
+fn localBranchFor(ctx: *Ctx, pr: types.PullRequest) !?[]const u8 {
+    const marks = try git.capture(ctx, &.{ "config", "--get-regexp", "^branch\\..+\\.smith-pr$" }) orelse "";
+    var lines = std.mem.tokenizeScalar(u8, marks, '\n');
+    while (lines.next()) |line| {
+        const space = std.mem.indexOfScalar(u8, line, ' ') orelse continue;
+        if ((std.fmt.parseInt(i64, line[space + 1 ..], 10) catch continue) != pr.number) continue;
+        const key = line[0..space];
+        return key["branch.".len .. key.len - ".smith-pr".len];
+    }
+    if (std.mem.startsWith(u8, pr.head.ref, "refs/") or !try localBranchExists(ctx, pr.head.ref)) return null;
+    const upstream = try git.capture(ctx, &.{ "rev-parse", "--abbrev-ref", "--symbolic-full-name", try std.fmt.allocPrint(ctx.alloc, "{s}@{{upstream}}", .{pr.head.ref}) }) orelse return null;
+    const slash = std.mem.indexOfScalar(u8, upstream, '/') orelse return null;
+    if (!std.mem.eql(u8, upstream[slash + 1 ..], pr.head.ref)) return null;
+    return pr.head.ref;
 }
 
 fn merge(ctx: *Ctx, args: *const cli.Args) !u8 {
@@ -532,16 +567,18 @@ fn merge(ctx: *Ctx, args: *const cli.Args) !u8 {
     return 0;
 }
 
-/// After a merge with --delete-branch: move off the head branch and delete it.
+/// After a merge or close with --delete-branch: move off the pull request's
+/// local branch, if it has one, and delete it.
 fn deleteLocalBranch(ctx: *Ctx, pr: types.PullRequest) !void {
     if (try git.capture(ctx, &.{ "rev-parse", "--git-dir" }) == null) return;
-    if (!try localBranchExists(ctx, pr.head.ref)) return;
-    if (try git.currentBranch(ctx)) |cur| if (std.mem.eql(u8, cur, pr.head.ref)) {
-        if (!try localBranchExists(ctx, pr.base.ref)) return;
-        try git.run(ctx, &.{ "switch", pr.base.ref });
+    const branch = try localBranchFor(ctx, pr) orelse return;
+    if (try git.currentBranch(ctx)) |cur| if (std.mem.eql(u8, cur, branch)) {
+        const base = try git.safeName(ctx, "base branch", pr.base.ref);
+        if (!try localBranchExists(ctx, base)) return;
+        try git.run(ctx, &.{ "switch", base });
     };
-    try git.run(ctx, &.{ "branch", "-D", "--", pr.head.ref });
-    try ctx.err.print("✓ Deleted local branch {s}\n", .{pr.head.ref});
+    try git.run(ctx, &.{ "branch", "-D", "--", branch });
+    try ctx.err.print("✓ Deleted local branch {s}\n", .{branch});
 }
 
 fn setState(ctx: *Ctx, args: *const cli.Args, state: []const u8, verb: []const u8) !u8 {
