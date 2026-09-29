@@ -54,7 +54,7 @@ smith run view [<id>] [--log | --log-failed] [--exit-status]
 smith run watch [<id>]
 smith run cancel <id>
 
-smith repo clone | view | list
+smith repo clone [HOST/|HOST:]OWNER/REPO | view | list
 smith auth login | status | logout | token
 smith api <endpoint> [-X METHOD] [-f key=value] [-F key=typed] [--paginate]
 smith browse [<n> | <path>[:<line>]] [--settings] [--actions]

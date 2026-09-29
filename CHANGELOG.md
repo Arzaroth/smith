@@ -21,7 +21,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
   override the file.
 - smith works out the host and repository from the clone's git remotes
   (`upstream` first, then `origin`), or from `-R [HOST/]OWNER/REPO`.
-- `smith repo clone`, `view` and `list`. Cloning a fork adds an `upstream`
+- `smith repo clone`, `view` and `list`, taking `OWNER/REPO`, `HOST/OWNER/REPO`
+  or `HOST:OWNER/REPO` (the SSH hostname works too). Cloning a fork adds an `upstream`
   remote for its parent.
 - `smith issue list`, `view`, `create`, `close`, `reopen`, `comment` and
   `edit`, with labels by name, assignees, comments, and bodies from a flag, a
