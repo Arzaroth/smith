@@ -489,3 +489,44 @@ test "status lists the current branch's, yours, and those waiting for your revie
     try std.testing.expect(std.mem.indexOf(u8, out[created..review], "#12") != null);
     try std.testing.expect(std.mem.indexOf(u8, out[review..], "#13  WIP: Fork change") != null);
 }
+
+test "create on a terminal asks before submitting; Ctrl-D cancels; title and body as flags skip the question" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .method = .POST, .path = pulls, .status = 201, .body = fx.pr_same }}, .{});
+    defer h.deinit();
+    h.ctx.stdin_tty = true;
+    h.ctx.stdout_tty = true;
+    h.ctx.stdin_data = "c\n";
+    try h.expectRun(2, &.{ "pr", "create", "-R", "owner/repo", "-H", "feature", "-B", "main", "-t", "Add feature" });
+    try h.expectErr("Discarded.");
+    h.ctx.stdin_data = "";
+    try h.expectRun(2, &.{ "pr", "create", "-R", "owner/repo", "-H", "feature", "-B", "main", "-t", "Add feature" });
+    try std.testing.expectEqual(@as(usize, 0), h.mock.count(.POST, pulls));
+    h.ctx.stdin_data = "c\n";
+    try h.expectRun(0, &.{ "pr", "create", "-R", "owner/repo", "-H", "feature", "-B", "main", "-t", "Add feature", "-b", "Body" });
+    try std.testing.expect(std.mem.indexOf(u8, h.stderr(), "What's next") == null);
+    h.ctx.stdin_data = "\n";
+    try h.expectRun(0, &.{ "pr", "create", "-R", "owner/repo", "-H", "feature", "-B", "main", "-t", "Add feature" });
+    try std.testing.expectEqual(@as(usize, 2), h.mock.count(.POST, pulls));
+}
+
+test "list -s merged gives up after a hundred pages, asking for full pages" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    const a = h.arena.allocator();
+    var page: std.ArrayList(u8) = .empty;
+    try page.append(a, '[');
+    for (0..50) |i| {
+        if (i > 0) try page.append(a, ',');
+        try page.appendSlice(a, fx.pr_closed);
+    }
+    try page.append(a, ']');
+    h.mock.routes = &.{.{ .path = pulls, .body = page.items }};
+    h.mock.used = try a.alloc(u32, 1);
+    @memset(h.mock.used, 0);
+    try h.expectRun(0, &.{ "pr", "list", "-R", "owner/repo", "-s", "merged" });
+    try h.expectErr("stopped after 100 pages with 0 matches");
+    try std.testing.expectEqual(@as(usize, 100), h.mock.count(.GET, pulls));
+    try std.testing.expect(std.mem.indexOf(u8, h.mock.requests.items[0].target, "limit=50") != null);
+}

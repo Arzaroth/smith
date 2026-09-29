@@ -94,6 +94,28 @@ test "watch stops on a run that needs approval or whose status is unknown" {
     try h.expectErr("does not know the status of run 44");
 }
 
+test "watch keeps waiting on a run blocked only by its job order" {
+    var h: Harness = undefined;
+    const done = comptime blk: {
+        const s: []const u8 = fx.run_running;
+        const i = std.mem.indexOf(u8, s, "\"running\"").?;
+        break :blk s[0..i] ++ "\"success\"" ++ s[i + "\"running\"".len ..];
+    };
+    const queued = comptime blk: {
+        const s: []const u8 = fx.run_running;
+        const i = std.mem.indexOf(u8, s, "\"running\"").?;
+        break :blk s[0..i] ++ "\"blocked\"" ++ s[i + "\"running\"".len ..];
+    };
+    try h.init(&.{
+        .{ .path = runs ++ "/42", .body = queued, .times = 2 },
+        .{ .path = runs ++ "/42", .body = done },
+        .{ .path = runs ++ "/42/jobs", .body = "[]" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "run", "watch", "42", "-R", "owner/repo", "-i", "0" });
+    try h.expectErr("Run 42 finished: success");
+}
+
 test "cancel posts for a running run and refuses a finished one" {
     var h: Harness = undefined;
     try h.init(&.{

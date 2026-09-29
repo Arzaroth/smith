@@ -362,3 +362,18 @@ test "on a terminal the data is cleaned, the template's escapes are not" {
     try expectRenderOpts("{{color \"red\" .t}}\n{{range $k, $v := .k}}{{$k}}{{end}}{{\"\\u001b[0m\"}}", data, .{ .tty = true, .color = true }, "\x1b[31mx?]52;c;cm0=?y\x1b[0m\na?b\x1b[0m");
     try expectRenderOpts("{{.t}}", data, .{}, "x\x1b]52;c;cm0=\x07y");
 }
+
+test "the review's printf, timefmt and literal fixes" {
+    try expectRender("{{printf \"%.3g|%G|%.2g|%.4g|%g\" 3.14159 1e6 123456.0 0.00001234 0.5}}", "{}", "3.14|1E+06|1.2e+05|1.234e-05|0.5");
+    try expectRender("{{printf \"%#08x|%08d|%+05d|%#8x|\" 255 -42 7 255}}", "{}", "0x0000ff|-0000042|+0007|    0xff|");
+    try expectRender("{{printf \"%#o|%#b|%.3d|% d|%E\" 8 5 7 5 1234.5}}", "{}", "010|0b101|007| 5|1.234500E+03");
+    try expectRender("{{printf \"%#.70b\" 3 | len}}|{{printf \"%.100d\" 1 | len}}|{{printf \"%+.300f\" 1e300 | len}}", "{}", "72|100|603");
+    try expectRender("{{printf \"%\"}}|{{printf \"%.20000d\" 1}}", "{}", "%!(NOVERB)|%!(BADWIDTH)%!(EXTRA int=1)");
+    try expectRender("{{0755}} {{-010}}", "{}", "493 -8");
+    const t = "{\"t\":\"2024-12-25T10:30:00.123Z\"}";
+    try expectRender("{{timefmt \"2006.01.02 15.04\" .t}}|{{timefmt \"15:04:05.000\" .t}}|{{timefmt \"15:04:05,000\" .t}}", t, "2024.12.25 10.30|10:30:00.123|10:30:00,123");
+    try expectFail("{{timefmt \"2006\" \"-001-01-01T00:00:00Z\"}}", "{}", "template: 1:3: error calling timefmt: cannot parse \"-001-01-01T00:00:00Z\" as an RFC 3339 time");
+    try expectFail("{{timefmt \"15\" \"2026-01-01T00:00:00+-1:00\"}}", "{}", "template: 1:3: error calling timefmt: cannot parse \"2026-01-01T00:00:00+-1:00\" as an RFC 3339 time");
+    try expectRender("{{truncate 30 (slice \"héllo wörld\" 0 2)}}|{{printf \"%.1s\" \"\\xff\"}}", "{}", "h\xc3|\xff");
+    try expectRenderOpts("{{tablerow \"a\\nb\" \"c\\rd\"}}", "{}", .{}, "a b\tc d\n");
+}

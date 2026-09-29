@@ -16,7 +16,8 @@ current branch.
 - Statuses: `success`; `failure` and `cancelled` count as failed; `skipped`;
   `waiting`, `running`, `blocked` and `unknown` as pending. `watch` stops
   on `blocked` (a run from a fork waiting for approval, which no amount of
-  waiting fixes) with exit 8, and on `unknown` with exit 1.- `--exit-status` exits 1 for a failed run and, on `view`, 8 for one still
+  waiting fixes) with exit 8, and on `unknown` with exit 1.
+- `--exit-status` exits 1 for a failed run and, on `view`, 8 for one still
   running.
 - Log lines are prefixed with the job name and a tab.
 - `download` unpacks each artifact into `-D/<name>/` (through a temporary

@@ -101,6 +101,13 @@ test "secrets: set from stdin, list, delete; your own cannot be listed" {
     try h.expectRun(1, &.{ "secret", "list", "--user" });
     try h.expectErr("cannot list your own secrets");
     try h.expectRun(1, &.{ "secret", "list", "--user", "--org", "team" });
+    h.ctx.stdin_tty = true;
+    h.ctx.stdout_tty = true;
+    try h.env.put("SMITH_PROMPT_DISABLED", "1");
+    h.ctx.stdin_data = "from-stdin\n";
+    try h.expectRun(0, &.{ "secret", "set", "TOKEN", "-R", "owner/repo" });
+    try std.testing.expect(std.mem.indexOf(u8, h.stderr(), "Value for") == null);
+    try std.testing.expectEqualStrings("{\"data\":\"from-stdin\"}", h.mock.lastBody(.PUT, actions ++ "/secrets/TOKEN").?);
 }
 
 test "variables: set creates when missing and updates otherwise, get prints the value" {

@@ -197,3 +197,98 @@ test "alias import, set from standard input, and delete --all" {
     try h.expectRun(0, &.{ "alias", "list" });
     try std.testing.expectEqualStrings("", h.stdout());
 }
+
+test "config -h changes every account on that host and leaves the global setting alone" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{ .config = false });
+    defer h.deinit();
+    try h.tmp.dir.createDirPath(std.testing.io, "config");
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config/hosts.zon", .data =
+        \\.{ .default_host = "Forge.Example", .hosts = .{
+        \\  .{ .name = "forge.example", .user = "a", .token = "t1", .git_protocol = .https },
+        \\  .{ .name = "forge.example", .user = "b", .token = "t2", .active = false, .git_protocol = .https },
+        \\  .{ .name = "other.example", .user = "c", .token = "t3", .git_protocol = .https },
+        \\} }
+        \\
+    });
+    try h.expectRun(0, &.{ "config", "set", "git_protocol", "https" });
+    try h.expectRun(0, &.{ "config", "set", "-h", "FORGE.example", "git_protocol", "ssh" });
+    const hosts = try h.tmp.dir.readFileAlloc(std.testing.io, "config/hosts.zon", h.arena.allocator(), .limited(64 * 1024));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, hosts, ".git_protocol = .https"));
+    try std.testing.expect(std.mem.indexOf(u8, hosts, "\"t2\"") != null);
+    try h.expectRun(0, &.{ "config", "get", "git_protocol" });
+    try std.testing.expectEqualStrings("https\n", h.stdout());
+    try h.expectRun(0, &.{ "config", "get", "-h", "other.example", "git_protocol" });
+    try std.testing.expectEqualStrings("https\n", h.stdout());
+    try h.expectRun(0, &.{ "config", "set", "editor", "nano" });
+    try h.expectRun(0, &.{ "config", "get", "-h", "forge.example", "editor" });
+    try std.testing.expectEqualStrings("nano\n", h.stdout());
+}
+
+test "the pager: which one, when it starts, and what happens when it fails" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/repos/owner/repo/issues", .body = fx.issue_list },
+        .{ .path = "/api/v1/repos/owner/repo/issues/99", .status = 404, .body = "{\"message\":\"issue does not exist\"}" },
+    }, .{});
+    defer h.deinit();
+    const a = h.arena.allocator();
+    h.ctx.stdout_tty = true;
+    const pager = try std.fmt.allocPrint(a, "#!/bin/sh\necho \"$LESS $LV\" > '{s}'\ncat >> '{s}'\n", .{ try h.path("paged"), try h.path("paged") });
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "pager", .data = pager, .flags = .{ .permissions = .fromMode(0o755) } });
+
+    try h.expectRun(0, &.{ "config", "set", "pager", try h.path("pager") });
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo" });
+    const got = try h.tmp.dir.readFileAlloc(std.testing.io, "paged", a, .limited(64 * 1024));
+    try std.testing.expect(std.mem.startsWith(u8, got, "FRX -c\n"));
+    try std.testing.expect(std.mem.indexOf(u8, got, "Crash on start") != null);
+    try std.testing.expectEqualStrings("", h.stdout());
+
+    try h.tmp.dir.deleteFile(std.testing.io, "paged");
+    try h.expectRun(1, &.{ "issue", "view", "99", "-R", "owner/repo" });
+    try h.expectErr("issue does not exist");
+    try std.testing.expectError(error.FileNotFound, h.tmp.dir.access(std.testing.io, "paged", .{}));
+
+    try h.env.put("SMITH_PAGER", "");
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo" });
+    try h.expectOut("Crash on start");
+    try h.expectRun(0, &.{ "config", "unset", "pager" });
+    try h.env.put("SMITH_PAGER", "no-such-pager-zz");
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo" });
+    try h.expectErr("the pager `no-such-pager-zz` was not found; printing directly");
+    try h.expectOut("Crash on start");
+    try h.env.put("SMITH_PAGER", "false");
+    try h.expectRun(1, &.{ "issue", "list", "-R", "owner/repo" });
+    try h.expectErr("the pager `false` exited with 1");
+    try h.env.put("SMITH_PAGER", "true");
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo" });
+    try std.testing.expect(std.mem.indexOf(u8, h.stderr(), "cannot write") == null);
+    _ = h.env.swapRemove("SMITH_PAGER");
+    try h.env.put("PAGER", "cat");
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo" });
+    try h.expectOut("Crash on start");
+}
+
+test "alias import skips taken names, reads block scalars and shell aliases; delete refuses a name with --all" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "alias", "set", "co", "pr checkout" });
+    h.ctx.stdin_data =
+        \\aa: pr view
+        \\co: pr list
+        \\igrep: '!smith issue list --label="$1" | grep "$2"'
+        \\features: |-
+        \\    issue list
+        \\    --label=enhancement
+        \\
+    ;
+    try h.expectRun(0, &.{ "alias", "import" });
+    try h.expectErr("alias co already exists; skipped");
+    try h.expectRun(0, &.{ "alias", "list" });
+    try std.testing.expectEqualStrings("co:\tpr checkout\naa:\tpr view\nigrep:\t!smith issue list --label=\"$1\" | grep \"$2\"\nfeatures:\tissue list --label=enhancement\n", h.stdout());
+    try h.expectRun(1, &.{ "alias", "delete", "co", "--all" });
+    try h.expectErr("not both");
+    try h.expectRun(0, &.{ "alias", "list" });
+    try h.expectOut("co:\tpr checkout");
+}

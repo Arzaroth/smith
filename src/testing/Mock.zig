@@ -28,7 +28,7 @@ pub const Route = struct {
     keep_alive: bool = false,
 };
 
-pub const idle_seconds = 2;
+pub const idle_seconds = 5;
 
 pub const Request = struct {
     method: std.http.Method,
