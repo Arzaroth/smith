@@ -116,3 +116,83 @@ test "a broken config.zon is ignored by other commands and named by the ones tha
     try h.expectRun(1, &.{ "config", "set", "editor", "vim" });
     try h.expectErr("fix or delete it");
 }
+
+test "config -h sets git_protocol for one logged-in host only" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    const host = try std.fmt.allocPrint(h.arena.allocator(), "127.0.0.1:{d}", .{h.mock.port});
+    try h.expectRun(0, &.{ "config", "get", "-h", host, "git_protocol" });
+    try std.testing.expectEqualStrings("https\n", h.stdout());
+    try h.expectRun(0, &.{ "config", "set", "-h", host, "git_protocol", "ssh" });
+    try h.expectRun(0, &.{ "config", "list", "-h", host });
+    try std.testing.expectEqualStrings("git_protocol=ssh\n", h.stdout());
+    try h.expectRun(0, &.{ "config", "get", "git_protocol" });
+    try std.testing.expectEqualStrings("ssh\n", h.stdout());
+    try h.expectRun(1, &.{ "config", "set", "-h", host, "editor", "vim" });
+    try h.expectErr("only git_protocol can be set per host");
+    try h.expectRun(1, &.{ "config", "get", "-h", "elsewhere.example", "git_protocol" });
+    try h.expectErr("not logged in to elsewhere.example");
+    try h.expectRun(0, &.{ "config", "get", "--help" });
+    try h.expectOut("-h, --host host");
+}
+
+test "prompt disabled makes a terminal behave like a script" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    h.ctx.stdin_tty = true;
+    h.ctx.stdout_tty = true;
+    try h.expectRun(1, &.{ "config", "set", "prompt", "off" });
+    try h.expectErr("prompt must be enabled or disabled");
+    try h.expectRun(0, &.{ "config", "set", "prompt", "disabled" });
+    try h.expectRun(1, &.{ "issue", "create", "-R", "owner/repo", "-b", "x" });
+    try h.expectErr("--title and --body are required when not running interactively");
+    try h.expectRun(0, &.{ "config", "unset", "prompt" });
+    try h.env.put("SMITH_PROMPT_DISABLED", "1");
+    try h.expectRun(1, &.{ "repo", "delete", "owner/repo" });
+    try h.expectErr("pass --yes");
+}
+
+test "lists go through the pager on a terminal" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .path = "/api/v1/repos/owner/repo/issues", .body = fx.issue_list, .times = 2 }}, .{});
+    defer h.deinit();
+    const paged = try h.path("paged");
+    try h.env.put("SMITH_PAGER", try std.fmt.allocPrint(h.arena.allocator(), "cat > '{s}'", .{paged}));
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo" });
+    try std.testing.expectEqualStrings("", h.stdout());
+    const got = try h.tmp.dir.readFileAlloc(std.testing.io, "paged", h.arena.allocator(), .limited(64 * 1024));
+    try std.testing.expect(std.mem.indexOf(u8, got, "Crash on start") != null);
+    h.ctx.stdout_tty = false;
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo" });
+    try h.expectOut("Crash on start");
+}
+
+test "alias import, set from standard input, and delete --all" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "alias", "set", "co", "pr checkout" });
+    h.ctx.stdin_data = "# from gh\nco: pr view\nbugs: 'issue list --label bug'\n";
+    try h.expectRun(1, &.{ "alias", "import", "-" });
+    try h.expectErr("alias co already exists");
+    h.ctx.stdin_data = "# from gh\nco: pr view\nbugs: 'issue list --label bug'\n";
+    try h.expectRun(0, &.{ "alias", "import", "--clobber" });
+    h.ctx.stdin_data = "nope: frobnicate\n";
+    try h.expectRun(1, &.{ "alias", "import" });
+    try h.expectErr("\"frobnicate\" is not a smith command");
+    h.ctx.stdin_data = "co:\n  nested: x\n";
+    try h.expectRun(1, &.{ "alias", "import" });
+    try h.expectErr("is not a YAML map");
+    h.ctx.stdin_data = "release list -L $1\n";
+    try h.expectRun(0, &.{ "alias", "set", "rl", "-" });
+    try h.expectRun(0, &.{ "alias", "list" });
+    try std.testing.expectEqualStrings("co:\tpr view\nbugs:\tissue list --label bug\nrl:\trelease list -L $1\n", h.stdout());
+    try h.expectRun(1, &.{ "alias", "delete" });
+    try h.expectRun(0, &.{ "alias", "delete", "--all" });
+    try h.expectErr("Deleted 3 aliases");
+    try h.expectRun(0, &.{ "alias", "list" });
+    try std.testing.expectEqualStrings("", h.stdout());
+}
