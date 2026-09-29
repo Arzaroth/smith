@@ -366,26 +366,27 @@ pub fn printJson(ctx: *Ctx, v: anytype) !void {
         const value = try json.parseFromSliceLeaky(json.Value, ctx.alloc, text, .{});
         var diag: template.Diagnostic = .{};
         const t = template.Template.parse(ctx.alloc, src, &diag) catch |e| switch (e) {
-            error.TemplateSyntax, error.TemplateExec => return ctx.fail("invalid --template: {s}", .{src}),
+            error.TemplateSyntax, error.TemplateExec => return ctx.fail("invalid --template: {s}", .{diag.message}),
             else => |x| return x,
         };
         var aw: Io.Writer.Allocating = .init(ctx.alloc);
-        t.render(ctx.alloc, &aw.writer, value, .{ .now = ctx.now }, &diag) catch |e| switch (e) {
-            error.TemplateSyntax, error.TemplateExec => return ctx.fail("invalid --template: {s}", .{src}),
+        const opts: template.Options = .{ .now = ctx.now, .color = ctx.color, .tty = ctx.stdout_tty };
+        t.render(ctx.alloc, &aw.writer, value, opts, &diag) catch |e| switch (e) {
+            error.TemplateSyntax, error.TemplateExec => return ctx.fail("invalid --template: {s}", .{diag.message}),
             else => |x| return x,
         };
-        return writeFiltered(ctx, aw.written());
+        return ctx.out.writeAll(aw.written());
     }
     try jqFilter(ctx, text, ctx.jq.?);
 }
 
-/// Runs the system jq over `text`, like gh's --jq: strings come out raw.
-/// Output made from server text by --template or --jq, cleaned of control
-/// characters on a terminal and left byte for byte in a pipe.
+/// Output made from server text by --jq, cleaned of control characters on a
+/// terminal and left byte for byte in a pipe.
 fn writeFiltered(ctx: *Ctx, text: []const u8) !void {
     try ctx.out.writeAll(if (ctx.stdout_tty) try term.clean(ctx.alloc, text, true) else text);
 }
 
+/// Runs the system jq over `text`, like gh's --jq: strings come out raw.
 fn jqFilter(ctx: *Ctx, text: []const u8, expr: []const u8) !void {
     try ctx.out.flush();
     var child = std.process.spawn(ctx.io, .{

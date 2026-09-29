@@ -34,6 +34,7 @@ const Value = std.json.Value;
 const lex = @import("template/lex.zig");
 const syntax = @import("template/parse.zig");
 const exec = @import("template/exec.zig");
+const term = @import("term.zig");
 
 pub const Error = error{ TemplateSyntax, TemplateExec, OutOfMemory, WriteFailed };
 
@@ -42,8 +43,9 @@ pub const Options = struct {
     now: i64 = 0,
     /// `color` and `autocolor` emit ANSI colours.
     color: bool = false,
-    /// Stdout is a terminal: `hyperlink` emits OSC 8 links and tables align
-    /// with spaces instead of tabs.
+    /// Stdout is a terminal: `hyperlink` emits OSC 8 links, tables align
+    /// with spaces instead of tabs, and the data's strings lose their control
+    /// characters (`term.clean`) while the template's own escapes stay.
     tty: bool = false,
 };
 
@@ -81,12 +83,30 @@ pub const Template = struct {
 
     pub fn render(t: Template, alloc: Allocator, w: *Writer, data: Value, opts: Options, diag: *Diagnostic) Error!void {
         var e: exec.Exec = .{ .alloc = alloc, .src = t.src, .w = w, .opts = opts, .diag = diag };
-        try e.run(t.nodes, data);
+        try e.run(t.nodes, if (opts.tty) try clean(alloc, data) else data);
     }
 };
 
+fn clean(alloc: Allocator, v: Value) error{OutOfMemory}!Value {
+    switch (v) {
+        .string => |s| return .{ .string = try term.clean(alloc, s, true) },
+        .array => |a| {
+            var out: std.json.Array = try .initCapacity(alloc, a.items.len);
+            for (a.items) |item| out.appendAssumeCapacity(try clean(alloc, item));
+            return .{ .array = out };
+        },
+        .object => |o| {
+            var out: std.json.ObjectMap = .empty;
+            try out.ensureTotalCapacity(alloc, o.count());
+            var it = o.iterator();
+            while (it.next()) |kv| out.putAssumeCapacity(try term.clean(alloc, kv.key_ptr.*, true), try clean(alloc, kv.value_ptr.*));
+            return .{ .object = out };
+        },
+        else => return v,
+    }
+}
+
 const testing = std.testing;
-const term = @import("term.zig");
 const test_now = 1790683200;
 
 fn renderAlloc(a: Allocator, src: []const u8, json: []const u8, opts: Options, diag: *Diagnostic) ![]const u8 {
@@ -334,4 +354,10 @@ test "tablerow and tablerender" {
     try expectRenderOpts("{{range .}}{{tablerow .n .t}}{{end}}", rows, .{}, "7\tCrash\n12\tA longer title\n");
     try expectRenderOpts("head\n{{range .}}{{tablerow .n .t}}{{end}}{{tablerender}}tail\n", rows, .{ .tty = true }, "head\n7   Crash\n12  A longer title\ntail\n");
     try expectRenderOpts("{{range .}}{{tablerow (printf \"#%v\" .n | autocolor \"green\") .t}}{{end}}", rows, .{ .tty = true, .color = true }, "\x1b[32m#7\x1b[0m   Crash\n\x1b[32m#12\x1b[0m  A longer title\n");
+}
+
+test "on a terminal the data is cleaned, the template's escapes are not" {
+    const data = "{\"t\":\"x\\u001b]52;c;cm0=\\u0007y\",\"k\":{\"a\\u001bb\":1}}";
+    try expectRenderOpts("{{color \"red\" .t}}\n{{range $k, $v := .k}}{{$k}}{{end}}{{\"\\u001b[0m\"}}", data, .{ .tty = true, .color = true }, "\x1b[31mx?]52;c;cm0=?y\x1b[0m\na?b\x1b[0m");
+    try expectRenderOpts("{{.t}}", data, .{}, "x\x1b]52;c;cm0=\x07y");
 }
