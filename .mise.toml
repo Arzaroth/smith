@@ -1,0 +1,28 @@
+[tools]
+shellcheck = "0.11.0"
+zig = "0.16.0"
+
+[tasks.build]
+description = "Debug build into zig-out/bin/smith"
+run = "zig build"
+
+[tasks.run]
+description = "Build and run smith with the given arguments"
+run = "zig build run --"
+
+[tasks.test]
+description = "Unit tests"
+run = "zig build test --summary all"
+
+[tasks.fmt]
+description = "Format every Zig source"
+run = "zig fmt build.zig build.zig.zon src"
+
+[tasks.check]
+description = "The gate: formatting, shellcheck, tests, and a ReleaseSafe build"
+run = [
+  "zig fmt --check build.zig build.zig.zon src",
+  "shellcheck mise-tasks/*",
+  "zig build test --summary all",
+  "zig build -Doptimize=ReleaseSafe",
+]

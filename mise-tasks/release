@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+#MISE description="Cut a release: changelog section, version bump, gate, commit+tag+push"
+#USAGE arg "<version>" help="Semver to release, e.g. 0.1.0"
+#USAGE flag "--dry-run" help="Preview the release without writing, committing or pushing"
+set -euo pipefail
+
+version="${usage_version:-}"
+dry_run="${usage_dry_run:-false}"
+
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "usage: mise run release <x.y.z> [--dry-run]" >&2
+  exit 1
+fi
+if [[ "$(git branch --show-current)" != "master" ]]; then
+  echo "releases are cut from master" >&2
+  exit 1
+fi
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "working tree is not clean - commit or stash first" >&2
+  exit 1
+fi
+if git tag -l | grep -qx "v${version}"; then
+  echo "tag v${version} already exists" >&2
+  exit 1
+fi
+
+pending="$(awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | sed '/./,$!d')"
+if [[ -z "${pending//[[:space:]]/}" ]]; then
+  echo "CHANGELOG.md has no [Unreleased] content - nothing to release" >&2
+  exit 1
+fi
+
+date="$(date +%F)"
+printf 'releasing v%s (%s) with:\n\n%s\n\n' "$version" "$date" "$pending"
+if [[ "$dry_run" == "true" ]]; then
+  echo "dry run - nothing written"
+  exit 0
+fi
+
+sed -i "s/^## \[Unreleased\]\$/## [Unreleased]\n\n## [${version}] - ${date}/" CHANGELOG.md
+sed -i "s/^\(    \.version = \)\"[^\"]*\",/\1\"${version}\",/" build.zig.zon
+grep -q "\.version = \"${version}\"," build.zig.zon
+
+echo "running the gate..."
+mise run check
+[[ "$(zig-out/bin/smith --version)" == "smith ${version}" ]]
+
+git add CHANGELOG.md build.zig.zon
+git commit -m "[master] chore(release): ${version}"
+git tag -a "v${version}" -m "smith ${version}"
+git push origin master --follow-tags
+echo
+echo "released v${version}"
