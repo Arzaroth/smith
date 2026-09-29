@@ -16,6 +16,9 @@ pub const Route = struct {
     content_type: []const u8 = "application/json",
     /// Sent as the Location header, for redirects.
     location: ?[]const u8 = null,
+    /// Plays the authorization server: redirects to the request's
+    /// `redirect_uri` with this code and the request's `state`.
+    authorize_code: ?[]const u8 = null,
     /// How many times the route answers before it stops matching.
     times: ?u32 = null,
 };
@@ -25,6 +28,12 @@ pub const Request = struct {
     target: []const u8,
     body: []const u8,
     authorization: ?[]const u8 = null,
+    headers: []const std.http.Header = &.{},
+
+    pub fn header(r: Request, name: []const u8) ?[]const u8 {
+        for (r.headers) |h| if (std.ascii.eqlIgnoreCase(h.name, name)) return h.value;
+        return null;
+    }
 };
 
 io: Io,
@@ -99,17 +108,20 @@ fn handle(m: *Mock, stream: Io.net.Stream) !void {
     const target = try alloc.dupe(u8, req.head.target);
     const method = req.head.method;
     var authorization: ?[]const u8 = null;
-    var headers = req.iterateHeaders();
-    while (headers.next()) |hd| if (std.ascii.eqlIgnoreCase(hd.name, "authorization")) {
-        authorization = try alloc.dupe(u8, hd.value);
-    };
+    var headers: std.ArrayList(std.http.Header) = .empty;
+    var it = req.iterateHeaders();
+    while (it.next()) |hd| {
+        const copy: std.http.Header = .{ .name = try alloc.dupe(u8, hd.name), .value = try alloc.dupe(u8, hd.value) };
+        try headers.append(alloc, copy);
+        if (std.ascii.eqlIgnoreCase(hd.name, "authorization")) authorization = copy.value;
+    }
     var body: []const u8 = "";
     if (req.head.content_length) |len| {
         var body_buf: [4096]u8 = undefined;
         const r = req.readerExpectNone(&body_buf);
         body = try r.readAlloc(alloc, @intCast(len));
     }
-    try m.requests.append(alloc, .{ .method = method, .target = target, .body = body, .authorization = authorization });
+    try m.requests.append(alloc, .{ .method = method, .target = target, .body = body, .authorization = authorization, .headers = headers.items });
 
     const q = std.mem.indexOfScalar(u8, target, '?');
     const path = if (q) |i| target[0..i] else target;
@@ -119,14 +131,18 @@ fn handle(m: *Mock, stream: Io.net.Stream) !void {
         if (route.query) |want| if (std.mem.indexOf(u8, query, want) == null) continue;
         if (route.times) |t| if (used.* >= t) continue;
         used.* += 1;
+        const location = if (route.authorize_code) |code|
+            try std.fmt.allocPrint(alloc, "{s}?code={s}&state={s}", .{ try param(alloc, query, "redirect_uri"), code, try param(alloc, query, "state") })
+        else
+            route.location;
         const with_location = [_]std.http.Header{
             .{ .name = "content-type", .value = route.content_type },
-            .{ .name = "location", .value = route.location orelse "" },
+            .{ .name = "location", .value = location orelse "" },
         };
         try req.respond(route.body, .{
-            .status = @enumFromInt(route.status),
+            .status = if (route.authorize_code != null) .found else @enumFromInt(route.status),
             .keep_alive = false,
-            .extra_headers = if (route.location != null) &with_location else with_location[0..1],
+            .extra_headers = if (location != null) &with_location else with_location[0..1],
         });
         return;
     }
@@ -136,4 +152,23 @@ fn handle(m: *Mock, stream: Io.net.Stream) !void {
 fn samePath(target: []const u8, path: []const u8) bool {
     const end = std.mem.indexOfScalar(u8, target, '?') orelse target.len;
     return std.mem.eql(u8, target[0..end], path);
+}
+
+fn param(alloc: std.mem.Allocator, query: []const u8, name: []const u8) ![]const u8 {
+    var it = std.mem.splitScalar(u8, query, '&');
+    while (it.next()) |pair| {
+        const eq = std.mem.indexOfScalar(u8, pair, '=') orelse continue;
+        if (!std.mem.eql(u8, pair[0..eq], name)) continue;
+        const raw = pair[eq + 1 ..];
+        var out: std.ArrayList(u8) = .empty;
+        var i: usize = 0;
+        while (i < raw.len) : (i += 1) {
+            if (raw[i] == '%' and i + 2 < raw.len) {
+                try out.append(alloc, try std.fmt.parseInt(u8, raw[i + 1 .. i + 3], 16));
+                i += 2;
+            } else try out.append(alloc, raw[i]);
+        }
+        return out.items;
+    }
+    return "";
 }
