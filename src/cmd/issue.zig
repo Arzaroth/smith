@@ -188,7 +188,8 @@ fn create(ctx: *Ctx, args: *const cli.Args) !u8 {
     if (!ctx.interactive() and (args.get("title") == null or (args.get("body") == null and args.get("body-file") == null)))
         return ctx.fail("--title and --body are required when not running interactively", .{});
     const t = try common.title(ctx, args, null);
-    const body = try common.bodyOrEditor(ctx, args, "ISSUE.md", "");
+    var body = try common.bodyOrEditor(ctx, args, "ISSUE.md", "");
+    if (!try common.submitOrCancel(ctx, args, "ISSUE.md", &body)) return 2;
     var client = try r.client(ctx);
     const labels = try common.labelIds(ctx, &client, r, try args.all(ctx.alloc, "label"));
     const assignees = try args.all(ctx.alloc, "assignee");

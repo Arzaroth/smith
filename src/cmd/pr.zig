@@ -478,7 +478,7 @@ fn create(ctx: *Ctx, args: *const cli.Args) !u8 {
     else
         null;
     var title = if (args.has("fill") and args.get("title") == null) fill.?.title else try common.title(ctx, args, if (fill) |f| f.title else null);
-    const body = if (try common.bodyFromFlags(ctx, args)) |b|
+    var body = if (try common.bodyFromFlags(ctx, args)) |b|
         b
     else if (args.has("fill") or !ctx.interactive())
         (if (fill) |f| f.body else "")
@@ -486,6 +486,7 @@ fn create(ctx: *Ctx, args: *const cli.Args) !u8 {
         std.mem.trim(u8, try ctx.editText("PULL_REQUEST.md", if (fill) |f| f.body else ""), " \r\n\t");
     if (args.has("draft") and std.mem.eql(u8, withoutDraftPrefix(title), title))
         title = try std.fmt.allocPrint(ctx.alloc, draft_prefix ++ "{s}", .{title});
+    if (!try common.submitOrCancel(ctx, args, "PULL_REQUEST.md", &body)) return 2;
 
     const labels = try common.labelIds(ctx, &client, r, try args.all(ctx.alloc, "label"));
     const v = try client.sendValue(.POST, try r.path(ctx.alloc, "/pulls", .{}), .{

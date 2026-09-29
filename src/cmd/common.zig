@@ -44,6 +44,25 @@ pub fn bodyOrEditor(ctx: *Ctx, args: *const cli.Args, name: []const u8, initial:
     return std.mem.trim(u8, try ctx.editText(name, initial), " \r\n\t");
 }
 
+/// gh's last step before creating an issue or pull request from a terminal:
+/// submit, edit the body again, or cancel. False means cancelled.
+pub fn submitOrCancel(ctx: *Ctx, args: *const cli.Args, name: []const u8, body: *[]const u8) !bool {
+    if (!ctx.interactive() or args.has("fill")) return true;
+    if (args.get("title") != null and (args.get("body") != null or args.get("body-file") != null)) return true;
+    while (true) {
+        const answer = try ctx.prompt("What's next? [S]ubmit, [e]dit the body, [c]ancel:");
+        switch (if (answer.len == 0) 's' else std.ascii.toLower(answer[0])) {
+            's' => return true,
+            'e' => body.* = std.mem.trim(u8, try ctx.editText(name, body.*), " \r\n\t"),
+            'c' => {
+                try ctx.err.writeAll("Discarded.\n");
+                return false;
+            },
+            else => {},
+        }
+    }
+}
+
 pub fn title(ctx: *Ctx, args: *const cli.Args, default: ?[]const u8) ![]const u8 {
     if (args.get("title")) |t| return t;
     if (ctx.interactive()) {
