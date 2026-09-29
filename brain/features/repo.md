@@ -30,9 +30,11 @@
   when `commits_behind` is 0, an error when Forgejo does not allow it (the
   fork has commits of its own), else the same path with `POST`. Anything
   else is an error.
-- **list** takes gh's `--fork`, `--source`, `--visibility public|private`,
-  `--archived` and `--no-archived`, filtered while paging
-  (`Client.listMatching`), since the endpoints cannot filter on them.
+- **list** takes gh's `--fork`, `--source`, `--visibility
+  public|private|internal`, `--archived`, `--no-archived`, `-l/--language` and
+  `--topic` (repeatable), filtered while paging (`Client.listMatching`):
+  `/user/repos`, `/users/{o}/repos` and `/orgs/{o}/repos` cannot filter
+  on them (`/repos/search` could, for some).
 - **archive** / **unarchive**: `PATCH {archived}`, after a confirmation.
 - **delete**: `DELETE /repos/{o}/{r}`; on a terminal the full name must be
   typed back, otherwise `--yes` is required.

@@ -7,8 +7,10 @@ exists everywhere once it is declared.
 
 - **Parsing** (`cli.parse`): long flags (`--state closed`, `--state=closed`),
   short flags with attached or separate values (`-L5`, `-L 5`), clustered
-  booleans (`-dl bug`), booleans with `=true` or `=false` as gh takes them
-  (`--enable-wiki=false` is `--disable-wiki`), repeatable flags whose values are also split on commas
+  booleans (`-dl bug`), booleans with a value as pflag takes them (`=true`,
+  `=0`, `-d=false`; the last occurrence wins; `=false` records the opposite
+  flag where there is one: `--enable-wiki=false` is `--disable-wiki`,
+  `release edit --draft=false` is `--publish`), repeatable flags whose values are also split on commas
   (`Args.all`), negative numbers kept as positionals, `--` passthrough for
   commands that declare `passthrough` (`repo clone ... -- --depth 1`).
   `-h` is help unless the command declares its own `-h` (`config --host`);

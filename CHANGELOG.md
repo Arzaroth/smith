@@ -8,24 +8,29 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Boolean flags take `=true` and `=false` as in gh: `repo edit
-  --enable-wiki=false`.
+- Boolean flags take a value as in gh (`=true`, `=false`, `=0`, `-d=false`):
+  `repo edit --enable-wiki=false`, `release edit --draft=false`.
 - `issue view` and `pr view` show the milestone.
-- `repo list` takes gh's `--fork`, `--source`, `--visibility`, `--archived`
-  and `--no-archived`.
+- `repo list` takes gh's `--fork`, `--source`, `--visibility`, `--archived`,
+  `--no-archived`, `-l/--language` and `--topic`.
 
 ### Fixed
 
 - `milestone create --due` meant the end of that day in UTC, so a Forgejo
   east of UTC stored the next day; it is now the end of the day where you
   are, and due dates show as local days.
-- `pr merge` waits while Forgejo is still checking the branch (right after a
-  push or `pr update-branch`) instead of failing with "try again later".
-- `pr merge -d` fast-forwards the base branch it switches to.
+- `pr merge` retries for a few seconds when Forgejo says "try again later"
+  (it is still checking the branch right after a push or `pr update-branch`),
+  and otherwise says the branch may conflict.
+- `pr merge -d` fast-forwards the base branch it switches to, from the pull
+  request's repository, and leaves local branches alone outside a clone of
+  that repository.
 - `secret delete` and `variable delete` ask first and take `--yes`, like
-  every other deletion.
-- `repo sync` on a fork that is already up to date says so instead of
-  failing with Forgejo's "You can't sync this branch".
+  every other deletion; scripts that delete secrets or variables need to
+  add `--yes`.
+- `repo sync` on a fork that is already up to date says so, and on a fork
+  it cannot sync says why, instead of Forgejo's "You can't sync this
+  branch".
 
 ## [0.3.1] - 2026-09-29
 
