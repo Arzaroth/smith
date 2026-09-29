@@ -158,3 +158,21 @@ test "switch --hostname changes the default host" {
     try h.expectRun(1, &.{ "auth", "switch" });
     try h.expectErr("already the default host and has a single account");
 }
+
+test "an environment token never goes over plain http to a host nobody configured" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/version", .body = fx.version },
+        .{ .path = issues, .body = "[]" },
+    }, .{ .config = false });
+    defer h.deinit();
+    const host = try std.fmt.allocPrint(h.arena.allocator(), "127.0.0.1:{d}", .{h.mock.port});
+    try h.env.put("SMITH_HOST", host);
+    try h.env.put("SMITH_TOKEN", "secret");
+    try h.env.put(try std.fmt.allocPrint(h.arena.allocator(), "SMITH_TOKEN_127_0_0_1_{d}", .{h.mock.port}), "also-secret");
+    try h.git(&.{ "init", "-q", "work" });
+    try h.git(&.{ "-C", "work", "remote", "add", "origin", try std.fmt.allocPrint(h.arena.allocator(), "http://{s}/o/r.git", .{host}) });
+    h.ctx.cwd = try h.path("work");
+    try h.expectRun(0, &.{ "issue", "list" });
+    for (h.mock.requests.items) |r| try std.testing.expect(r.authorization == null);
+}

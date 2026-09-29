@@ -102,3 +102,22 @@ test "completion covers every command and flag" {
     try h.expectOut("bashcompinit");
     try h.expectRun(1, &.{ "completion", "tcsh" });
 }
+
+test "server text cannot smuggle escape sequences, --web opens only http(s), and names cannot become git options" {
+    var h: Harness = undefined;
+    const hostile_issue = "[{\"number\":1,\"title\":\"\\u001b]52;c;cm0gLXJmIH4=\\u0007evil\\ttitle\",\"state\":\"open\",\"html_url\":\"file:///etc/passwd\",\"labels\":[]}]";
+    const hostile_repo = "{\"id\":1,\"name\":\"-oops\",\"full_name\":\"o/-oops\",\"html_url\":\"x\",\"clone_url\":\"--upload-pack=touch pwned\"}";
+    try h.init(&.{
+        .{ .path = "/api/v1/repos/owner/repo/issues", .body = hostile_issue },
+        .{ .path = "/api/v1/repos/o/r", .body = hostile_repo },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo" });
+    try std.testing.expect(std.mem.indexOfScalar(u8, h.stdout(), 0x1b) == null);
+    try h.expectOut("?]52;c;cm0gLXJmIH4=?evil title");
+
+    try h.expectRun(1, &.{ "repo", "clone", "o/r" });
+    try h.expectErr("refusing directory \"-oops\"");
+    try h.expectRun(1, &.{ "repo", "clone", "o/r", "safe", "--", "-q" });
+    try std.testing.expectError(error.FileNotFound, h.tmp.dir.access(std.testing.io, "pwned", .{}));
+}
