@@ -16,9 +16,26 @@ It is also written in Zig, mostly because why not.
 
 ## Install
 
-Download the archive for your platform from the releases page, unpack it, and
-put `smith` on your `PATH`: static binaries for Linux (x86_64, aarch64) and
-macOS (Intel, Apple silicon), checked by `SHA256SUMS`. Or build it (below).
+```sh
+curl -fsSL https://raw.githubusercontent.com/Arzaroth/smith/master/install.sh | sh
+```
+
+This installs the latest release into `~/.local/bin` (`--dir` or
+`SMITH_INSTALL_DIR` to change it): a static binary for Linux (x86_64,
+aarch64) or macOS (Intel, Apple silicon), checked against the release's
+`SHA256SUMS`. Pass options after `sh -s --`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Arzaroth/smith/master/install.sh | sh -s -- --version 0.3.0
+curl -fsSL https://raw.githubusercontent.com/Arzaroth/smith/master/install.sh | sh -s -- --dev
+```
+
+`--dev` builds the tip of master from source (a minute or two) with Zig
+0.16.0: yours if it is on `PATH`, else through mise, else a download from
+ziglang.org checked against its published checksum; `smith --version` then
+says `0.3.0-dev+<commit>`. `--from forgejo` downloads from git.arzaroth.com
+instead of GitHub. Or unpack a release archive yourself, or build it
+(below).
 
 ## Getting started
 

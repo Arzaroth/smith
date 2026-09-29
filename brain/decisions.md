@@ -191,3 +191,12 @@ and non-interactive flags, so an MCP server would only restate the CLI and
 drift from it. Instead `smith help reference` renders the command tree as
 Markdown and `smith help skill` prints a `SKILL.md`; both come from the
 binary, so what an agent reads always matches the smith it runs.
+
+## --dev builds from source, no nightly release (2026-09-29)
+
+`install.sh --dev` builds master's tip on the user's machine instead of
+downloading a rolling nightly release. A nightly would need a CI build on
+every push and a moving tag, and the Forgejo push mirror syncs tags to
+GitHub, so a tag made on one side would fight the other. Building takes a
+minute or two, needs no git (a source tarball of the exact commit), and
+always matches master; the Zig it builds with is pinned and checked.

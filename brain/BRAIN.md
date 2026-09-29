@@ -25,6 +25,7 @@ source of truth: when a doc disagrees with it, fix the doc.
 | How does `pr checkout` handle forks? | [features/pr.md](features/pr.md) |
 | Keyring or file: where does the token live? | [architecture/config.md](architecture/config.md) |
 | How is a release built and published? | [stack.md](stack.md) |
+| How do I install smith, or master? | [stack.md](stack.md) |
 | How do aliases expand? | [features/settings.md](features/settings.md) |
 | How do `--jq` and `--template` work? | [features/tools.md](features/tools.md) |
 | What does "host" mean vs "ssh host"? | [glossary.md](glossary.md) |

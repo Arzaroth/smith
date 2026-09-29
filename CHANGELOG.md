@@ -6,6 +6,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `install.sh`: `curl -fsSL https://raw.githubusercontent.com/Arzaroth/smith/master/install.sh | sh`
+  installs the latest release (or `--version`), checked against
+  `SHA256SUMS`; `--dev` builds master from source.
+
 ## [0.3.0] - 2026-09-29
 
 ### Added

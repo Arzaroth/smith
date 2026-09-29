@@ -6,11 +6,13 @@
 - **Dependencies**: the Zig standard library only. HTTP and TLS come from
   `std.http.Client`, JSON from `std.json`. Git work shells out to `git`.
 - **Version**: `build.zig.zon` `.version`, passed to the binary as the
-  `build_options.version` module by `build.zig`.
+  `build_options.version` module by `build.zig`; `-Dversion=` overrides it
+  (`install.sh --dev` builds `<version>-dev+<commit>`).
 - **Tasks** (`mise run <task>`): `build`, `run`, `test` (`zig build test
   -Dtest-filter=<text>` for a subset), `fmt`, `check` (the
-  gate: `zig fmt --check`, `shellcheck mise-tasks/*`, tests, ReleaseSafe
-  build), `release <x.y.z>` (`mise-tasks/release`), `dist` (`mise-tasks/dist`:
+  gate: `zig fmt --check`, `shellcheck mise-tasks/*`,
+  `mise-tasks/installer-check` (shellcheck of `install.sh`, and its Zig
+  version against `.mise.toml`'s), tests, ReleaseSafe build), `release <x.y.z>` (`mise-tasks/release`), `dist` (`mise-tasks/dist`:
   stripped ReleaseSafe archives for x86_64 and aarch64 Linux (static musl)
   and macOS, with `SHA256SUMS`).
 - **CI**: `.github/workflows/ci.yml` runs the gate on Forgejo Actions and,
@@ -22,10 +24,17 @@
   `http://server:3000`, so that step writes smith a `hosts.zon` naming it
   with its scheme before `SMITH_TOKEN` can apply. `actions/checkout` is
   pinned to a commit that GitHub and Forgejo's action mirrors share.
+- **Installer**: `install.sh` (POSIX sh, curl or wget) installs the latest
+  release, or `--version`, for the machine's OS and architecture from
+  GitHub or `--from forgejo`, checked against `SHA256SUMS`. `--dev` builds
+  master's tip from its source tarball with Zig from `PATH`, mise, or a
+  ziglang.org download checked against checksums pinned in the script; a
+  Zig bump updates `zig_version` and those checksums (the gate notices).
 
 ## Sources
 
 - `.mise.toml`
+- `install.sh`, `mise-tasks/installer-check`
 - `build.zig`, `build.zig.zon`
 - `src/main.zig`
 - `mise-tasks/release`
