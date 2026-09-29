@@ -199,3 +199,26 @@ test "--limit 0 and a non-number are explained" {
     try h.expectRun(1, &.{ "issue", "list", "-R", "owner/repo", "-L", "many" });
     try h.expectErr("got \"many\"");
 }
+
+test "create on a terminal asks before submitting: cancel, edit, submit" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .method = .POST, .path = issues, .status = 201, .body = fx.issue_open }}, .{});
+    defer h.deinit();
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "editor", .data = "#!/bin/sh\nprintf 'Written in the editor.' > \"$1\"\n", .flags = .{ .permissions = .fromMode(0o755) } });
+    h.ctx.stdin_tty = true;
+    h.ctx.stdout_tty = true;
+    h.ctx.stdin_data = "Crash on start\nc\n";
+    try h.expectRun(2, &.{ "issue", "create", "-R", "owner/repo", "-b", "Draft." });
+    try h.expectErr("Discarded.");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.count(.POST, issues));
+
+    try h.env.put("SMITH_EDITOR", try h.path("editor"));
+    h.ctx.stdin_data = "Crash on start\ne\ns\n";
+    try h.expectRun(0, &.{ "issue", "create", "-R", "owner/repo", "-b", "Draft." });
+    const v = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.mock.lastBody(.POST, issues).?, .{});
+    try std.testing.expectEqualStrings("Written in the editor.", v.object.get("body").?.string);
+
+    h.ctx.stdin_data = "";
+    try h.expectRun(0, &.{ "issue", "create", "-R", "owner/repo", "-t", "Crash on start", "-b", "Given." });
+    try std.testing.expectEqual(@as(usize, 2), h.mock.count(.POST, issues));
+}
