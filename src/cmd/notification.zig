@@ -56,12 +56,12 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
     }
     var table: term.Table = .{};
     for (threads) |t| try table.add(ctx.alloc, &.{
-        .{ .text = if (t.unread) "●" else " ", .color = .cyan },
+        .{ .text = if (!ctx.stdout_tty) (if (t.unread) "unread" else "read") else if (t.unread) "●" else " ", .color = .cyan },
         .{ .text = try std.fmt.allocPrint(ctx.alloc, "{d}", .{t.id}), .color = .dim },
         .{ .text = if (t.repository) |r| r.full_name else "" },
         .{ .text = t.subject.type, .color = .dim },
-        .{ .text = if (ctx.stdout_tty) try term.truncate(ctx.alloc, t.subject.title, 60) else t.subject.title, .color = if (t.unread) .bold else .none },
-        .{ .text = try term.ago(ctx.alloc, ctx.now, t.updated_at), .color = .dim },
+        .{ .text = try term.fit(ctx, t.subject.title, 60), .color = if (t.unread) .bold else .none },
+        .{ .text = try term.when(ctx, t.updated_at), .color = .dim },
     });
     try table.write(ctx);
     return 0;

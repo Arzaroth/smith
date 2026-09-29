@@ -61,7 +61,7 @@ pub const command: cli.Command = .{
                 .{ .long = "draft", .help = "Make it a draft" },
                 .{ .long = "publish", .help = "Publish a draft" },
                 .{ .long = "prerelease", .help = "Mark as a pre-release" },
-                .{ .long = "latest", .help = "Mark as a full release" },
+                .{ .long = "latest", .help = "Mark as a full release, not a pre-release (Forgejo shows the newest as latest)" },
                 cli.repo_flag,
             },
             .run = edit,
@@ -157,7 +157,7 @@ fn list(ctx: *Ctx, args: *const cli.Args) !u8 {
             .{ .text = rel.name orelse rel.tag_name, .color = .bold },
             .{ .text = label, .color = if (std.mem.eql(u8, label, "Latest")) .green else .yellow },
             .{ .text = rel.tag_name, .color = .cyan },
-            .{ .text = try term.ago(ctx.alloc, ctx.now, rel.published_at orelse rel.created_at), .color = .dim },
+            .{ .text = try term.when(ctx, rel.published_at orelse rel.created_at), .color = .dim },
         });
     }
     try table.write(ctx);

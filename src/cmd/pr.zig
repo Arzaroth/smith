@@ -169,7 +169,7 @@ pub const command: cli.Command = .{
             .run = review,
         },
         .{
-            .name = "update",
+            .name = "update-branch",
             .summary = "Bring a pull request's branch up to date with its base.",
             .usage = selector_usage,
             .max_args = 1,
@@ -870,7 +870,7 @@ fn review(ctx: *Ctx, args: *const cli.Args) !u8 {
     }
     if (chosen != 1) return ctx.fail("choose one of --approve, --request-changes and --comment", .{});
     const event: []const u8 = if (args.has("approve")) "APPROVED" else if (args.has("request-changes")) "REQUEST_CHANGES" else "COMMENT";
-    const body = try common.bodyOrEditor(ctx, args, "REVIEW.md", "");
+    const body = if (args.has("approve")) try common.bodyFromFlags(ctx, args) orelse "" else try common.bodyOrEditor(ctx, args, "REVIEW.md", "");
     if (!args.has("approve") and std.mem.trim(u8, body, " \r\n\t").len == 0)
         return ctx.fail("--request-changes and --comment need a body (--body or --body-file)", .{});
     _ = try client.sendValue(.POST, try r.path(ctx.alloc, "/pulls/{d}/reviews", .{pr.number}), .{ .event = event, .body = body, .commit_id = pr.head.sha });

@@ -427,9 +427,9 @@ test "update merges or rebases the base in and explains a conflict" {
         .{ .method = .POST, .path = pulls ++ "/12/update", .query = "style=rebase", .status = 409, .body = "{\"message\":\"merge conflict\"}" },
     }, .{});
     defer h.deinit();
-    try h.expectRun(0, &.{ "pr", "update", "12", "-R", "owner/repo" });
+    try h.expectRun(0, &.{ "pr", "update-branch", "12", "-R", "owner/repo" });
     try h.expectErr("Updated pull request #12 (Add feature) with main (merge)");
-    try h.expectRun(1, &.{ "pr", "update", "12", "-R", "owner/repo", "--rebase" });
+    try h.expectRun(1, &.{ "pr", "update-branch", "12", "-R", "owner/repo", "--rebase" });
     try h.expectErr("cannot be updated automatically: merge conflict");
 }
 

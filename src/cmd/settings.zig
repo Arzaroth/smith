@@ -46,14 +46,13 @@ fn checkKey(ctx: *Ctx, key: []const u8) !void {
 fn value(s: settings.Settings, key: []const u8) ?[]const u8 {
     if (std.mem.eql(u8, key, "editor")) return s.editor;
     if (std.mem.eql(u8, key, "browser")) return s.browser;
-    if (s.git_protocol) |p| return @tagName(p);
-    return null;
+    return @tagName(s.git_protocol orelse .ssh);
 }
 
 fn get(ctx: *Ctx, args: *const cli.Args) !u8 {
     const key = args.arg(0).?;
     try checkKey(ctx, key);
-    const v = value(try settings.load(ctx), key) orelse return 1;
+    const v = value(try settings.load(ctx), key) orelse "";
     try ctx.out.print("{s}\n", .{v});
     return 0;
 }

@@ -16,9 +16,9 @@ pub const command: cli.Command = .{
     .name = "search",
     .summary = "Search repositories, issues and pull requests across a host.",
     .subs = &.{
-        .{ .name = "repos", .summary = "Search repositories.", .usage = "<query>", .min_args = 1, .max_args = 1, .flags = &.{ owner_flag, .{ .long = "archived", .help = "Include archived repositories" }, cli.limit_flag, cli.json_flag, hostname_flag }, .run = repos },
-        .{ .name = "issues", .summary = "Search issues.", .usage = "<query>", .min_args = 1, .max_args = 1, .flags = &.{ state_flag, owner_flag, cli.limit_flag, cli.json_flag, hostname_flag }, .run = issues },
-        .{ .name = "prs", .summary = "Search pull requests.", .usage = "<query>", .min_args = 1, .max_args = 1, .flags = &.{ state_flag, owner_flag, cli.limit_flag, cli.json_flag, hostname_flag }, .run = prs },
+        .{ .name = "repos", .summary = "Search repositories.", .usage = "<query>...", .min_args = 1, .max_args = 64, .flags = &.{ owner_flag, .{ .long = "archived", .help = "Include archived repositories" }, cli.limit_flag, cli.json_flag, hostname_flag }, .run = repos },
+        .{ .name = "issues", .summary = "Search issues.", .usage = "<query>...", .min_args = 1, .max_args = 64, .flags = &.{ state_flag, owner_flag, cli.limit_flag, cli.json_flag, hostname_flag }, .run = issues },
+        .{ .name = "prs", .summary = "Search pull requests.", .usage = "<query>...", .min_args = 1, .max_args = 64, .flags = &.{ state_flag, owner_flag, cli.limit_flag, cli.json_flag, hostname_flag }, .run = prs },
     },
 };
 
@@ -29,7 +29,7 @@ pub fn client(ctx: *Ctx, args: *const cli.Args) !api.Client {
 
 fn repos(ctx: *Ctx, args: *const cli.Args) !u8 {
     var c = try client(ctx, args);
-    var path = try common.query(ctx, "/repos/search", &.{ .{ "q", args.arg(0).? }, .{ "sort", "updated" }, .{ "order", "desc" } });
+    var path = try common.query(ctx, "/repos/search", &.{ .{ "q", try std.mem.join(ctx.alloc, " ", args.positionals) }, .{ "sort", "updated" }, .{ "order", "desc" } });
     if (!args.has("archived")) path = try std.fmt.allocPrint(ctx.alloc, "{s}&archived=false", .{path});
     if (args.get("owner")) |o| {
         const Owner = struct { id: i64 };
@@ -49,9 +49,9 @@ fn repos(ctx: *Ctx, args: *const cli.Args) !u8 {
     var table: term.Table = .{};
     for (found) |r| try table.add(ctx.alloc, &.{
         .{ .text = r.full_name, .color = .bold },
-        .{ .text = try term.truncate(ctx.alloc, r.description orelse "", 50) },
+        .{ .text = try term.fit(ctx, r.description orelse "", 50) },
         .{ .text = if (r.private) "private" else if (r.fork) "fork" else "public", .color = .dim },
-        .{ .text = try term.ago(ctx.alloc, ctx.now, r.updated_at), .color = .dim },
+        .{ .text = try term.when(ctx, r.updated_at), .color = .dim },
     });
     try table.write(ctx);
     return 0;
@@ -70,7 +70,7 @@ pub const Found = struct {
 fn searchIssues(ctx: *Ctx, args: *const cli.Args, kind: []const u8) !u8 {
     var c = try client(ctx, args);
     const path = try common.query(ctx, "/repos/issues/search", &.{
-        .{ "q", args.arg(0).? },
+        .{ "q", try std.mem.join(ctx.alloc, " ", args.positionals) },
         .{ "type", kind },
         .{ "state", args.get("state") orelse "open" },
         .{ "owner", args.get("owner") },
@@ -91,11 +91,22 @@ fn searchIssues(ctx: *Ctx, args: *const cli.Args, kind: []const u8) !u8 {
 
 pub fn writeFound(ctx: *Ctx, found: []const Found) !void {
     var table: term.Table = .{};
-    for (found) |f| try table.add(ctx.alloc, &.{
-        .{ .text = try std.fmt.allocPrint(ctx.alloc, "{s}#{d}", .{ if (f.repository) |r| r.full_name else "", f.number }), .color = common.stateColor(f.state) },
-        .{ .text = if (ctx.stdout_tty) try term.truncate(ctx.alloc, f.title, 70) else f.title },
-        .{ .text = try term.ago(ctx.alloc, ctx.now, f.updated_at), .color = .dim },
-    });
+    for (found) |f| {
+        const name = if (f.repository) |r| r.full_name else "";
+        const rest = [_]term.Cell{
+            .{ .text = try term.fit(ctx, f.title, 70) },
+            .{ .text = f.state, .pipe = true },
+            .{ .text = try term.when(ctx, f.updated_at), .color = .dim },
+        };
+        var cells: std.ArrayList(term.Cell) = .empty;
+        if (ctx.stdout_tty) {
+            try cells.append(ctx.alloc, .{ .text = try std.fmt.allocPrint(ctx.alloc, "{s}#{d}", .{ name, f.number }), .color = common.stateColor(f.state) });
+        } else {
+            try cells.appendSlice(ctx.alloc, &.{ .{ .text = name }, .{ .text = try term.num(ctx, f.number) } });
+        }
+        try cells.appendSlice(ctx.alloc, &rest);
+        try table.add(ctx.alloc, cells.items);
+    }
     try table.write(ctx);
 }
 

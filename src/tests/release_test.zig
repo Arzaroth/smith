@@ -24,7 +24,7 @@ test "list marks the latest; view shows the assets" {
         .{ .path = releases ++ "/latest", .body = rel },
     });
     try h.expectRun(0, &.{ "release", "list", "-R", "owner/repo" });
-    try h.expectOut("One\tLatest\tv1.0.0\t1 day ago\n");
+    try h.expectOut("One\tLatest\tv1.0.0\t2026-09-28T12:00:00Z\n");
     try h.expectRun(0, &.{ "release", "view", "-R", "owner/repo" });
     try h.expectOut("alice released this 1 day ago · tag v1.0.0");
     try h.expectOut("smith-linux.tar.gz\t1.5 KiB\t4 downloads");

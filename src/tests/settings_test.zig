@@ -16,7 +16,8 @@ test "config set, get, list and unset; unknown keys and values are refused" {
     try h.expectErr("unknown key");
     try h.expectRun(1, &.{ "config", "set", "git_protocol", "ftp" });
     try h.expectRun(0, &.{ "config", "unset", "editor" });
-    try h.expectRun(1, &.{ "config", "get", "editor" });
+    try h.expectRun(0, &.{ "config", "get", "editor" });
+    try std.testing.expectEqualStrings("\n", h.stdout());
 }
 
 test "the browser preference is used for --web" {

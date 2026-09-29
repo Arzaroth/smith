@@ -69,7 +69,7 @@ fn sshList(ctx: *Ctx, args: *const cli.Args) !u8 {
         .{ .text = k.title, .color = .bold },
         .{ .text = k.fingerprint orelse "" },
         .{ .text = if (k.read_only) "read-only" else "", .color = .dim },
-        .{ .text = try term.ago(ctx.alloc, ctx.now, k.created_at), .color = .dim },
+        .{ .text = try term.when(ctx, k.created_at), .color = .dim },
     });
     if (table.rows.items.len == 0) {
         try ctx.err.writeAll("No SSH keys\n");
@@ -123,7 +123,7 @@ fn gpgList(ctx: *Ctx, args: *const cli.Args) !u8 {
             .{ .text = try std.fmt.allocPrint(ctx.alloc, "{d}", .{k.id}), .color = .dim },
             .{ .text = k.key_id, .color = .bold },
             .{ .text = try std.mem.join(ctx.alloc, ", ", emails.items) },
-            .{ .text = try term.ago(ctx.alloc, ctx.now, k.created_at), .color = .dim },
+            .{ .text = try term.when(ctx, k.created_at), .color = .dim },
         });
     }
     if (table.rows.items.len == 0) {
@@ -157,7 +157,7 @@ fn orgList(ctx: *Ctx, args: *const cli.Args) !u8 {
     var table: term.Table = .{};
     for (try api.decodeAll(Org, ctx, values)) |o| try table.add(ctx.alloc, &.{
         .{ .text = if (o.username.len > 0) o.username else o.name, .color = .bold },
-        .{ .text = try term.truncate(ctx.alloc, o.description orelse o.full_name orelse "", 50) },
+        .{ .text = try term.fit(ctx, o.description orelse o.full_name orelse "", 50) },
         .{ .text = o.visibility orelse "", .color = .dim },
     });
     if (table.rows.items.len == 0) {

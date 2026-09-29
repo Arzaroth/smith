@@ -86,7 +86,7 @@ fn secretList(ctx: *Ctx, args: *const cli.Args) !u8 {
         return 0;
     }
     var table: term.Table = .{};
-    for (secrets) |x| try table.add(ctx.alloc, &.{ .{ .text = x.name, .color = .bold }, .{ .text = try term.ago(ctx.alloc, ctx.now, x.created_at), .color = .dim } });
+    for (secrets) |x| try table.add(ctx.alloc, &.{ .{ .text = x.name, .color = .bold }, .{ .text = try term.when(ctx, x.created_at), .color = .dim } });
     try table.write(ctx);
     return 0;
 }

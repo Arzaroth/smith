@@ -20,7 +20,7 @@ test "search repos narrows to an owner by id; search issues and prs send the typ
     try std.testing.expect(std.mem.indexOf(u8, h.mock.requests.items[1].target, "exclusive=true") != null);
     try std.testing.expect(std.mem.indexOf(u8, h.mock.requests.items[1].target, "archived=false") != null);
     try h.expectRun(0, &.{ "search", "prs", "broken", "--state", "all" });
-    try std.testing.expectEqualStrings("team/app#3\tBroken\tabout 2 hours ago\n", h.stdout());
+    try std.testing.expectEqualStrings("team/app\t3\tBroken\topen\t2026-09-29T10:00:00Z\n", h.stdout());
     try h.expectRun(0, &.{ "search", "issues", "nothing" });
     try h.expectErr("No issues matched");
 }
@@ -36,7 +36,7 @@ test "status fills each section from its own search" {
     const out = h.stdout();
     const review = std.mem.indexOf(u8, out, "Review requests").?;
     const mentions = std.mem.indexOf(u8, out, "Mentions").?;
-    try std.testing.expect(std.mem.indexOf(u8, out[review..mentions], "team/app#3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out[review..mentions], "team/app\t3") != null);
     try std.testing.expect(std.mem.indexOf(u8, out[0..review], "Nothing here") != null);
     try h.expectRun(0, &.{ "status", "--json" });
     const v = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
@@ -52,7 +52,7 @@ test "notifications: list unread, mark one or all as read" {
     }, .{});
     defer h.deinit();
     try h.expectRun(0, &.{ "notification", "list" });
-    try std.testing.expectEqualStrings("●\t5\to/r\tPull\tNew PR\tabout 1 hour ago\n", h.stdout());
+    try std.testing.expectEqualStrings("unread\t5\to/r\tPull\tNew PR\t2026-09-29T11:00:00Z\n", h.stdout());
     try h.expectRun(0, &.{ "notification", "read", "5" });
     for (h.mock.requests.items) |r| if (r.method == .PATCH) try std.testing.expect(std.mem.indexOf(u8, r.target, "to-status=read") != null);
     try std.testing.expectEqual(@as(usize, 1), h.mock.count(.PATCH, "/api/v1/notifications/threads/5"));
@@ -73,7 +73,7 @@ test "ssh-key add takes the title from the key's comment; gpg-key add sends the 
     try h.expectRun(0, &.{ "ssh-key", "add", try h.path("id.pub") });
     try std.testing.expectEqualStrings("{\"key\":\"ssh-ed25519 AAAAC3Nza me@laptop\",\"title\":\"me@laptop\",\"read_only\":false}", h.mock.lastBody(.POST, "/api/v1/user/keys").?);
     try h.expectRun(0, &.{ "ssh-key", "list" });
-    try std.testing.expectEqualStrings("8\tme@laptop\tSHA256:abc\t\t1 day ago\n", h.stdout());
+    try std.testing.expectEqualStrings("8\tme@laptop\tSHA256:abc\t\t2026-09-28T12:00:00Z\n", h.stdout());
     try h.expectRun(1, &.{ "ssh-key", "delete", "8" });
     try h.expectRun(0, &.{ "ssh-key", "delete", "8", "-y" });
     h.ctx.stdin_data = "-----BEGIN PGP PUBLIC KEY BLOCK-----\nx\n-----END PGP PUBLIC KEY BLOCK-----\n";

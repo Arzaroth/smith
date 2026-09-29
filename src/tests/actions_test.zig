@@ -95,7 +95,7 @@ test "secrets: set from stdin, list, delete; your own cannot be listed" {
     try h.expectRun(0, &.{ "secret", "set", "TOKEN", "-R", "owner/repo" });
     try std.testing.expectEqualStrings("{\"data\":\"s3cr3t\"}", h.mock.lastBody(.PUT, actions ++ "/secrets/TOKEN").?);
     try h.expectRun(0, &.{ "secret", "list", "-R", "owner/repo" });
-    try std.testing.expectEqualStrings("TOKEN\tabout 1 hour ago\n", h.stdout());
+    try std.testing.expectEqualStrings("TOKEN\t2026-09-29T11:00:00Z\n", h.stdout());
     try h.expectRun(0, &.{ "secret", "delete", "TOKEN", "-R", "owner/repo" });
     try h.expectRun(0, &.{ "secret", "set", "K", "--org", "team", "-b", "v" });
     try h.expectRun(1, &.{ "secret", "list", "--user" });
