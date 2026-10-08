@@ -52,6 +52,21 @@ test "status fills each section from its own search" {
     try std.testing.expectEqual(@as(i64, 3), v.object.get("review_requests").?.array.items[0].object.get("number").?.integer);
 }
 
+test "status says when a section is empty and needs a login" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .path = "/api/v1/repos/issues/search", .body = "[]" }}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{"status"});
+    try std.testing.expectEqual(@as(usize, 4), std.mem.count(u8, h.stdout(), "  Nothing here\n"));
+
+    var anon: Harness = undefined;
+    try anon.init(&.{}, .{ .token = null });
+    defer anon.deinit();
+    try anon.expectRun(4, &.{"status"});
+    try anon.expectErr("status needs a login; run `smith auth login --hostname 127.0.0.1:");
+    try std.testing.expectEqual(@as(usize, 0), anon.mock.requests.items.len);
+}
+
 fn found(comptime n: []const u8) []const u8 {
     return "{\"number\":" ++ n ++ ",\"title\":\"Item\",\"state\":\"open\",\"updated_at\":\"2026-09-29T10:00:00Z\",\"repository\":{\"full_name\":\"team/app\"}}";
 }
