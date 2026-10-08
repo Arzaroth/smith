@@ -39,6 +39,9 @@ the Secret Service keyring were exercised on git.arzaroth.com on 2026-09-29; the
 - **`pr view` of a merged pull request** still says "wants to merge", and
   once its branch is deleted the head shows as `refs/pull/<n>/head`
   (Forgejo's ref then); gh says "merged" and keeps the branch name.
+- **`mise run coverage` with `-p`** reads `zig-out/coverage` whatever the
+  prefix, and the keychain backend (`security`) is never run by a test: it
+  is found on smith's `PATH` and would be the developer's real keychain.
 - **`--template` leftovers**: `define`/`template`/`block`, gh's `regexMatch`
   (needs a regex engine), `html`/`js`/`urlquery`; tables are not cut to the
   terminal width. `truncate` and `tablerow` count codepoints where gh counts
@@ -46,7 +49,11 @@ the Secret Service keyring were exercised on git.arzaroth.com on 2026-09-29; the
   can cut its escape); `%e` rounds the shortest decimal rather than the
   exact binary value (`%f` is exact); `timefmt` lacks `002` (day of year)
   and wants a non-letter after `January`/`Monday`; `{{089}}` is refused
-  where Go reads a float.
+  where Go reads a float. Two divergences the tests pin as they are (update
+  `template.zig`'s tests with the fix): `{{range $v := .}}{{else}}{{$v = 1}}`
+  drops the assignment where Go sets `$v`, and `color` gives up on a
+  background attribute other than `h` (`red:blue+b`) where mgutz/ansi
+  ignores it and keeps both colours.
 - **Verify installs beyond the same host's `SHA256SUMS`**: each forge builds
   its own release archives, which differ byte for byte (tar mtimes, gzip
   headers), so the installer cannot cross-check GitHub against Forgejo.
