@@ -234,3 +234,152 @@ test "the browser login gives up when no sign-in comes back" {
     try h.expectRun(1, &.{ "auth", "login", "--hostname", try host(&h), "--scheme", "http", "--web" });
     try h.expectErr("no sign-in came back from the browser in time");
 }
+
+/// A "browser" that skips the consent page and calls smith's loopback port
+/// itself: first with no query, then with an unrelated one, then with the
+/// query in `<tmp>/callback`, where STATE stands for the request's state.
+fn callbackBrowser(h: *Harness, callback: []const u8) !bool {
+    if (!try curlBrowser(h)) return false;
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "callback", .data = callback });
+    try h.tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "browser",
+        .data =
+        \\#!/bin/sh
+        \\port=$(printf '%s' "$1" | sed -n 's/.*redirect_uri=http%3A%2F%2F127\.0\.0\.1%3A\([0-9]*\).*/\1/p')
+        \\state=$(printf '%s' "$1" | sed -n 's/.*[?&]state=\([^&]*\).*/\1/p')
+        \\query=$(sed "s/STATE/$state/" "$(dirname "$0")/callback")
+        \\curl -s -o /dev/null "http://127.0.0.1:$port/"
+        \\curl -s -o /dev/null "http://127.0.0.1:$port/?unrelated=1"
+        \\exec curl -s -o /dev/null "http://127.0.0.1:$port/?$query"
+        \\
+        ,
+        .flags = .{ .permissions = .fromMode(0o755) },
+    });
+    return true;
+}
+
+fn initWeb(h: *Harness, comptime token_route: Mock.Route) !void {
+    try h.init(&.{
+        .{ .path = "/api/forgejo/v1/version", .body = fx.version },
+        .{ .path = "/.well-known/openid-configuration", .body = oidc },
+        .{ .method = .POST, .path = "/login/oauth/access_token", .status = 400, .body = known_client, .times = 1 },
+        token_route,
+        .{ .path = "/api/v1/user", .body = fx.user },
+    }, .{ .config = false });
+}
+
+fn webLogin(h: *Harness, callback: []const u8) !?u8 {
+    if (!try callbackBrowser(h, callback)) return null;
+    return h.run(&.{ "auth", "login", "--hostname", try host(h), "--scheme", "http", "--web" });
+}
+
+const good_token: Mock.Route = .{ .method = .POST, .path = "/login/oauth/access_token", .body = "{\"access_token\":\"at\"}" };
+
+test "a cancelled browser sign-in gives the reason, decoded" {
+    var h: Harness = undefined;
+    try initWeb(&h, good_token);
+    defer h.deinit();
+    const code = try webLogin(&h, "error=access_denied&error_description=Not+today%2C+thanks%zz.&state=STATE") orelse return error.SkipZigTest;
+    try std.testing.expectEqual(@as(u8, 1), code);
+    try h.expectErr("refused the login: Not today, thanks%zz.");
+    try std.testing.expectEqual(@as(usize, 1), h.mock.count(.POST, "/login/oauth/access_token"));
+}
+
+test "a cancelled browser sign-in without a description gives the error code" {
+    var h: Harness = undefined;
+    try initWeb(&h, good_token);
+    defer h.deinit();
+    const code = try webLogin(&h, "error=access_denied&state=STATE") orelse return error.SkipZigTest;
+    try std.testing.expectEqual(@as(u8, 1), code);
+    try h.expectErr("refused the login: access_denied");
+}
+
+test "a redirect with another state is refused" {
+    var h: Harness = undefined;
+    try initWeb(&h, good_token);
+    defer h.deinit();
+    const code = try webLogin(&h, "code=stolen&state=forged") orelse return error.SkipZigTest;
+    try std.testing.expectEqual(@as(u8, 1), code);
+    try h.expectErr("carried the wrong state");
+    try std.testing.expectError(error.FileNotFound, readConfig(&h));
+}
+
+test "a sign-in code the token endpoint refuses asks to log in again" {
+    var h: Harness = undefined;
+    try initWeb(&h, .{ .method = .POST, .path = "/login/oauth/access_token", .status = 400, .body = "{\"error\":\"invalid_grant\"}" });
+    defer h.deinit();
+    const code = try webLogin(&h, "code=c&state=STATE") orelse return error.SkipZigTest;
+    try std.testing.expectEqual(@as(u8, 1), code);
+    try h.expectErr("refused the sign-in code; run the login again");
+}
+
+test "a token endpoint answering with something other than tokens is reported" {
+    var h: Harness = undefined;
+    try initWeb(&h, .{ .method = .POST, .path = "/login/oauth/access_token", .body = "<html>maintenance</html>", .content_type = "text/html" });
+    defer h.deinit();
+    const code = try webLogin(&h, "code=c&state=STATE") orelse return error.SkipZigTest;
+    try std.testing.expectEqual(@as(u8, 1), code);
+    try h.expectErr("answered the token request with something unexpected");
+}
+
+test "web login asks for a client ID when the instance has no built-in one, and remembers it" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/forgejo/v1/version", .body = fx.version },
+        .{ .path = "/.well-known/openid-configuration", .body = oidc },
+        .{ .method = .POST, .path = "/login/oauth/access_token", .status = 400, .body = unknown_client, .times = 2 * caps.builtin_clients.len },
+        good_token,
+        .{ .path = "/api/v1/user", .body = fx.user },
+    }, .{ .config = false });
+    defer h.deinit();
+    interactive(&h, "\n");
+    try h.expectRun(1, &.{ "auth", "login", "--hostname", try host(&h), "--scheme", "http", "--web" });
+    try h.expectErr("Client ID:");
+    try h.expectErr("no client ID given");
+
+    if (!try callbackBrowser(&h, "code=c&state=STATE")) return error.SkipZigTest;
+    interactive(&h, "my-client\n");
+    try h.expectRun(0, &.{ "auth", "login", "--hostname", try host(&h), "--scheme", "http", "--web" });
+    try h.expectErr("has no built-in OAuth client");
+    try h.expectErr("signed in through the browser");
+    try std.testing.expectEqualStrings("my-client", (try readConfig(&h)).hosts[0].oauth_client_id.?);
+    try std.testing.expect(std.mem.indexOf(u8, h.mock.lastBody(.POST, "/login/oauth/access_token").?, "client_id=my-client") != null);
+}
+
+test "an instance without S256 PKCE gets no browser login" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/forgejo/v1/version", .body = fx.version },
+        .{ .path = "/.well-known/openid-configuration", .body = "{\"grant_types_supported\":[\"authorization_code\"],\"code_challenge_methods_supported\":[\"plain\"]}" },
+    }, .{ .config = false });
+    defer h.deinit();
+    try h.expectRun(1, &.{ "auth", "login", "--hostname", try host(&h), "--scheme", "http", "--web" });
+    try h.expectErr("does not offer OAuth sign-in with PKCE");
+}
+
+test "password login stops at an empty or refused two-factor code" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/forgejo/v1/version", .body = fx.version },
+        .{ .method = .POST, .path = "/api/v1/users/me/tokens", .status = 401, .body = "{\"message\":\"Only signed in user is allowed to call APIs.\\ntrace: x\"}" },
+    }, .{ .config = false });
+    defer h.deinit();
+    interactive(&h, "me\nhunter2\n\n");
+    try h.expectRun(1, &.{ "auth", "login", "--hostname", try host(&h), "--scheme", "http", "--password" });
+    try h.expectErr("refused the login: Only signed in user is allowed to call APIs.\n");
+
+    interactive(&h, "me\nhunter2\n000000\n");
+    try h.expectRun(1, &.{ "auth", "login", "--hostname", try host(&h), "--scheme", "http", "--password" });
+    try h.expectErr("refused the two-factor code: Only signed in user is allowed to call APIs.\n");
+}
+
+test "a refresh the token endpoint fails for another reason is reported as such" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .method = .POST, .path = "/login/oauth/access_token", .status = 500, .body = "{\"error\":\"server_error\",\"error_description\":\"database is down\"}" },
+    }, .{});
+    defer h.deinit();
+    try oauthConfig(&h, Harness.now - 5);
+    try h.expectRun(1, &.{ "issue", "list", "-R", "owner/repo" });
+    try h.expectErr("did not issue a token: database is down");
+}
