@@ -248,9 +248,10 @@ fn callbackBrowser(h: *Harness, callback: []const u8) !bool {
         \\port=$(printf '%s' "$1" | sed -n 's/.*redirect_uri=http%3A%2F%2F127\.0\.0\.1%3A\([0-9]*\).*/\1/p')
         \\state=$(printf '%s' "$1" | sed -n 's/.*[?&]state=\([^&]*\).*/\1/p')
         \\query=$(sed "s/STATE/$state/" "$(dirname "$0")/callback")
-        \\curl -s -o /dev/null "http://127.0.0.1:$port/"
-        \\curl -s -o /dev/null "http://127.0.0.1:$port/?unrelated=1"
-        \\exec curl -s -o /dev/null "http://127.0.0.1:$port/?$query"
+        \\[ -n "$port" ] || exit 1
+        \\curl -s -m 10 -o /dev/null "http://127.0.0.1:$port/"
+        \\curl -s -m 10 -o /dev/null "http://127.0.0.1:$port/?unrelated=1"
+        \\exec curl -s -m 10 -o /dev/null "http://127.0.0.1:$port/?$query"
         \\
         ,
         .flags = .{ .permissions = .fromMode(0o755) },
@@ -266,6 +267,7 @@ fn initWeb(h: *Harness, comptime token_route: Mock.Route) !void {
         token_route,
         .{ .path = "/api/v1/user", .body = fx.user },
     }, .{ .config = false });
+    try h.env.put("SMITH_LOGIN_TIMEOUT", "20");
 }
 
 fn webLogin(h: *Harness, callback: []const u8) !?u8 {
@@ -367,10 +369,15 @@ test "password login stops at an empty or refused two-factor code" {
     interactive(&h, "me\nhunter2\n\n");
     try h.expectRun(1, &.{ "auth", "login", "--hostname", try host(&h), "--scheme", "http", "--password" });
     try h.expectErr("refused the login: Only signed in user is allowed to call APIs.\n");
+    try std.testing.expectEqual(@as(usize, 1), h.mock.count(.POST, "/api/v1/users/me/tokens"));
 
     interactive(&h, "me\nhunter2\n000000\n");
     try h.expectRun(1, &.{ "auth", "login", "--hostname", try host(&h), "--scheme", "http", "--password" });
     try h.expectErr("refused the two-factor code: Only signed in user is allowed to call APIs.\n");
+    try std.testing.expectEqual(@as(usize, 3), h.mock.count(.POST, "/api/v1/users/me/tokens"));
+    const retry = h.mock.requests.items[h.mock.requests.items.len - 1];
+    try std.testing.expectEqualStrings("000000", retry.header("X-Forgejo-OTP").?);
+    try std.testing.expectEqualStrings("000000", retry.header("X-Gitea-OTP").?);
 }
 
 test "a refresh the token endpoint fails for another reason is reported as such" {

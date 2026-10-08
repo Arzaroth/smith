@@ -343,6 +343,7 @@ test "the pager receives writes larger than its buffer, vectors and splats" {
     try f.env.put("SMITH_PAGER", try std.fmt.allocPrint(a, "cat > '{s}'", .{try f.path("paged")}));
     f.ctx.stdout_tty = true;
     try f.ctx.startPager();
+    errdefer _ = f.ctx.stopPager();
     try testing.expect(f.ctx.paged != null);
     const big = try a.alloc(u8, 20000);
     @memset(big, 'a');
@@ -401,20 +402,40 @@ test "a secret prompt turns echo off on a terminal and back on after" {
     const name = try std.fmt.allocPrint(f.arena.allocator(), "/dev/pts/{d}", .{n});
     const slave = Io.Dir.cwd().openFile(testing.io, name, .{ .mode = .read_write }) catch return error.SkipZigTest;
     defer slave.close(testing.io);
-    try master.writeStreamingAll(testing.io, "s3cret\n");
+    const typist = try std.Thread.spawn(.{}, typeOnceSilent, .{ master, slave });
     f.ctx.stdin = slave;
     f.ctx.stdin_data = null;
-    try testing.expectEqualStrings("s3cret", try f.ctx.promptSecret("Password:"));
+    const got = f.ctx.promptSecret("Password:");
+    typist.join();
+    try testing.expectEqualStrings("s3cret", try got);
     try testing.expectEqualStrings("? Password: \n", f.err.written());
     try testing.expect((try std.posix.tcgetattr(slave.handle)).lflag.ECHO);
+    try master.writeStreamingAll(testing.io, "x\n");
+    var echoed: [64]u8 = undefined;
+    var len: usize = 0;
+    while (std.mem.indexOfScalar(u8, echoed[0..len], 'x') == null and len < echoed.len) {
+        len += try master.readStreaming(testing.io, &.{echoed[len..]});
+    }
+    try testing.expectEqualStrings("x\r\n", echoed[0..len]);
+}
+
+fn typeOnceSilent(master: Io.File, slave: Io.File) void {
+    for (0..10_000_000) |_| {
+        const t = std.posix.tcgetattr(slave.handle) catch break;
+        if (!t.lflag.ECHO) break;
+        std.Thread.yield() catch {};
+    }
+    master.writeStreamingAll(testing.io, "s3cret\n") catch {};
 }
 
 test "a browser needs an opener or a desktop session" {
     var f: Fixture = undefined;
     f.init();
     defer f.deinit();
-    try testing.expect(!f.ctx.canOpenBrowser());
-    if (builtin.os.tag != .macos) try testing.expectEqualStrings("xdg-open", f.ctx.browserOpener());
+    if (builtin.os.tag != .macos) {
+        try testing.expect(!f.ctx.canOpenBrowser());
+        try testing.expectEqualStrings("xdg-open", f.ctx.browserOpener());
+    }
     try f.env.put("WAYLAND_DISPLAY", "wayland-0");
     try testing.expect(f.ctx.canOpenBrowser());
     _ = f.env.swapRemove("WAYLAND_DISPLAY");

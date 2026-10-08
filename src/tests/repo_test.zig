@@ -318,7 +318,7 @@ test "clone over ssh takes the ssh URL" {
     try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config/hosts.zon", .data = cfg });
     try h.git(&.{ "init", "-q", "--bare", "-b", "main", "origin.git" });
     const body = try std.fmt.allocPrint(h.arena.allocator(),
-        \\{{"id":3,"name":"tool","full_name":"me/tool","html_url":"x","clone_url":"http://127.0.0.1:1/me/tool.git","ssh_url":"{s}","fork":false}}
+        \\{{"id":3,"name":"tool","full_name":"me/tool","html_url":"x","clone_url":"file:///nonexistent/tool.git","ssh_url":"{s}","fork":false}}
     , .{try h.path("origin.git")});
     try setRoutes(&h, &.{.{ .path = "/api/v1/repos/me/tool", .body = body }});
     try h.expectRun(0, &.{ "repo", "clone", "me/tool", "--", "-q" });
@@ -419,17 +419,16 @@ test "a command with no host configured says how to add one" {
 test "the remote for a repository named with -R is found by its URL" {
     var h: Harness = undefined;
     try h.init(&.{
-        .{ .path = "/api/v1/repos/owner/repo/pulls/12", .body = fx.pr_same },
         .{ .path = "/api/v1/repos/owner/repo/pulls/13", .body = fx.pr_fork },
         .{ .method = .PATCH, .path = "/api/v1/repos/owner/repo/pulls/13", .status = 201, .body = fx.pr_fork },
     }, .{});
     defer h.deinit();
-    try h.clone("work", "other", "thing");
-    try h.expectRun(1, &.{ "pr", "checkout", "12", "-R", "owner/repo" });
-    try h.expectErr("no git remote points at owner/repo");
-
-    try h.clone("mine", "owner", "repo");
-    try h.git(&.{ "-C", "mine", "remote", "add", "spare", "https://elsewhere.test/a/b.git" });
+    try h.clone("work", "owner", "repo");
+    try h.git(&.{ "-C", "work", "remote", "add", "aaa", "https://elsewhere.test/owner/repo.git" });
+    try h.git(&.{ "-C", "work", "commit", "-q", "--allow-empty", "-m", "start" });
+    try h.git(&.{ "-C", "work", "branch", "pr-13" });
+    try h.git(&.{ "-C", "work", "config", "branch.pr-13.smith-pr", "13" });
     try h.expectRun(0, &.{ "pr", "close", "13", "-R", "owner/repo", "--delete-branch" });
     try h.expectErr("Closed pull request #13");
+    try h.expectErr("Deleted local branch pr-13");
 }

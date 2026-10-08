@@ -36,7 +36,8 @@ test "output that cannot be written fails, quietly when the reader went away" {
     h.ctx.out = &failing;
     try h.expectRun(1, &.{"--version"});
     try h.expectErr("smith: cannot write the output\n");
-    var closed = std.Io.File.stdout().writerStreaming(std.testing.io, &.{});
+    const nowhere: std.Io.File = .{ .handle = -1, .flags = .{ .nonblocking = false } };
+    var closed = nowhere.writerStreaming(std.testing.io, &.{});
     closed.err = error.BrokenPipe;
     h.ctx.stdout_file = &closed;
     try h.expectRun(1, &.{"--version"});
@@ -56,6 +57,7 @@ test "a pager that quits before reading everything is no failure" {
     try h.env.put("SMITH_PAGER", "true");
     h.ctx.stdout_tty = true;
     try h.expectRun(0, &.{ "label", "list", "-R", "owner/repo", "--json" });
+    try std.testing.expectEqualStrings("", h.stdout());
     try std.testing.expect(std.mem.indexOf(u8, h.stderr(), "cannot write") == null);
 }
 

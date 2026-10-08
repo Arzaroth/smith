@@ -27,7 +27,8 @@ pub const Route = struct {
     /// after `idle_seconds`, which a test can notice from the time taken.
     keep_alive: bool = false,
     /// Sent verbatim as the whole response, status line and headers
-    /// included, before the connection is closed.
+    /// included, before the connection is closed; it must say
+    /// `Connection: close` or the client keeps the dead connection.
     raw: ?[]const u8 = null,
 };
 

@@ -127,22 +127,27 @@ test "status: a token without read:user, an HTTP error, no token, an unreachable
     }, .{});
     defer h.deinit();
     const name = try host(&h);
+    const closed = blk: {
+        var server = try (try std.Io.net.IpAddress.parse("127.0.0.1", 0)).listen(std.testing.io, .{});
+        defer server.deinit(std.testing.io);
+        break :blk try std.fmt.allocPrint(h.arena.allocator(), "127.0.0.1:{d}", .{server.socket.address.getPort()});
+    };
     try writeHosts(&h, try std.fmt.allocPrint(h.arena.allocator(),
         \\.{{ .default_host = "{s}", .hosts = .{{
         \\  .{{ .name = "{s}", .scheme = "http", .user = "me", .token = "t0ken" }},
         \\  .{{ .name = "{s}", .scheme = "http", .user = "old", .active = false, .token = "stale", .refresh_token = "rt", .expires_at = {d}, .oauth_client_id = "cid" }},
         \\  .{{ .name = "nothing.test", .user = "ghost" }},
-        \\  .{{ .name = "127.0.0.1:1", .scheme = "http", .user = "far", .token = "far-away" }},
+        \\  .{{ .name = "{s}", .scheme = "http", .user = "far", .token = "far-away" }},
         \\}} }}
         \\
-    , .{ name, name, name, Harness.now - 5 }));
+    , .{ name, name, name, Harness.now - 5, closed }));
 
     try h.expectRun(1, &.{ "auth", "status" });
     try h.expectOut("the token cannot read the user");
     try h.expectOut("Active account: yes");
     try h.expectOut("X no token stored for ghost");
     try h.expectErr("has expired");
-    try h.expectErr("cannot reach 127.0.0.1:1");
+    try h.expectErr(try std.fmt.allocPrint(h.arena.allocator(), "cannot reach {s}", .{closed}));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, h.stdout(), try std.fmt.allocPrint(h.arena.allocator(), "{s} (default)", .{name})));
 
     try h.expectRun(1, &.{ "auth", "status", "--hostname", name });
