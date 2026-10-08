@@ -57,6 +57,29 @@ test "label clone creates what is missing and updates the rest with --force" {
     try h.expectErr("1 created, 1 updated");
 }
 
+test "label list --json and an empty list, create with a random colour, edit of an unknown label" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = labels, .body = fx.labels },
+        .{ .path = "/api/v1/repos/owner/bare/labels", .body = "[]" },
+        .{ .method = .POST, .path = labels, .status = 201, .body = "{}" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "label", "list", "-R", "owner/repo", "--json" });
+    const v = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqualStrings("ui", v.array.items[1].object.get("name").?.string);
+    try h.expectRun(0, &.{ "label", "list", "-R", "owner/bare" });
+    try h.expectErr("No labels in owner/bare");
+    try h.expectRun(0, &.{ "label", "create", "perf", "-R", "owner/repo" });
+    const body = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.mock.lastBody(.POST, labels).?, .{});
+    const colour = body.object.get("color").?.string;
+    try std.testing.expectEqual(@as(usize, 7), colour.len);
+    try std.testing.expectEqual(@as(u8, '#'), colour[0]);
+    for (colour[1..]) |c| try std.testing.expect(std.ascii.isHex(c));
+    try h.expectRun(1, &.{ "label", "edit", "nope", "-n", "x", "-R", "owner/repo" });
+    try h.expectErr("no label named \"nope\" in owner/repo");
+}
+
 test "milestone list, view by title, create with a due date, close, delete" {
     var h: Harness = undefined;
     try h.init(&.{
@@ -78,6 +101,31 @@ test "milestone list, view by title, create with a due date, close, delete" {
     try std.testing.expectEqualStrings("{\"state\":\"closed\"}", h.mock.lastBody(.PATCH, milestones ++ "/v1.0").?);
     try h.expectRun(0, &.{ "milestone", "delete", "v1.0", "-y", "-R", "owner/repo" });
     try std.testing.expectEqual(@as(usize, 1), h.mock.count(.DELETE, milestones ++ "/4"));
+}
+
+test "milestone list --json and an empty list, view --json, edit, reopen" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = milestones, .body = "[" ++ milestone ++ "]" },
+        .{ .path = "/api/v1/repos/owner/bare/milestones", .body = "[]" },
+        .{ .path = milestones ++ "/v1.0", .body = milestone },
+        .{ .method = .PATCH, .path = milestones ++ "/v1.0", .body = milestone },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "milestone", "list", "-R", "owner/repo", "--json" });
+    const all = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqual(@as(i64, 4), all.array.items[0].object.get("id").?.integer);
+    try h.expectRun(0, &.{ "milestone", "list", "-s", "closed", "-R", "owner/bare" });
+    try h.expectErr("No closed milestones in owner/bare");
+    try h.expectRun(0, &.{ "milestone", "view", "v1.0", "-R", "owner/repo", "--json" });
+    const one = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqualStrings("First cut", one.object.get("description").?.string);
+    try h.expectRun(0, &.{ "milestone", "edit", "v1.0", "-t", "v1.1", "-d", "Second cut", "--due", "2026-11-30", "-R", "owner/repo" });
+    try std.testing.expectEqualStrings("{\"title\":\"v1.1\",\"description\":\"Second cut\",\"due_on\":\"2026-11-30T23:59:59Z\"}", h.mock.lastBody(.PATCH, milestones ++ "/v1.0").?);
+    try h.expectErr("Updated milestone \"v1.0\"");
+    try h.expectRun(0, &.{ "milestone", "reopen", "v1.0", "-R", "owner/repo" });
+    try std.testing.expectEqualStrings("{\"state\":\"open\"}", h.mock.lastBody(.PATCH, milestones ++ "/v1.0").?);
+    try h.expectErr("Reopened milestone \"v1.0\"");
 }
 
 test "issue create --milestone sends its id; an unknown one fails first" {
