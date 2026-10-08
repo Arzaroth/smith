@@ -69,6 +69,11 @@ fn account(ctx: *Ctx, user: ?[]const u8, kind: Kind) ![]const u8 {
     return std.fmt.allocPrint(ctx.alloc, "{s}:{t}", .{ user orelse "", kind });
 }
 
+fn quotable(fields: []const []const u8) bool {
+    for (fields) |s| if (std.mem.indexOfAny(u8, s, "\"\\\n\r") != null) return false;
+    return true;
+}
+
 /// Stores a secret; false when the keyring cannot take it.
 pub fn store(ctx: *Ctx, host: []const u8, user: ?[]const u8, kind: Kind, secret: []const u8) !bool {
     switch (backend(ctx)) {
@@ -81,9 +86,7 @@ pub fn store(ctx: *Ctx, host: []const u8, user: ?[]const u8, kind: Kind, secret:
             return run(ctx, argv.items, secret).ok;
         },
         .security => {
-            for ([_][]const u8{ host, user orelse "", secret }) |s| {
-                if (std.mem.indexOfAny(u8, s, "\"\\\n\r") != null) return false;
-            }
+            if (!quotable(&.{ host, user orelse "", secret })) return false;
             const command = try std.fmt.allocPrint(ctx.alloc, "add-generic-password -U -s \"{s}\" -a \"{s}\" -w \"{s}\"\n", .{ try service(ctx, host), try account(ctx, user, kind), secret });
             return run(ctx, &.{ "security", "-i" }, command).ok;
         },
