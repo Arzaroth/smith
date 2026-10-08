@@ -121,3 +121,11 @@ pub fn remove(ctx: *Ctx, host: []const u8, user: ?[]const u8, kind: Kind) !void 
         .security => _ = run(ctx, &.{ "security", "delete-generic-password", "-s", try service(ctx, host), "-a", try account(ctx, user, kind) }, null),
     }
 }
+
+test quotable {
+    try std.testing.expect(quotable(&.{ "forge.test", "me", "plain" }));
+    try std.testing.expect(!quotable(&.{ "forge.test", "me", "with\"quote" }));
+    try std.testing.expect(!quotable(&.{ "forge.test", "back\\slash", "plain" }));
+    try std.testing.expect(!quotable(&.{ "forge\ntest", "", "plain" }));
+    try std.testing.expect(!quotable(&.{ "forge.test", "", "carriage\r" }));
+}

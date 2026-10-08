@@ -157,14 +157,3 @@ test "SMITH_KEYRING picks the backend; unset, the platform's own" {
     };
     try std.testing.expectEqual(want, std.meta.activeTag(keyring.backend(&h.ctx)));
 }
-
-test "the macOS keychain is not handed a secret it would have to quote" {
-    const keyring = @import("../keyring.zig");
-    var h: Harness = undefined;
-    try h.init(&.{}, .{});
-    defer h.deinit();
-    try h.env.put("SMITH_KEYRING", "security");
-    try std.testing.expect(!try keyring.store(&h.ctx, "forge.test", "me", .token, "with\"quote"));
-    try std.testing.expect(!try keyring.store(&h.ctx, "forge.test", "back\\slash", .token, "plain"));
-    try std.testing.expect(!try keyring.store(&h.ctx, "forge\ntest", null, .refresh, "plain"));
-}
