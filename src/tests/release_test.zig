@@ -166,3 +166,64 @@ test "a kept-alive connection goes on after a 204 without waiting for a body" {
     try std.testing.expect(took.toSeconds() < Harness.Mock.idle_seconds);
     try std.testing.expectEqual(@as(usize, 1), h.mock.count(.POST, releases ++ "/9/assets"));
 }
+
+test "list --json and an empty list; view --json, --web, a pre-release and a missing tag" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    const a = h.arena.allocator();
+    const rel = try releaseJson(&h);
+    const pre = try std.mem.replaceOwned(u8, a, rel, "\"prerelease\":false", "\"prerelease\":true");
+    try setRoutes(&h, &.{
+        .{ .path = releases, .body = try std.fmt.allocPrint(a, "[{s}]", .{rel}) },
+        .{ .path = "/api/v1/repos/owner/empty/releases", .body = "[]" },
+        .{ .path = releases ++ "/tags/v1.0.0", .body = rel },
+        .{ .path = releases ++ "/tags/v2.0.0-rc", .body = pre },
+        .{ .path = releases ++ "/tags/v9", .status = 404, .body = "{}" },
+    });
+    try h.expectRun(0, &.{ "release", "list", "-R", "owner/repo", "--json" });
+    const list = try std.json.parseFromSliceLeaky(std.json.Value, a, h.stdout(), .{});
+    try std.testing.expectEqualStrings("v1.0.0", list.array.items[0].object.get("tag_name").?.string);
+    try h.expectRun(0, &.{ "release", "list", "-R", "owner/empty" });
+    try h.expectErr("No releases in owner/empty");
+    try std.testing.expectEqualStrings("", h.stdout());
+
+    try h.expectRun(0, &.{ "release", "view", "v1.0.0", "-R", "owner/repo", "--json" });
+    const one = try std.json.parseFromSliceLeaky(std.json.Value, a, h.stdout(), .{});
+    try std.testing.expectEqual(@as(i64, 9), one.object.get("id").?.integer);
+    try h.expectRun(0, &.{ "release", "view", "v2.0.0-rc", "-R", "owner/repo" });
+    try h.expectOut("Pre-release · alice released this");
+    try h.expectRun(1, &.{ "release", "view", "v9", "-R", "owner/repo" });
+    try h.expectErr("no release for tag v9 in owner/repo");
+
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "release", "view", "v1.0.0", "-R", "owner/repo", "--web" });
+    try h.expectErr("Opening http://forge.test/owner/repo/releases/tag/v1.0.0 in your browser.");
+}
+
+test "create fails on notes it cannot read, before posting" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .method = .POST, .path = releases, .status = 201, .body = "{}" }}, .{});
+    defer h.deinit();
+    try h.expectRun(1, &.{ "release", "create", "v1.0.0", "-R", "owner/repo", "-F", try h.path("missing.md") });
+    try h.expectErr("cannot read");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.count(.POST, releases));
+}
+
+test "delete-asset removes the named asset, asking first" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try setRoutes(&h, &.{
+        .{ .path = releases ++ "/tags/v1.0.0", .body = try releaseJson(&h) },
+        .{ .method = .DELETE, .path = releases ++ "/9/assets/2", .status = 204 },
+    });
+    try h.expectRun(1, &.{ "release", "delete-asset", "v1.0.0", "nope.zip", "-R", "owner/repo", "-y" });
+    try h.expectErr("release v1.0.0 has no asset named nope.zip");
+    try h.expectRun(1, &.{ "release", "delete-asset", "v1.0.0", "SHA256SUMS", "-R", "owner/repo" });
+    try h.expectErr("Pass --yes");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.count(.DELETE, releases ++ "/9/assets/2"));
+    try h.expectRun(0, &.{ "release", "delete-asset", "v1.0.0", "SHA256SUMS", "-R", "owner/repo", "-y" });
+    try h.expectErr("Deleted SHA256SUMS from v1.0.0");
+    try std.testing.expectEqual(@as(usize, 1), h.mock.count(.DELETE, releases ++ "/9/assets/2"));
+}
