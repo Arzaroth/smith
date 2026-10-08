@@ -292,3 +292,21 @@ test "alias import skips taken names, reads block scalars and shell aliases; del
     try h.expectRun(0, &.{ "alias", "list" });
     try h.expectOut("co:\tpr checkout");
 }
+
+test "config unset browser; alias import reads a file and names one it cannot read" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "config", "set", "browser", "firefox" });
+    try h.expectRun(0, &.{ "config", "unset", "browser" });
+    try h.expectRun(0, &.{ "config", "get", "browser" });
+    try std.testing.expectEqualStrings("\n", h.stdout());
+
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "aliases.yml", .data = "co: pr checkout\n" });
+    try h.expectRun(0, &.{ "alias", "import", try h.path("aliases.yml") });
+    try h.expectRun(0, &.{ "alias", "list" });
+    try std.testing.expectEqualStrings("co:\tpr checkout\n", h.stdout());
+    try h.expectRun(1, &.{ "alias", "import", try h.path("missing.yml") });
+    try h.expectErr("cannot read");
+    try h.expectErr("missing.yml");
+}
