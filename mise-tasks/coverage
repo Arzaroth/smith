@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#MISE description="Line coverage of src/ under kcov: the files below 100%, the total, and an HTML report in zig-out/coverage"
+set -euo pipefail
+
+mkdir -p zig-out
+if ! zig build coverage "$@" >zig-out/coverage.log 2>&1; then
+  cat zig-out/coverage.log >&2
+  exit 1
+fi
+awk '
+  function value(name,  v) {
+    if (!match($0, "\"" name "\": \"?[^\",]*")) return ""
+    v = substr($0, RSTART, RLENGTH); sub(/^[^:]*: "?/, "", v); return v
+  }
+  /"file":/ && value("percent_covered") + 0 < 100 {
+    file = value("file"); sub(/.*\/src\//, "", file)
+    printf "%6.1f%%  %5d/%-5d %s\n", value("percent_covered"), value("covered_lines"), value("total_lines"), file | "sort -n"
+  }
+  /^  "percent_covered":/ { pct = value("percent_covered") }
+  /^  "covered_lines":/ { covered = value("covered_lines") }
+  /^  "total_lines":/ { total = value("total_lines") }
+  END {
+    close("sort -n")
+    printf "total %s%% (%d/%d lines), report in zig-out/coverage/index.html\n", pct, covered, total
+  }
+' zig-out/coverage/test/coverage.json

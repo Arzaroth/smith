@@ -223,6 +223,7 @@ test duration {
     defer arena.deinit();
     const a = arena.allocator();
     try testing.expectEqualStrings("1m 5s", try duration(a, "2026-09-29T12:00:00Z", "2026-09-29T12:01:05Z"));
+    try testing.expectEqualStrings("2h 3m", try duration(a, "2026-09-29T12:00:00Z", "2026-09-29T14:03:59Z"));
     try testing.expectEqualStrings("", try duration(a, "1970-01-01T01:00:00+01:00", "2026-09-29T12:01:05Z"));
 }
 
@@ -375,6 +376,48 @@ pub const Scrubber = struct {
         try s.inner.flush();
     }
 };
+
+test useColor {
+    var env: std.process.Environ.Map = .init(testing.allocator);
+    defer env.deinit();
+    try testing.expect(useColor(&env, true));
+    try testing.expect(!useColor(&env, false));
+    try env.put("TERM", "dumb");
+    try testing.expect(!useColor(&env, true));
+    try env.put("TERM", "xterm");
+    try env.put("NO_COLOR", "");
+    try testing.expect(useColor(&env, true));
+    try env.put("NO_COLOR", "1");
+    try testing.expect(!useColor(&env, true));
+    try env.put("CLICOLOR_FORCE", "0");
+    try testing.expect(!useColor(&env, true));
+    try env.put("CLICOLOR_FORCE", "1");
+    try testing.expect(useColor(&env, false));
+}
+
+test paint {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var out: Writer.Allocating = .init(arena.allocator());
+    var ctx: Ctx = .{ .alloc = arena.allocator(), .io = testing.io, .env = undefined, .out = undefined, .err = undefined, .http = undefined, .color = true };
+    try paint(&ctx, &out.writer, .green, "ok\x1b[2J");
+    try paint(&ctx, &out.writer, .none, " plain");
+    ctx.color = false;
+    try paint(&ctx, &out.writer, .red, " off");
+    try testing.expectEqualStrings("\x1b[32mok?[2J\x1b[0m plain off", out.written());
+}
+
+test "Scrubber passes vectors through and keeps a trailing lead byte" {
+    var out: Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    var buf: [2]u8 = undefined;
+    var s: Scrubber = .init(&out.writer, &buf);
+    var parts = [_][]const u8{ "a\x1b", "bc", "d" };
+    try s.interface.writeVecAll(&parts);
+    try s.interface.writeAll("\xc2");
+    try s.interface.flush();
+    try testing.expectEqualStrings("a?bcd\xc2", out.written());
+}
 
 test Scrubber {
     var out: Writer.Allocating = .init(testing.allocator);

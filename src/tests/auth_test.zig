@@ -113,3 +113,93 @@ test "an API call sends the token and a 401 points at auth login" {
     try h.expectErr("token expired");
     try h.expectErr("smith auth login --hostname");
 }
+
+fn writeHosts(h: *Harness, zon: []const u8) !void {
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config/hosts.zon", .data = zon });
+}
+
+test "status: a token without read:user, an HTTP error, no token, an unreachable host, an expired login" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/user", .status = 403, .body = "{\"message\":\"forbidden\"}", .times = 1 },
+        .{ .path = "/api/v1/user", .status = 500, .body = "{\"message\":\"boom\"}" },
+        .{ .method = .POST, .path = "/login/oauth/access_token", .status = 400, .body = "{\"error\":\"invalid_grant\"}" },
+    }, .{});
+    defer h.deinit();
+    const name = try host(&h);
+    const closed = blk: {
+        var server = try (try std.Io.net.IpAddress.parse("127.0.0.1", 0)).listen(std.testing.io, .{});
+        defer server.deinit(std.testing.io);
+        break :blk try std.fmt.allocPrint(h.arena.allocator(), "127.0.0.1:{d}", .{server.socket.address.getPort()});
+    };
+    try writeHosts(&h, try std.fmt.allocPrint(h.arena.allocator(),
+        \\.{{ .default_host = "{s}", .hosts = .{{
+        \\  .{{ .name = "{s}", .scheme = "http", .user = "me", .token = "t0ken" }},
+        \\  .{{ .name = "{s}", .scheme = "http", .user = "old", .active = false, .token = "stale", .refresh_token = "rt", .expires_at = {d}, .oauth_client_id = "cid" }},
+        \\  .{{ .name = "nothing.test", .user = "ghost" }},
+        \\  .{{ .name = "{s}", .scheme = "http", .user = "far", .token = "far-away" }},
+        \\}} }}
+        \\
+    , .{ name, name, name, Harness.now - 5, closed }));
+
+    try h.expectRun(1, &.{ "auth", "status" });
+    try h.expectOut("the token cannot read the user");
+    try h.expectOut("Active account: yes");
+    try h.expectOut("X no token stored for ghost");
+    try h.expectErr("has expired");
+    try h.expectErr(try std.fmt.allocPrint(h.arena.allocator(), "cannot reach {s}", .{closed}));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, h.stdout(), try std.fmt.allocPrint(h.arena.allocator(), "{s} (default)", .{name})));
+
+    try h.expectRun(1, &.{ "auth", "status", "--hostname", name });
+    try h.expectOut("answered HTTP 500");
+    try std.testing.expect(std.mem.indexOf(u8, h.stdout(), "nothing.test") == null);
+}
+
+test "login refuses an unknown --git-protocol, and a token that cannot read the user is kept without a username" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/version", .body = fx.version },
+        .{ .path = "/api/v1/user", .status = 403, .body = "{\"message\":\"token does not have the read:user scope\"}", .times = 1 },
+        .{ .path = "/api/v1/user", .status = 502, .body = "{\"message\":\"bad gateway\"}" },
+    }, .{ .config = false });
+    defer h.deinit();
+    try h.expectRun(1, &.{ "auth", "login", "--hostname", try host(&h), "--git-protocol", "ftp", "--with-token" });
+    try h.expectErr("--git-protocol must be ssh or https");
+
+    h.ctx.stdin_data = "scoped";
+    try h.expectRun(0, &.{ "auth", "login", "--hostname", try host(&h), "--scheme", "http", "--with-token" });
+    try h.expectErr("continuing without a username");
+    const cfg = try readConfig(&h);
+    try std.testing.expect(std.mem.indexOf(u8, cfg, ".token = \"scoped\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, cfg, ".user") == null);
+
+    h.ctx.stdin_data = "other";
+    try h.expectRun(1, &.{ "auth", "login", "--hostname", try host(&h), "--scheme", "http", "--with-token" });
+    try h.expectErr("502");
+    try std.testing.expect(std.mem.indexOf(u8, try readConfig(&h), "other") == null);
+}
+
+test "with several hosts and no default, account commands ask for --hostname; --user must name an account" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try writeHosts(&h,
+        \\.{ .hosts = .{
+        \\  .{ .name = "one.test", .user = "me", .token = "t1" },
+        \\  .{ .name = "one.test", .user = "work", .active = false, .token = "t2" },
+        \\  .{ .name = "two.test", .user = "me", .token = "t3" },
+        \\} }
+        \\
+    );
+    try h.expectRun(1, &.{ "auth", "token" });
+    try h.expectErr("pass --hostname; smith is logged in to several hosts");
+    try h.expectRun(1, &.{ "auth", "token", "--hostname", "one.test", "--user", "nobody" });
+    try h.expectErr("no account nobody on one.test");
+    try h.expectRun(1, &.{ "auth", "logout", "--hostname", "one.test", "--user", "nobody" });
+    try h.expectErr("no account nobody on one.test");
+    try h.expectRun(0, &.{ "auth", "logout", "--hostname", "one.test", "--user", "work" });
+    try h.expectErr("Logged out of one.test as work");
+    const cfg = try readConfig(&h);
+    try std.testing.expect(std.mem.indexOf(u8, cfg, "work") == null);
+    try std.testing.expect(std.mem.indexOf(u8, cfg, "t1") != null);
+}

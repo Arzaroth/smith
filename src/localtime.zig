@@ -241,3 +241,40 @@ test "a TZ rule with a transition time is a rule, a zone name is not" {
     try testing.expectEqual(@as(?i32, null), rule("Europe/Paris", 0));
     try testing.expectEqual(@as(?i32, null), rule("UTC", 0));
 }
+
+test "julian and zero-based rule days, around a leap day" {
+    try testing.expectEqual(@as(?i32, 3600), rule("AAA0BBB,J60,J300", daysFromCivil(2024, 3, 1) * 86400 + 3 * 3600));
+    try testing.expectEqual(@as(?i32, 0), rule("AAA0BBB,J60,J300", daysFromCivil(2024, 2, 29) * 86400 + 12 * 3600));
+    try testing.expectEqual(@as(?i32, 3600), rule("AAA0BBB,J59,J300", daysFromCivil(2023, 2, 28) * 86400 + 3 * 3600));
+    try testing.expectEqual(@as(?i32, 3600), rule("AAA0BBB,59,300", daysFromCivil(2024, 2, 29) * 86400 + 3 * 3600));
+    try testing.expectEqual(@as(?i32, 0), rule("AAA0BBB,59,300", daysFromCivil(2023, 2, 28) * 86400 + 12 * 3600));
+    try testing.expectEqual(@as(?i32, null), rule("AAA0BBB,J0,J300", 0));
+    try testing.expectEqual(@as(?i32, null), rule("AAA0BBB,J,J300", 0));
+    try testing.expectEqual(@as(?i32, null), rule("AAA0BBB,366,300", 0));
+    try testing.expectEqual(@as(?i32, null), rule("AAA0BBB,,300", 0));
+    try testing.expect(leap(2000) and leap(2024) and !leap(1900) and !leap(2023));
+}
+
+test "a zone file without transitions gives its first type's offset" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var tzif: std.Io.Writer.Allocating = .init(a);
+    const w = &tzif.writer;
+    try w.writeAll("TZif");
+    try w.writeByte(0);
+    try w.splatByteAll(0, 15);
+    for ([_]u32{ 0, 0, 0, 0, 1, 4 }) |n| try w.writeInt(u32, n, .big);
+    try w.writeInt(i32, 5400, .big);
+    try w.writeAll(&.{ 0, 0 });
+    try w.writeAll("ABC\x00");
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "zone", .data = tzif.written() });
+    var buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const len = try tmp.dir.realPath(testing.io, &buf);
+    var env: std.process.Environ.Map = .init(a);
+    try env.put("TZ", try std.fs.path.join(a, &.{ buf[0..len], "zone" }));
+    var ctx: Ctx = .{ .alloc = a, .io = testing.io, .env = &env, .out = undefined, .err = undefined, .http = undefined };
+    try testing.expectEqual(@as(i32, 5400), offset(&ctx, 0));
+}

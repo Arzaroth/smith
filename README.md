@@ -198,6 +198,7 @@ mise run build        # zig-out/bin/smith
 mise run test         # unit and invocation tests (-Dtest-filter=... for a subset)
 mise run check        # the gate: zig fmt --check, shellcheck, tests, ReleaseSafe build
 mise run dist         # release archives for Linux and macOS in dist/
+mise run coverage     # line coverage under kcov (needs kcov installed)
 ```
 
 The only dependency is the Zig standard library: HTTP, TLS and JSON included,

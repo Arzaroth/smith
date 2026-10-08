@@ -302,3 +302,98 @@ test "help topics, and the reference lists the flags of top-level commands" {
     try h.expectOut("\n      --help");
     try std.testing.expect(std.mem.indexOf(u8, h.stdout(), "-h, --help") == null);
 }
+
+test "browse opens the Actions page, a branch, or the browser" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    const base = try h.base();
+    try h.expectRun(0, &.{ "browse", "-n", "-R", "owner/repo", "--actions" });
+    try std.testing.expectEqualStrings(try std.fmt.allocPrint(h.arena.allocator(), "{s}/owner/repo/actions\n", .{base}), h.stdout());
+    try h.expectRun(0, &.{ "browse", "-n", "-R", "owner/repo", "-b", "dev" });
+    try std.testing.expectEqualStrings(try std.fmt.allocPrint(h.arena.allocator(), "{s}/owner/repo/src/branch/dev\n", .{base}), h.stdout());
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "browse", "-R", "owner/repo", "7" });
+    try h.expectErr(try std.fmt.allocPrint(h.arena.allocator(), "Opening {s}/owner/repo/issues/7 in your browser.", .{base}));
+    try std.testing.expectEqualStrings("", h.stdout());
+}
+
+test "search --json, empty results, and the joined reference on a terminal" {
+    var h: Harness = undefined;
+    const found =
+        \\[{"number":3,"title":"Broken","state":"open","updated_at":"2026-09-29T10:00:00Z","repository":{"full_name":"team/app"}}]
+    ;
+    try h.init(&.{
+        .{ .path = "/api/v1/repos/search", .query = "q=none", .body = "{\"ok\":true,\"data\":[]}" },
+        .{ .path = "/api/v1/repos/search", .body = "{\"ok\":true,\"data\":[" ++ fx.repo ++ "]}" },
+        .{ .path = "/api/v1/repos/issues/search", .body = found },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "search", "repos", "repo", "--json" });
+    const repos = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqualStrings("owner/repo", repos.array.items[0].object.get("full_name").?.string);
+    try h.expectRun(0, &.{ "search", "repos", "none" });
+    try h.expectErr("No repositories matched");
+    try h.expectRun(0, &.{ "search", "issues", "broken", "--json" });
+    const issues = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqual(@as(i64, 3), issues.array.items[0].object.get("number").?.integer);
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "search", "issues", "broken" });
+    try h.expectOut("team/app#3");
+}
+
+test "notification list --json and an empty inbox" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/notifications", .query = "all=true", .body = "[]" },
+        .{ .path = "/api/v1/notifications", .query = "all=false", .body = "[{\"id\":5,\"unread\":true,\"subject\":{\"title\":\"New PR\",\"type\":\"Pull\"}}]" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "notification", "list", "--json" });
+    const v = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqual(@as(i64, 5), v.array.items[0].object.get("id").?.integer);
+    try h.expectRun(0, &.{ "notification", "list", "--all" });
+    try h.expectErr("No notifications");
+    try std.testing.expectEqualStrings("", h.stdout());
+}
+
+test "api reads -F @file and @- fields and --input bodies, and names files it cannot read" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .method = .POST, .path = "/api/v1/markdown", .body = "<p>hi</p>", .content_type = "text/html" },
+    }, .{});
+    defer h.deinit();
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "text.md", .data = "**hi**" });
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "body.json", .data = "{\"Text\":\"raw\"}" });
+
+    try h.expectRun(0, &.{ "api", "/markdown", "-F", try std.fmt.allocPrint(h.arena.allocator(), "Text=@{s}", .{try h.path("text.md")}), "-F", "Mode=gfm" });
+    try std.testing.expectEqualStrings("{\"Text\":\"**hi**\",\"Mode\":\"gfm\"}", h.mock.lastBody(.POST, "/api/v1/markdown").?);
+    try std.testing.expectEqualStrings("<p>hi</p>", h.stdout());
+
+    h.ctx.stdin_data = "from stdin";
+    try h.expectRun(0, &.{ "api", "/markdown", "-F", "Text=@-" });
+    try std.testing.expectEqualStrings("{\"Text\":\"from stdin\"}", h.mock.lastBody(.POST, "/api/v1/markdown").?);
+
+    try h.expectRun(0, &.{ "api", "/markdown", "--input", try h.path("body.json") });
+    try std.testing.expectEqualStrings("{\"Text\":\"raw\"}", h.mock.lastBody(.POST, "/api/v1/markdown").?);
+
+    try h.expectRun(1, &.{ "api", "/markdown", "-F", try std.fmt.allocPrint(h.arena.allocator(), "Text=@{s}", .{try h.path("nope.md")}) });
+    try h.expectErr("nope.md: FileNotFound");
+    try h.expectRun(1, &.{ "api", "/markdown", "--input", try h.path("nope.json") });
+    try h.expectErr("nope.json: FileNotFound");
+    try std.testing.expectEqual(@as(usize, 3), h.mock.count(.POST, "/api/v1/markdown"));
+}
+
+test "api on a terminal pretty-prints JSON and ends any other body with a newline" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/version", .body = "{\"version\":\"1\"}" },
+        .{ .method = .POST, .path = "/api/v1/markdown", .body = "<p>hi</p>", .content_type = "text/html" },
+    }, .{});
+    defer h.deinit();
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "api", "/version" });
+    try std.testing.expectEqualStrings("{\n  \"version\": \"1\"\n}\n", h.stdout());
+    try h.expectRun(0, &.{ "api", "/markdown", "-f", "Text=hi" });
+    try std.testing.expect(std.mem.endsWith(u8, h.stdout(), "<p>hi</p>\n"));
+}

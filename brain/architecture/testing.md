@@ -1,6 +1,10 @@
 # Testing
 
 `mise run test` (or `zig build test`, `-Dtest-filter=<text>` for a subset).
+`mise run coverage` measures line coverage of `src/` with kcov, leaving out
+`src/tests` and `src/testing` (inline `test` blocks still count).
+Its test binary is built with LLVM: kcov cannot map the self-hosted
+backend's debug info to the sources.
 
 - **Unit tests** sit next to the code (parsers, time formatting, URL
   parsing, config merging).
@@ -14,7 +18,9 @@
     closes the connection, or with `keep_alive` keeps it for the next
     request, answering a 204 the way Forgejo (Go) does, without a length;
     a kept connection left idle for `Mock.idle_seconds` is cut, which a
-    test notices from the time taken.
+    test notices from the time taken. A route with `raw` sends those bytes
+    verbatim as the whole response and closes, for answers std's server
+    would not write (a corrupt compressed body, a broken chunk).
   - `testing/Harness.zig` gives each test a temporary directory used as the
     git working directory (with `GIT_CEILING_DIRECTORIES` so git never climbs
     into the checkout the tests run from), `TMPDIR`,

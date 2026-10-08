@@ -130,3 +130,63 @@ test "cancel posts for a running run and refuses a finished one" {
     try h.expectErr("already finished (success)");
     try std.testing.expectEqual(@as(usize, 1), h.mock.count(.POST, runs ++ "/42/cancel"));
 }
+
+test "list --json, an empty list, status marks on a terminal, and --web" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = runs, .body = fx.runs },
+        .{ .path = "/api/v1/repos/owner/idle/actions/runs", .body = "{\"total_count\":0,\"workflow_runs\":[]}" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "run", "list", "-R", "owner/repo", "--json" });
+    const v = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqual(@as(usize, 2), v.array.items.len);
+    try std.testing.expectEqual(@as(i64, 40), v.array.items[0].object.get("id").?.integer);
+    try h.expectRun(0, &.{ "run", "list", "-R", "owner/idle" });
+    try h.expectErr("No runs found in owner/idle");
+
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "run", "list", "-R", "owner/repo" });
+    try h.expectOut("✓");
+    try h.expectOut("X");
+    try std.testing.expect(std.mem.indexOf(u8, h.stdout(), "success") == null);
+    const before = h.mock.requests.items.len;
+    try h.expectRun(0, &.{ "run", "list", "-R", "owner/repo", "--web" });
+    try h.expectErr(try std.fmt.allocPrint(h.arena.allocator(), "Opening {s}/owner/repo/actions in your browser.", .{try h.base()}));
+    try std.testing.expectEqual(before, h.mock.requests.items.len);
+}
+
+test "view --json keeps the exit status, --web opens the run, --log names a job without logs" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = runs ++ "/41", .body = fx.run_failed },
+        .{ .path = runs ++ "/41/jobs", .body = fx.jobs },
+        .{ .path = "/api/v1/repos/owner/repo/actions/jobs/500/logs", .status = 404, .body = "{}" },
+        .{ .path = "/api/v1/repos/owner/repo/actions/jobs/501/logs", .body = "boom\n", .content_type = "text/plain" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(1, &.{ "run", "view", "41", "-R", "owner/repo", "--json", "--exit-status" });
+    const v = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqualStrings("failure", v.object.get("status").?.string);
+    try std.testing.expectEqual(@as(usize, 0), h.mock.count(.GET, runs ++ "/41/jobs"));
+
+    try h.expectRun(0, &.{ "run", "view", "41", "-R", "owner/repo", "--log" });
+    try h.expectErr("! no logs for job build (HTTP 404)");
+    try std.testing.expectEqualStrings("test\tboom\n", h.stdout());
+
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "run", "view", "41", "-R", "owner/repo", "--web" });
+    try h.expectErr("Opening http://forge.test/owner/repo/actions/runs/41 in your browser.");
+}
+
+test "download reads artifacts wrapped in an object" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = runs ++ "/41", .body = fx.run_failed },
+        .{ .path = runs ++ "/41/artifacts", .body = "{\"total_count\":1,\"artifacts\":[{\"id\":2,\"name\":\"old\",\"expired\":true}]}" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(1, &.{ "run", "download", "41", "-R", "owner/repo", "-D", try h.path("out") });
+    try h.expectErr("old has expired");
+    try h.expectErr("no artifacts to download from run 41");
+}

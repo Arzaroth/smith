@@ -176,3 +176,46 @@ test "an environment token never goes over plain http to a host nobody configure
     try h.expectRun(0, &.{ "issue", "list" });
     for (h.mock.requests.items) |r| try std.testing.expect(r.authorization == null);
 }
+
+test "the config directory: XDG_CONFIG_HOME, then HOME, and an error without either" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{ .config = false });
+    defer h.deinit();
+    const io = std.testing.io;
+    _ = h.env.swapRemove("SMITH_CONFIG_DIR");
+    try h.tmp.dir.createDirPath(io, "xdg/smith");
+    try h.tmp.dir.writeFile(io, .{ .sub_path = "xdg/smith/hosts.zon", .data = ".{ .hosts = .{ .{ .name = \"xdg.test\", .token = \"t-xdg\" } } }\n" });
+    try h.tmp.dir.createDirPath(io, ".config/smith");
+    try h.tmp.dir.writeFile(io, .{ .sub_path = ".config/smith/hosts.zon", .data = ".{ .hosts = .{ .{ .name = \"home.test\", .token = \"t-home\" } } }\n" });
+
+    try h.env.put("XDG_CONFIG_HOME", try h.path("xdg"));
+    try h.expectRun(0, &.{ "auth", "token" });
+    try std.testing.expectEqualStrings("t-xdg\n", h.stdout());
+
+    _ = h.env.swapRemove("XDG_CONFIG_HOME");
+    try h.expectRun(0, &.{ "auth", "token" });
+    try std.testing.expectEqualStrings("t-home\n", h.stdout());
+
+    _ = h.env.swapRemove("HOME");
+    try h.expectRun(1, &.{ "auth", "token" });
+    try h.expectErr("cannot find the config directory: HOME is not set");
+}
+
+test "an invalid hosts.zon is named; an unwritable config directory fails the save" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    const io = std.testing.io;
+    const good = try h.tmp.dir.readFileAlloc(io, "config/hosts.zon", h.arena.allocator(), .limited(64 * 1024));
+    try h.tmp.dir.writeFile(io, .{ .sub_path = "config/hosts.zon", .data = ".{ .hosts = 3 }\n" });
+    try h.expectRun(1, &.{ "auth", "token" });
+    try h.expectErr("hosts.zon is not valid");
+
+    try h.tmp.dir.writeFile(io, .{ .sub_path = "config/hosts.zon", .data = good });
+    try h.tmp.dir.setFilePermissions(io, "config", .fromMode(0o500), .{});
+    defer h.tmp.dir.setFilePermissions(io, "config", .fromMode(0o700), .{}) catch {};
+    if (h.tmp.dir.writeFile(io, .{ .sub_path = "config/probe", .data = "" })) |_| return error.SkipZigTest else |_| {}
+    try h.expectRun(1, &.{ "auth", "logout" });
+    try h.expectErr("cannot write");
+    try h.expectErr("hosts.zon.");
+}

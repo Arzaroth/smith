@@ -26,6 +26,10 @@ pub const Route = struct {
     /// client that then waits for a body the answer does not have is cut off
     /// after `idle_seconds`, which a test can notice from the time taken.
     keep_alive: bool = false,
+    /// Sent verbatim as the whole response, status line and headers
+    /// included, before the connection is closed; it must say
+    /// `Connection: close` or the client keeps the dead connection.
+    raw: ?[]const u8 = null,
 };
 
 pub const idle_seconds = 5;
@@ -173,6 +177,11 @@ fn answer(m: *Mock, req: *std.http.Server.Request) !bool {
         if (route.query) |want| if (std.mem.indexOf(u8, query, want) == null) continue;
         if (route.times) |t| if (used.* >= t) continue;
         used.* += 1;
+        if (route.raw) |bytes| {
+            try req.server.out.writeAll(bytes);
+            try req.server.out.flush();
+            return false;
+        }
         if (route.keep_alive and route.status == 204) {
             req.server.reader.state = .ready;
             try req.server.out.writeAll("HTTP/1.1 204 No Content\r\n\r\n");

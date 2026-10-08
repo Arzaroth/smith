@@ -85,4 +85,5 @@ test {
     _ = @import("tests/account_test.zig");
     _ = @import("tests/settings_test.zig");
     _ = @import("tests/keyring_test.zig");
+    _ = @import("tests/core_test.zig");
 }

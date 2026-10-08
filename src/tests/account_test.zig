@@ -52,6 +52,21 @@ test "status fills each section from its own search" {
     try std.testing.expectEqual(@as(i64, 3), v.object.get("review_requests").?.array.items[0].object.get("number").?.integer);
 }
 
+test "status says when a section is empty and needs a login" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .path = "/api/v1/repos/issues/search", .body = "[]" }}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{"status"});
+    try std.testing.expectEqual(@as(usize, 4), std.mem.count(u8, h.stdout(), "  Nothing here\n"));
+
+    var anon: Harness = undefined;
+    try anon.init(&.{}, .{ .token = null });
+    defer anon.deinit();
+    try anon.expectRun(4, &.{"status"});
+    try anon.expectErr("status needs a login; run `smith auth login --hostname 127.0.0.1:");
+    try std.testing.expectEqual(@as(usize, 0), anon.mock.requests.items.len);
+}
+
 fn found(comptime n: []const u8) []const u8 {
     return "{\"number\":" ++ n ++ ",\"title\":\"Item\",\"state\":\"open\",\"updated_at\":\"2026-09-29T10:00:00Z\",\"repository\":{\"full_name\":\"team/app\"}}";
 }
@@ -105,4 +120,42 @@ test "org list shows yours, or a user's" {
     try std.testing.expectEqualStrings("team\tThe team\tpublic\n", h.stdout());
     try h.expectRun(0, &.{ "org", "list", "alice" });
     try h.expectErr("No organizations");
+}
+
+test "ssh-key, gpg-key and org list: tables, --json, and keys to list or not" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/user/keys", .body = "[{\"id\":8,\"title\":\"laptop\"}]", .times = 2 },
+        .{ .path = "/api/v1/user/keys", .body = "[]" },
+        .{ .path = "/api/v1/user/gpg_keys", .body = "[{\"id\":9,\"key_id\":\"ABCD\",\"emails\":[{\"email\":\"me@example.com\"},{\"email\":\"me@work.test\"}],\"created_at\":\"2026-09-28T12:00:00Z\"}]", .times = 2 },
+        .{ .path = "/api/v1/user/gpg_keys", .body = "[]" },
+        .{ .method = .DELETE, .path = "/api/v1/user/gpg_keys/9", .status = 204 },
+        .{ .path = "/api/v1/user/orgs", .body = "[{\"username\":\"team\"}]" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "ssh-key", "list", "--json" });
+    try h.expectOut("\"title\": \"laptop\"");
+    try h.expectRun(0, &.{ "ssh-key", "list" });
+    try h.expectOut("laptop");
+    try h.expectRun(0, &.{ "ssh-key", "list" });
+    try std.testing.expectEqualStrings("", h.stdout());
+    try h.expectErr("No SSH keys");
+
+    try h.expectRun(0, &.{ "gpg-key", "list", "--json" });
+    try h.expectOut("\"key_id\": \"ABCD\"");
+    try h.expectRun(0, &.{ "gpg-key", "list" });
+    try std.testing.expectEqualStrings("9\tABCD\tme@example.com, me@work.test\t2026-09-28T12:00:00Z\n", h.stdout());
+    try h.expectRun(0, &.{ "gpg-key", "list" });
+    try h.expectErr("No GPG keys");
+
+    try h.expectRun(1, &.{ "gpg-key", "delete", "x9", "-y" });
+    try h.expectErr("invalid key id: x9");
+    try h.expectRun(0, &.{ "gpg-key", "delete", "9", "-y" });
+    try h.expectErr("Deleted GPG key 9");
+    try std.testing.expectEqual(@as(usize, 1), h.mock.count(.DELETE, "/api/v1/user/gpg_keys/9"));
+
+    try h.expectRun(0, &.{ "org", "list", "--json" });
+    try h.expectOut("\"username\": \"team\"");
+    try h.expectRun(0, &.{ "org", "list" });
+    try std.testing.expectEqualStrings("team\t\t\n", h.stdout());
 }

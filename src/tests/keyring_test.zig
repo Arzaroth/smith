@@ -134,3 +134,26 @@ test "a token missing from the keyring is reported, not silently dropped" {
     try h.expectErr("no token for 127.0.0.1");
     try h.expectErr("in the system keyring");
 }
+
+test "SMITH_KEYRING picks the backend; unset, the platform's own" {
+    const keyring = @import("../keyring.zig");
+    const builtin = @import("builtin");
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.env.put("SMITH_KEYRING", "file");
+    try std.testing.expect(keyring.backend(&h.ctx) == .none);
+    try h.env.put("SMITH_KEYRING", "kwallet");
+    try std.testing.expect(keyring.backend(&h.ctx) == .none);
+    try h.env.put("SMITH_KEYRING", "security");
+    try std.testing.expect(keyring.backend(&h.ctx) == .security);
+    try h.env.put("SMITH_KEYRING", "secret-tool");
+    try std.testing.expectEqualStrings("secret-tool", keyring.backend(&h.ctx).secret_tool);
+    _ = h.env.swapRemove("SMITH_KEYRING");
+    const want: std.meta.Tag(keyring.Backend) = switch (builtin.os.tag) {
+        .macos => .security,
+        .linux, .freebsd, .openbsd, .netbsd => .secret_tool,
+        else => .none,
+    };
+    try std.testing.expectEqual(want, std.meta.activeTag(keyring.backend(&h.ctx)));
+}

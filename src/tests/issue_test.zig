@@ -234,3 +234,102 @@ test "view shows the milestone" {
     try h.expectRun(0, &.{ "issue", "view", "7", "-R", "owner/repo" });
     try h.expectOut("Milestone: v1.0\n");
 }
+
+test "list --web and view --json; view by URL shows an empty body as such" {
+    var h: Harness = undefined;
+    const empty = comptime blk: {
+        const s: []const u8 = fx.issue_open;
+        const i = std.mem.indexOf(u8, s, "\"It crashes.\"").?;
+        break :blk s[0..i] ++ "\"\"" ++ s[i + "\"It crashes.\"".len ..];
+    };
+    try h.init(&.{
+        .{ .path = issues ++ "/7", .body = fx.issue_open },
+        .{ .path = issues ++ "/8", .body = empty },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "issue", "view", "7", "-R", "owner/repo", "--json" });
+    const v = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqualStrings("Crash on start", v.object.get("title").?.string);
+    try h.expectRun(0, &.{ "issue", "view", "http://forge.test/owner/repo/issues/8/", "-R", "owner/repo" });
+    try h.expectOut("No description provided\n");
+
+    h.ctx.stdout_tty = true;
+    const before = h.mock.requests.items.len;
+    try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo", "-s", "closed", "--web" });
+    try h.expectErr(try std.fmt.allocPrint(h.arena.allocator(), "Opening {s}/owner/repo/issues?state=closed in your browser.", .{try h.base()}));
+    try std.testing.expectEqual(before, h.mock.requests.items.len);
+}
+
+test "create --web opens the new-issue form with the title and body filled in" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "issue", "create", "-R", "owner/repo", "--web", "-t", "Crash", "-b", "On start" });
+    try h.expectErr(try std.fmt.allocPrint(h.arena.allocator(), "Opening {s}/owner/repo/issues/new?title=Crash&body=On%20start in your browser.", .{try h.base()}));
+    try std.testing.expectEqual(@as(usize, 0), h.mock.requests.items.len);
+}
+
+test "create on a terminal needs a title; labels can come from the organization" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/repos/owner/repo/labels", .body = fx.labels },
+        .{ .path = "/api/v1/orgs/owner/labels", .body = "[{\"id\":9,\"name\":\"org-wide\",\"color\":\"000000\"}]" },
+        .{ .method = .POST, .path = issues, .status = 201, .body = fx.issue_open },
+    }, .{});
+    defer h.deinit();
+    h.ctx.stdin_tty = true;
+    h.ctx.stdout_tty = true;
+    h.ctx.stdin_data = "\n";
+    try h.expectRun(1, &.{ "issue", "create", "-R", "owner/repo", "-b", "Body." });
+    try h.expectErr("--title is required");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.count(.POST, issues));
+
+    try h.expectRun(0, &.{ "issue", "create", "-R", "owner/repo", "-t", "x", "-b", "y", "-l", "org-wide", "-l", "bug" });
+    try std.testing.expect(std.mem.indexOf(u8, h.mock.lastBody(.POST, issues).?, "\"labels\":[9,1]") != null);
+}
+
+test "reopen reopens a closed issue; comment writes in the editor or reads a file" {
+    var h: Harness = undefined;
+    const closed = comptime blk: {
+        const s: []const u8 = fx.issue_open;
+        const i = std.mem.indexOf(u8, s, "\"state\":\"open\"").?;
+        break :blk s[0..i] ++ "\"state\":\"closed\"" ++ s[i + "\"state\":\"open\"".len ..];
+    };
+    try h.init(&.{
+        .{ .path = issues ++ "/7", .body = closed },
+        .{ .method = .PATCH, .path = issues ++ "/7", .status = 201, .body = fx.issue_open },
+        .{ .method = .POST, .path = issues ++ "/7/comments", .status = 201, .body = fx.comment },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "issue", "reopen", "7", "-R", "owner/repo" });
+    try h.expectErr("Reopened issue #7 (Crash on start)");
+    try std.testing.expectEqualStrings("{\"state\":\"open\"}", h.mock.lastBody(.PATCH, issues ++ "/7").?);
+
+    try h.expectRun(1, &.{ "issue", "comment", "7", "-R", "owner/repo", "-F", try h.path("missing.md") });
+    try h.expectErr("cannot read");
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "note.md", .data = "From a file.\n" });
+    try h.expectRun(0, &.{ "issue", "comment", "7", "-R", "owner/repo", "-F", try h.path("note.md") });
+    try std.testing.expectEqualStrings("{\"body\":\"From a file.\\n\"}", h.mock.lastBody(.POST, issues ++ "/7/comments").?);
+
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "editor", .data = "#!/bin/sh\nprintf '  From the editor.\\n' > \"$1\"\n", .flags = .{ .permissions = .fromMode(0o755) } });
+    try h.env.put("SMITH_EDITOR", try h.path("editor"));
+    h.ctx.stdin_tty = true;
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "issue", "comment", "7", "-R", "owner/repo" });
+    try h.expectOut(try std.fmt.allocPrint(h.arena.allocator(), "{s}/owner/repo/issues/7\n", .{try h.base()}));
+    try std.testing.expectEqualStrings("{\"body\":\"From the editor.\"}", h.mock.lastBody(.POST, issues ++ "/7/comments").?);
+}
+
+test "edit removes labels by name" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = issues ++ "/7", .body = fx.issue_open },
+        .{ .path = "/api/v1/repos/owner/repo/labels", .body = fx.labels },
+        .{ .path = "/api/v1/orgs/owner/labels", .status = 404, .body = "{}" },
+        .{ .method = .DELETE, .path = issues ++ "/7/labels/1", .status = 204 },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "issue", "edit", "7", "-R", "owner/repo", "--remove-label", "BUG" });
+    try std.testing.expectEqual(@as(usize, 1), h.mock.count(.DELETE, issues ++ "/7/labels/1"));
+}

@@ -309,3 +309,126 @@ test "list filters archived ones, language, topics and internal, also for an org
     try h.expectErr("No repositories found");
     try h.expectRun(1, &.{ "repo", "list", "team", "--archived", "--no-archived" });
 }
+
+test "clone over ssh takes the ssh URL" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    const cfg = try std.fmt.allocPrint(h.arena.allocator(), ".{{ .default_host = \"127.0.0.1:{d}\", .hosts = .{{ .{{ .name = \"127.0.0.1:{d}\", .scheme = \"http\", .git_protocol = .ssh, .user = \"me\", .token = \"t0ken\" }} }} }}\n", .{ h.mock.port, h.mock.port });
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config/hosts.zon", .data = cfg });
+    try h.git(&.{ "init", "-q", "--bare", "-b", "main", "origin.git" });
+    const body = try std.fmt.allocPrint(h.arena.allocator(),
+        \\{{"id":3,"name":"tool","full_name":"me/tool","html_url":"x","clone_url":"file:///nonexistent/tool.git","ssh_url":"{s}","fork":false}}
+    , .{try h.path("origin.git")});
+    try setRoutes(&h, &.{.{ .path = "/api/v1/repos/me/tool", .body = body }});
+    try h.expectRun(0, &.{ "repo", "clone", "me/tool", "--", "-q" });
+    const r = try std.process.run(h.arena.allocator(), std.testing.io, .{ .argv = &.{ "git", "-C", try h.path("tool"), "remote", "get-url", "origin" }, .environ_map = &h.env });
+    try std.testing.expectEqualStrings(try std.fmt.allocPrint(h.arena.allocator(), "{s}\n", .{try h.path("origin.git")}), r.stdout);
+}
+
+test "view and list --json print the API objects" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/repos/owner/repo", .body = fx.repo },
+        .{ .path = "/api/v1/user/repos", .body = "[" ++ fx.repo ++ "]" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "repo", "view", "owner/repo", "--json" });
+    const one = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqualStrings("owner/repo", one.object.get("full_name").?.string);
+    try h.expectRun(0, &.{ "repo", "list", "--json" });
+    const all = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqual(@as(usize, 1), all.array.items.len);
+}
+
+test "create asks for the name and visibility on a terminal and sets the homepage" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try setRoutes(&h, &.{
+        .{ .method = .POST, .path = "/api/v1/user/repos", .status = 201, .body = try created(&h, "tool", "x") },
+        .{ .method = .PATCH, .path = "/api/v1/repos/me/tool", .body = try created(&h, "tool", "x") },
+    });
+    h.ctx.stdin_tty = true;
+    h.ctx.stdout_tty = true;
+    h.ctx.stdin_data = "tool\npublic\n";
+    try h.expectRun(0, &.{ "repo", "create", "--homepage", "https://tool.example" });
+    try h.expectErr("Visibility (public/private):");
+    const v = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.mock.lastBody(.POST, "/api/v1/user/repos").?, .{});
+    try std.testing.expectEqualStrings("tool", v.object.get("name").?.string);
+    try std.testing.expect(!v.object.get("private").?.bool);
+    try std.testing.expectEqualStrings("{\"website\":\"https://tool.example\"}", h.mock.lastBody(.PATCH, "/api/v1/repos/me/tool").?);
+    h.ctx.stdin_data = "tool\nprivate\n";
+    try h.expectRun(0, &.{ "repo", "create" });
+    const w = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.mock.lastBody(.POST, "/api/v1/user/repos").?, .{});
+    try std.testing.expect(w.object.get("private").?.bool);
+}
+
+test "fork --clone clones the fork and adds the parent as upstream" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.git(&.{ "init", "-q", "--bare", "-b", "main", "fork.git" });
+    try h.git(&.{ "init", "-q", "--bare", "-b", "main", "parent.git" });
+    const parent = try std.fmt.allocPrint(h.arena.allocator(),
+        \\{{"id":1,"name":"repo","full_name":"owner/repo","html_url":"x","clone_url":"{s}"}}
+    , .{try h.path("parent.git")});
+    try setRoutes(&h, &.{
+        .{ .method = .POST, .path = "/api/v1/repos/owner/repo/forks", .status = 202, .body = try created(&h, "repo", try h.path("fork.git")) },
+        .{ .path = "/api/v1/repos/owner/repo", .body = parent },
+    });
+    try h.expectRun(0, &.{ "repo", "fork", "owner/repo", "--clone" });
+    try h.expectErr("Created fork me/repo");
+    try h.expectErr("Added remote upstream for owner/repo");
+    const r = try std.process.run(h.arena.allocator(), std.testing.io, .{ .argv = &.{ "git", "-C", try h.path("repo"), "remote", "get-url", "upstream" }, .environ_map = &h.env });
+    try std.testing.expectEqualStrings(try std.fmt.allocPrint(h.arena.allocator(), "{s}\n", .{try h.path("parent.git")}), r.stdout);
+}
+
+test "unarchive patches the repository back" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .method = .PATCH, .path = "/api/v1/repos/owner/repo", .body = fx.repo }}, .{});
+    defer h.deinit();
+    try h.expectRun(1, &.{ "repo", "unarchive", "owner/repo" });
+    try h.expectErr("Pass --yes");
+    try h.expectRun(0, &.{ "repo", "unarchive", "owner/repo", "-y" });
+    try std.testing.expectEqualStrings("{\"archived\":false}", h.mock.lastBody(.PATCH, "/api/v1/repos/owner/repo").?);
+    try h.expectErr("Unarchived owner/repo");
+}
+
+test "set-default --view names a default remote that is gone, and ignores marks other than base" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.clone("work", "owner", "repo");
+    try h.git(&.{ "-C", "work", "config", "remote.origin.smith-resolved", "other" });
+    try h.expectRun(1, &.{ "repo", "set-default", "--view" });
+    try h.expectErr("no default repository set");
+    try h.git(&.{ "-C", "work", "config", "remote.gone.smith-resolved", "base" });
+    try h.expectRun(1, &.{ "repo", "set-default", "--view" });
+    try h.expectErr("the default remote gone no longer exists");
+}
+
+test "a command with no host configured says how to add one" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{ .config = false });
+    defer h.deinit();
+    try h.expectRun(1, &.{ "repo", "view", "-R", "owner/repo" });
+    try h.expectErr("no Forgejo host configured");
+}
+
+test "the remote for a repository named with -R is found by its URL" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/repos/owner/repo/pulls/13", .body = fx.pr_fork },
+        .{ .method = .PATCH, .path = "/api/v1/repos/owner/repo/pulls/13", .status = 201, .body = fx.pr_fork },
+    }, .{});
+    defer h.deinit();
+    try h.clone("work", "owner", "repo");
+    try h.git(&.{ "-C", "work", "remote", "add", "aaa", "https://elsewhere.test/owner/repo.git" });
+    try h.git(&.{ "-C", "work", "commit", "-q", "--allow-empty", "-m", "start" });
+    try h.git(&.{ "-C", "work", "branch", "pr-13" });
+    try h.git(&.{ "-C", "work", "config", "branch.pr-13.smith-pr", "13" });
+    try h.expectRun(0, &.{ "pr", "close", "13", "-R", "owner/repo", "--delete-branch" });
+    try h.expectErr("Closed pull request #13");
+    try h.expectErr("Deleted local branch pr-13");
+}
