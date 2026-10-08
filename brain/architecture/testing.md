@@ -17,7 +17,9 @@ backend's debug info to the sources.
     closes the connection, or with `keep_alive` keeps it for the next
     request, answering a 204 the way Forgejo (Go) does, without a length;
     a kept connection left idle for `Mock.idle_seconds` is cut, which a
-    test notices from the time taken.
+    test notices from the time taken. A route with `raw` sends those bytes
+    verbatim as the whole response and closes, for answers std's server
+    would not write (a corrupt compressed body, a broken chunk).
   - `testing/Harness.zig` gives each test a temporary directory used as the
     git working directory (with `GIT_CEILING_DIRECTORIES` so git never climbs
     into the checkout the tests run from), `TMPDIR`,
