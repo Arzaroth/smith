@@ -377,3 +377,26 @@ test "the review's printf, timefmt and literal fixes" {
     try expectRender("{{truncate 30 (slice \"héllo wörld\" 0 2)}}|{{printf \"%.1s\" \"\\xff\"}}", "{}", "h\xc3|\xff");
     try expectRenderOpts("{{tablerow \"a\\nb\" \"c\\rd\"}}", "{}", .{}, "a b\tc d\n");
 }
+
+test "printf quotes control characters and hex-encodes strings, numbers too big for an integer still format" {
+    try expectRender("{{printf \"%q\" .s}}", "{\"s\":\"\\u0007\\b\\f\\r\\t\\u000b\\\\\\u0001\\u007f\\u0085é\\\"\"}", "\"\\a\\b\\f\\r\\t\\v\\\\\\x01\\x7f\\u0085é\\\"\"");
+    try expectRender("{{printf \"%q\" \"\\xff\"}}|{{printf \"%X\" \"hi\"}}", "{}", "\"\\xff\"|6869");
+    try expectRender("{{printf \"%e\" .n}}", "{\"n\":123456789012345678901234567890}", "1.234568e+29");
+}
+
+test "styles with background attributes, and escape sequences in table widths" {
+    try expectRenderOpts("{{color \"red:blue+h\" \"x\"}}|{{color \"red:blue+b\" \"y\"}}", "{}", .{ .color = true }, "\x1b[31;104mx\x1b[0m|y");
+    try expectRenderOpts("{{tablerow (hyperlink \"https://x.test\" \"ab\") \"c\"}}{{tablerow \"\\x1b]0;t\\x07de\" \"f\"}}{{tablerow \"ghij\" \"k\"}}", "{}", .{ .tty = true }, "\x1b]8;;https://x.test\x1b\\ab\x1b]8;;\x1b\\    c\n\x1b]0;t\x07de    f\nghij  k\n");
+}
+
+test "signed numbers, keywords and functions as operands, and the errors around them" {
+    try expectRender("{{print -1 +2}}", "{}", "-1 2");
+    try expectRender("{{range $v := .}}{{else}}{{$v = 1}}[{{$v}}]{{end}}", "[]", "[]");
+    try expectRender("{{print tablerender}}|{{eq true true}}|{{slice .missing 0}}", "{}", "|true|");
+    try expectFail("{{print +}}", "{}", "template: 1:9: unexpected \"+\" in operand");
+    try expectFail("{{print :}}", "{}", "template: 1:9: unexpected \":\" in operand");
+    try expectFail("{{print end}}", "{}", "template: 1:9: unexpected <end> in operand");
+    try expectFail("{{'\\xc0\\x80'}}", "{}", "template: 1:3: invalid syntax in character constant '\\xc0\\x80'");
+    try expectFail("{{range .}}{{index . 5}}{{end}}", "[[1]]", "template: 1:14: error calling index: index out of range: 5");
+    try expectFail("{{index true 0}}", "{}", "template: 1:3: error calling index: can't index item of type bool");
+}
