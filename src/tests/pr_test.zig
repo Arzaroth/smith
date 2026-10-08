@@ -579,3 +579,314 @@ test "merge retries a busy 405 a few times, and a plain 405 not at all" {
     try h.expectErr("Not all required status checks successful");
     try std.testing.expectEqual(@as(usize, 1), h.mock.count(.POST, pulls ++ "/13/merge"));
 }
+
+fn opened(h: *Harness, sub: []const u8) !void {
+    try h.expectErr(try std.fmt.allocPrint(h.arena.allocator(), "Opening {s}{s} in your browser.\n", .{ try h.base(), sub }));
+}
+
+test "list --web opens the pull requests page, merged ones under closed" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "pr", "list", "-R", "owner/repo", "-s", "merged", "--web" });
+    try opened(&h, "/owner/repo/pulls?state=closed");
+    try h.expectRun(0, &.{ "pr", "list", "-R", "owner/repo", "-w" });
+    try opened(&h, "/owner/repo/pulls?state=open");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.requests.items.len);
+}
+
+test "list --label filters by label id and --json prints the objects" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/repos/owner/repo/labels", .body = fx.labels },
+        .{ .path = pulls, .query = "labels=2", .body = fx.pr_list_open },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "pr", "list", "-R", "owner/repo", "-l", "ui", "--json" });
+    const v = try json(&h, h.stdout());
+    try std.testing.expectEqual(@as(usize, 2), v.array.items.len);
+    try std.testing.expectEqual(@as(i64, 12), v.array.items[0].object.get("number").?.integer);
+    try std.testing.expectEqual(@as(usize, 1), h.mock.count(.GET, pulls));
+}
+
+test "view --web opens a number directly and a branch's pull request by its URL; --json prints it" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = pulls, .query = "state=open", .body = fx.pr_list_open },
+        .{ .path = pulls ++ "/12", .body = fx.pr_same },
+    }, .{});
+    defer h.deinit();
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "pr", "view", "12", "-R", "owner/repo", "--web" });
+    try opened(&h, "/owner/repo/pulls/12");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.requests.items.len);
+    try h.expectRun(0, &.{ "pr", "view", "feature", "-R", "owner/repo", "--web" });
+    try h.expectErr("Opening http://forge.test/owner/repo/pulls/12 in your browser.\n");
+    h.ctx.stdout_tty = false;
+    try h.expectRun(0, &.{ "pr", "view", "12", "-R", "owner/repo", "--json" });
+    const v = try json(&h, h.stdout());
+    try std.testing.expectEqualStrings("Add feature", v.object.get("title").?.string);
+}
+
+test "diff colours headers, hunks, additions and removals on a colour terminal" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = pulls ++ "/12", .body = fx.pr_same },
+        .{ .path = pulls ++ "/12.patch", .body = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n same", .content_type = "text/plain" },
+    }, .{});
+    defer h.deinit();
+    h.ctx.color = true;
+    try h.expectRun(0, &.{ "pr", "diff", "12", "-R", "owner/repo", "--patch" });
+    try std.testing.expectEqualStrings(
+        "\x1b[1mdiff --git a/x b/x\x1b[0m\n\x1b[1m--- a/x\x1b[0m\n\x1b[1m+++ b/x\x1b[0m\n\x1b[36m@@ -1 +1 @@\x1b[0m\n\x1b[31m-old\x1b[0m\n\x1b[32m+new\x1b[0m\n same",
+        h.stdout(),
+    );
+}
+
+test "create --fill over several commits titles it after the branch and lists the subjects" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .method = .POST, .path = pulls, .status = 201, .body = fx.pr_same }}, .{});
+    defer h.deinit();
+    try h.clone("work", "owner", "repo");
+    try h.git(&.{ "-C", "work", "update-ref", "refs/remotes/origin/main", "HEAD" });
+    try h.git(&.{ "-C", "work", "switch", "-q", "-c", "fix/the-big_bug" });
+    try h.git(&.{ "-C", "work", "commit", "-q", "--allow-empty", "-m", "First step" });
+    try h.git(&.{ "-C", "work", "commit", "-q", "--allow-empty", "-m", "Second step" });
+    try h.git(&.{ "-C", "work", "update-ref", "refs/remotes/origin/fix/the-big_bug", "HEAD" });
+    try h.git(&.{ "-C", "work", "branch", "-q", "--set-upstream-to=origin/fix/the-big_bug" });
+    try h.expectRun(0, &.{ "pr", "create", "--fill", "-B", "main" });
+    const v = try json(&h, h.mock.lastBody(.POST, pulls).?);
+    try std.testing.expectEqualStrings("fix/the-big_bug", v.object.get("head").?.string);
+    try std.testing.expectEqualStrings("Fix the big bug", v.object.get("title").?.string);
+    try std.testing.expectEqualStrings("- First step\n- Second step", v.object.get("body").?.string);
+}
+
+test "create --web opens the compare page instead of creating" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .path = "/api/v1/repos/owner/repo", .body = fx.repo }}, .{});
+    defer h.deinit();
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "pr", "create", "-R", "owner/repo", "-H", "alice:patch-1", "--web" });
+    try opened(&h, "/owner/repo/compare/main...alice:patch-1");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.count(.POST, pulls));
+}
+
+test "checkout --force resets a same-repository branch onto the remote one" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .path = pulls ++ "/12", .body = fx.pr_same }}, .{});
+    defer h.deinit();
+    try forgeRepo(&h);
+    try h.expectRun(0, &.{ "pr", "checkout", "12" });
+    try h.git(&.{ "-C", "work", "commit", "-q", "--allow-empty", "-m", "local only" });
+    try h.git(&.{ "-C", "work", "switch", "-q", "main" });
+    try h.expectRun(0, &.{ "pr", "checkout", "12", "--force" });
+    try std.testing.expectEqualStrings("feature work", try head(&h));
+}
+
+test "checkout needs a remote for the repository" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .path = "/api/v1/repos/someone/else/pulls/12", .body = fx.pr_same }}, .{});
+    defer h.deinit();
+    try forgeRepo(&h);
+    try h.expectRun(1, &.{ "pr", "checkout", "12", "-R", "someone/else" });
+    try h.expectErr("no git remote points at someone/else; add one to check out its pull requests");
+}
+
+test "checkout ignores a branch marked with something other than a number" {
+    var h: Harness = undefined;
+    try h.init(&.{.{ .path = pulls ++ "/13", .body = pr_fork_main }}, .{});
+    defer h.deinit();
+    try forgeRepo(&h);
+    try h.git(&.{ "-C", "work", "config", "branch.main.smith-pr", "thirteen" });
+    try h.expectRun(0, &.{ "pr", "checkout", "13" });
+    try h.expectErr("using pr-13");
+}
+
+test "close -d of a fork's pull request deletes the branch checkout marked for it" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = pulls ++ "/13", .body = fx.pr_fork },
+        .{ .method = .PATCH, .path = pulls ++ "/13", .status = 201, .body = fx.pr_fork },
+    }, .{});
+    defer h.deinit();
+    try forgeRepo(&h);
+    try h.git(&.{ "-C", "work", "config", "branch.other.smith-pr", "99" });
+    try h.git(&.{ "-C", "work", "config", "branch.odd.smith-pr", "x" });
+    try h.expectRun(0, &.{ "pr", "checkout", "13" });
+    try h.expectRun(0, &.{ "pr", "close", "13", "-d" });
+    try h.expectErr("Closed pull request #13");
+    try h.expectErr("Deleted local branch patch-1");
+    try std.testing.expect(std.mem.indexOf(u8, h.stderr(), "Deleted branch patch-1") == null);
+    try std.testing.expectEqualStrings("init", try head(&h));
+}
+
+test "merge explains a 409 and reports any other failure" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = pulls ++ "/12", .body = fx.pr_same },
+        .{ .path = pulls ++ "/13", .body = fx.pr_fork },
+        .{ .method = .POST, .path = pulls ++ "/12/merge", .status = 409, .body = "{}" },
+        .{ .method = .POST, .path = pulls ++ "/13/merge", .status = 500, .body = "{\"message\":\"boom\"}" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(1, &.{ "pr", "merge", "12", "-R", "owner/repo", "--merge" });
+    try h.expectErr("pull request #12 cannot be merged now: it changed while merging, or is already scheduled");
+    try std.testing.expect(h.run(&.{ "pr", "merge", "13", "-R", "owner/repo", "--merge" }) != 0);
+    try h.expectErr("boom");
+}
+
+test "close of a closed pull request says so; reopen comments and reopens it" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = pulls ++ "/15", .body = fx.pr_closed },
+        .{ .method = .PATCH, .path = pulls ++ "/15", .status = 201, .body = fx.pr_closed },
+        .{ .method = .POST, .path = "/api/v1/repos/owner/repo/issues/15/comments", .status = 201, .body = fx.comment },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "pr", "close", "15", "-R", "owner/repo" });
+    try h.expectErr("Pull request #15 (Abandoned) is already closed");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.count(.PATCH, pulls ++ "/15"));
+    try h.expectRun(0, &.{ "pr", "reopen", "15", "-R", "owner/repo", "-c", "Back again" });
+    try h.expectErr("Reopened pull request #15 (Abandoned)");
+    try std.testing.expectEqualStrings("{\"state\":\"open\"}", h.mock.lastBody(.PATCH, pulls ++ "/15").?);
+    try std.testing.expectEqualStrings("{\"body\":\"Back again\"}", h.mock.lastBody(.POST, "/api/v1/repos/owner/repo/issues/15/comments").?);
+}
+
+test "comment posts the body and prints the pull request's URL" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = pulls ++ "/12", .body = fx.pr_same },
+        .{ .method = .POST, .path = "/api/v1/repos/owner/repo/issues/12/comments", .status = 201, .body = fx.comment },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "pr", "comment", "12", "-R", "owner/repo", "-b", "Looks good" });
+    try std.testing.expectEqualStrings("http://forge.test/owner/repo/pulls/12\n", h.stdout());
+    try std.testing.expectEqualStrings("{\"body\":\"Looks good\"}", h.mock.lastBody(.POST, "/api/v1/repos/owner/repo/issues/12/comments").?);
+}
+
+test "edit patches the title and base, adds labels, and skips the patch when nothing changes" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = pulls ++ "/12", .body = fx.pr_same },
+        .{ .method = .PATCH, .path = pulls ++ "/12", .status = 201, .body = fx.pr_same },
+        .{ .path = "/api/v1/repos/owner/repo/labels", .body = fx.labels },
+        .{ .method = .POST, .path = "/api/v1/repos/owner/repo/issues/12/labels", .body = fx.labels },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "pr", "edit", "12", "-R", "owner/repo", "-t", "Better title", "-B", "dev", "--add-label", "bug" });
+    try std.testing.expectEqualStrings("http://forge.test/owner/repo/pulls/12\n", h.stdout());
+    const v = try json(&h, h.mock.lastBody(.PATCH, pulls ++ "/12").?);
+    try std.testing.expectEqualStrings("Better title", v.object.get("title").?.string);
+    try std.testing.expectEqualStrings("dev", v.object.get("base").?.string);
+    try std.testing.expectEqualStrings("{\"labels\":[1]}", h.mock.lastBody(.POST, "/api/v1/repos/owner/repo/issues/12/labels").?);
+    try h.expectRun(0, &.{ "pr", "edit", "12", "-R", "owner/repo" });
+    try std.testing.expectEqual(@as(usize, 1), h.mock.count(.PATCH, pulls ++ "/12"));
+}
+
+test "checks counts skipped ones, keeps absolute links, and --web and --json skip the table" {
+    var h: Harness = undefined;
+    const status = "/api/v1/repos/owner/repo/commits/abc123/status";
+    const skipped =
+        \\{"state":"success","sha":"abc123","total_count":2,"statuses":[
+        \\{"context":"ci / build","status":"success","description":"Successful in 1m","target_url":"https://ci.example/1"},
+        \\{"context":"docs","status":"skipped","description":"Skipped","target_url":null}]}
+    ;
+    try h.init(&.{
+        .{ .path = pulls ++ "/12", .body = fx.pr_same },
+        .{ .path = status, .body = skipped },
+    }, .{});
+    defer h.deinit();
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "pr", "checks", "12", "-R", "owner/repo" });
+    try h.expectOut("0 failing, 1 successful, 1 skipped, and 0 pending checks");
+    try h.expectOut("https://ci.example/1");
+    try h.expectRun(0, &.{ "pr", "checks", "12", "-R", "owner/repo", "--web" });
+    try h.expectErr("Opening http://forge.test/owner/repo/pulls/12/checks in your browser.\n");
+    try std.testing.expectEqual(@as(usize, 1), h.mock.count(.GET, status));
+    h.ctx.stdout_tty = false;
+    try h.expectRun(0, &.{ "pr", "checks", "12", "-R", "owner/repo", "--json" });
+    const v = try json(&h, h.stdout());
+    try std.testing.expectEqual(@as(i64, 2), v.object.get("total_count").?.integer);
+}
+
+test "status asks who you are when the host has no user, says when not on a branch, and --json groups them" {
+    var h: Harness = undefined;
+    const mine = comptime blk: {
+        const s: []const u8 = fx.pr_same;
+        const i = std.mem.indexOf(u8, s, "\"login\":\"alice\"").?;
+        break :blk s[0..i] ++ "\"login\":\"me\"" ++ s[i + "\"login\":\"alice\"".len ..];
+    };
+    try h.init(&.{
+        .{ .path = "/api/v1/user", .body = fx.user },
+        .{ .path = pulls, .body = "[" ++ mine ++ "]" },
+    }, .{ .config = false });
+    defer h.deinit();
+    try h.tmp.dir.createDirPath(std.testing.io, "config");
+    const zon = try std.fmt.allocPrint(h.arena.allocator(),
+        \\.{{ .default_host = "127.0.0.1:{d}", .hosts = .{{ .{{ .name = "127.0.0.1:{d}", .scheme = "http", .git_protocol = .https, .token = "t0ken" }} }} }}
+        \\
+    , .{ h.mock.port, h.mock.port });
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config/hosts.zon", .data = zon });
+    try h.clone("work", "owner", "repo");
+    try h.git(&.{ "-C", "work", "switch", "-q", "--detach" });
+    try h.expectRun(0, &.{ "pr", "status" });
+    try h.expectOut("Current branch\n  Not on a branch\n");
+    try h.expectOut("#12  Add feature [feature]");
+    try std.testing.expectEqual(@as(usize, 1), h.mock.count(.GET, "/api/v1/user"));
+    try h.expectRun(0, &.{ "pr", "status", "--json" });
+    const v = try json(&h, h.stdout());
+    try std.testing.expect(v.object.get("current_branch").? == .null);
+    try std.testing.expectEqual(@as(usize, 1), v.object.get("created_by_you").?.array.items.len);
+    try std.testing.expectEqual(@as(usize, 0), v.object.get("requesting_your_review").?.array.items.len);
+}
+
+test "status finds the current branch's pull request in a fork through its upstream" {
+    var h: Harness = undefined;
+    const status = "/api/v1/repos/owner/repo/commits/abc123/status";
+    try h.init(&.{
+        .{ .path = pulls, .body = fx.pr_list_open },
+        .{ .path = status, .body = fx.status_pending, .times = 1 },
+        .{ .path = status, .body = fx.status_green },
+    }, .{});
+    defer h.deinit();
+    try h.clone("work", "owner", "repo");
+    const fork = try std.fmt.allocPrint(h.arena.allocator(), "{s}/alice/repo.git", .{try h.base()});
+    try h.git(&.{ "-C", "work", "remote", "add", "fork", fork });
+    try h.git(&.{ "-C", "work", "update-ref", "refs/remotes/fork/patch-1", "HEAD" });
+    try h.git(&.{ "-C", "work", "switch", "-q", "-c", "mine", "--track", "fork/patch-1" });
+    try h.expectRun(0, &.{ "pr", "status" });
+    try h.expectOut("Current branch\n  #13  WIP: Fork change [patch-1]\n    - Checks pending\n");
+    try h.expectRun(0, &.{ "pr", "status" });
+    try h.expectOut("    - Checks passing\n");
+    try h.git(&.{ "-C", "work", "switch", "-q", "-c", "lonely" });
+    try h.expectRun(0, &.{ "pr", "status" });
+    try h.expectOut("  There is no pull request associated with [lonely]\n");
+}
+
+test "view without a selector follows the upstream, unless git cannot place its remote" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = pulls, .query = "state=open", .body = fx.pr_list_open },
+        .{ .path = pulls, .query = "state=closed", .body = "[]" },
+    }, .{});
+    defer h.deinit();
+    try h.clone("work", "owner", "repo");
+    const fork = try std.fmt.allocPrint(h.arena.allocator(), "{s}/alice/repo.git", .{try h.base()});
+    try h.git(&.{ "-C", "work", "remote", "add", "fork", fork });
+    try h.git(&.{ "-C", "work", "update-ref", "refs/remotes/fork/patch-1", "HEAD" });
+    try h.git(&.{ "-C", "work", "switch", "-q", "-c", "mine", "--track", "fork/patch-1" });
+    try h.expectRun(0, &.{ "pr", "view" });
+    try h.expectOut("WIP: Fork change #13");
+
+    try h.git(&.{ "-C", "work", "branch", "-q", "team/base" });
+    try h.git(&.{ "-C", "work", "switch", "-q", "-c", "stacked", "--track", "team/base" });
+    try h.expectRun(1, &.{ "pr", "view" });
+    try h.expectErr("no pull request found for branch \"stacked\" of owner");
+
+    try h.git(&.{ "-C", "work", "remote", "add", "disk", try h.path("elsewhere.git") });
+    try h.git(&.{ "-C", "work", "update-ref", "refs/remotes/disk/feature", "HEAD" });
+    try h.git(&.{ "-C", "work", "switch", "-q", "-c", "ondisk", "--track", "disk/feature" });
+    try h.expectRun(1, &.{ "pr", "view" });
+    try h.expectErr("no pull request found for branch \"ondisk\" of owner");
+}
