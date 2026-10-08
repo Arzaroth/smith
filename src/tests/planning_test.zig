@@ -107,7 +107,7 @@ test "milestone list --json and an empty list, view --json, edit, reopen" {
     var h: Harness = undefined;
     try h.init(&.{
         .{ .path = milestones, .body = "[" ++ milestone ++ "]" },
-        .{ .path = "/api/v1/repos/owner/bare/milestones", .body = "[]" },
+        .{ .path = "/api/v1/repos/owner/bare/milestones", .query = "state=closed", .body = "[]" },
         .{ .path = milestones ++ "/v1.0", .body = milestone },
         .{ .method = .PATCH, .path = milestones ++ "/v1.0", .body = milestone },
     }, .{});

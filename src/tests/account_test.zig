@@ -122,10 +122,10 @@ test "org list shows yours, or a user's" {
     try h.expectErr("No organizations");
 }
 
-test "ssh-key, gpg-key and org list: tables, --json, and nothing to list" {
+test "ssh-key, gpg-key and org list: tables, --json, and keys to list or not" {
     var h: Harness = undefined;
     try h.init(&.{
-        .{ .path = "/api/v1/user/keys", .body = "[{\"id\":8,\"title\":\"laptop\"}]", .times = 1 },
+        .{ .path = "/api/v1/user/keys", .body = "[{\"id\":8,\"title\":\"laptop\"}]", .times = 2 },
         .{ .path = "/api/v1/user/keys", .body = "[]" },
         .{ .path = "/api/v1/user/gpg_keys", .body = "[{\"id\":9,\"key_id\":\"ABCD\",\"emails\":[{\"email\":\"me@example.com\"},{\"email\":\"me@work.test\"}],\"created_at\":\"2026-09-28T12:00:00Z\"}]", .times = 2 },
         .{ .path = "/api/v1/user/gpg_keys", .body = "[]" },
@@ -135,6 +135,8 @@ test "ssh-key, gpg-key and org list: tables, --json, and nothing to list" {
     defer h.deinit();
     try h.expectRun(0, &.{ "ssh-key", "list", "--json" });
     try h.expectOut("\"title\": \"laptop\"");
+    try h.expectRun(0, &.{ "ssh-key", "list" });
+    try h.expectOut("laptop");
     try h.expectRun(0, &.{ "ssh-key", "list" });
     try std.testing.expectEqualStrings("", h.stdout());
     try h.expectErr("No SSH keys");
@@ -154,4 +156,6 @@ test "ssh-key, gpg-key and org list: tables, --json, and nothing to list" {
 
     try h.expectRun(0, &.{ "org", "list", "--json" });
     try h.expectOut("\"username\": \"team\"");
+    try h.expectRun(0, &.{ "org", "list" });
+    try std.testing.expectEqualStrings("team\t\t\n", h.stdout());
 }

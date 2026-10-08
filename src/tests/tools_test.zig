@@ -393,8 +393,7 @@ test "api on a terminal pretty-prints JSON and ends any other body with a newlin
     defer h.deinit();
     h.ctx.stdout_tty = true;
     try h.expectRun(0, &.{ "api", "/version" });
-    try h.expectOut("\"version\"");
-    try std.testing.expect(!std.mem.eql(u8, "{\"version\":\"1\"}", h.stdout()));
+    try std.testing.expectEqualStrings("{\n  \"version\": \"1\"\n}\n", h.stdout());
     try h.expectRun(0, &.{ "api", "/markdown", "-f", "Text=hi" });
     try std.testing.expect(std.mem.endsWith(u8, h.stdout(), "<p>hi</p>\n"));
 }

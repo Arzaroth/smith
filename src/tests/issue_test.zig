@@ -308,6 +308,9 @@ test "reopen reopens a closed issue; comment writes in the editor or reads a fil
 
     try h.expectRun(1, &.{ "issue", "comment", "7", "-R", "owner/repo", "-F", try h.path("missing.md") });
     try h.expectErr("cannot read");
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "note.md", .data = "From a file.\n" });
+    try h.expectRun(0, &.{ "issue", "comment", "7", "-R", "owner/repo", "-F", try h.path("note.md") });
+    try std.testing.expectEqualStrings("{\"body\":\"From a file.\\n\"}", h.mock.lastBody(.POST, issues ++ "/7/comments").?);
 
     try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "editor", .data = "#!/bin/sh\nprintf '  From the editor.\\n' > \"$1\"\n", .flags = .{ .permissions = .fromMode(0o755) } });
     try h.env.put("SMITH_EDITOR", try h.path("editor"));
