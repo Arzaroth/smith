@@ -302,3 +302,57 @@ test "help topics, and the reference lists the flags of top-level commands" {
     try h.expectOut("\n      --help");
     try std.testing.expect(std.mem.indexOf(u8, h.stdout(), "-h, --help") == null);
 }
+
+test "browse opens the Actions page, a branch, or the browser" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    const base = try h.base();
+    try h.expectRun(0, &.{ "browse", "-n", "-R", "owner/repo", "--actions" });
+    try std.testing.expectEqualStrings(try std.fmt.allocPrint(h.arena.allocator(), "{s}/owner/repo/actions\n", .{base}), h.stdout());
+    try h.expectRun(0, &.{ "browse", "-n", "-R", "owner/repo", "-b", "dev" });
+    try std.testing.expectEqualStrings(try std.fmt.allocPrint(h.arena.allocator(), "{s}/owner/repo/src/branch/dev\n", .{base}), h.stdout());
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "browse", "-R", "owner/repo", "7" });
+    try h.expectErr(try std.fmt.allocPrint(h.arena.allocator(), "Opening {s}/owner/repo/issues/7 in your browser.", .{base}));
+    try std.testing.expectEqualStrings("", h.stdout());
+}
+
+test "search --json, empty results, and the joined reference on a terminal" {
+    var h: Harness = undefined;
+    const found =
+        \\[{"number":3,"title":"Broken","state":"open","updated_at":"2026-09-29T10:00:00Z","repository":{"full_name":"team/app"}}]
+    ;
+    try h.init(&.{
+        .{ .path = "/api/v1/repos/search", .query = "q=none", .body = "{\"ok\":true,\"data\":[]}" },
+        .{ .path = "/api/v1/repos/search", .body = "{\"ok\":true,\"data\":[" ++ fx.repo ++ "]}" },
+        .{ .path = "/api/v1/repos/issues/search", .body = found },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "search", "repos", "repo", "--json" });
+    const repos = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqualStrings("owner/repo", repos.array.items[0].object.get("full_name").?.string);
+    try h.expectRun(0, &.{ "search", "repos", "none" });
+    try h.expectErr("No repositories matched");
+    try h.expectRun(0, &.{ "search", "issues", "broken", "--json" });
+    const issues = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqual(@as(i64, 3), issues.array.items[0].object.get("number").?.integer);
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "search", "issues", "broken" });
+    try h.expectOut("team/app#3");
+}
+
+test "notification list --json and an empty inbox" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/notifications", .query = "all=true", .body = "[]" },
+        .{ .path = "/api/v1/notifications", .query = "all=false", .body = "[{\"id\":5,\"unread\":true,\"subject\":{\"title\":\"New PR\",\"type\":\"Pull\"}}]" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "notification", "list", "--json" });
+    const v = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqual(@as(i64, 5), v.array.items[0].object.get("id").?.integer);
+    try h.expectRun(0, &.{ "notification", "list", "--all" });
+    try h.expectErr("No notifications");
+    try std.testing.expectEqualStrings("", h.stdout());
+}
