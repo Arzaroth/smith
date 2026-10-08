@@ -412,12 +412,27 @@ test "parse rejects unknown flags and extra arguments" {
     try testing.expectError(error.Help, testParse(a, &.{"-h"}));
 }
 
+test "parse names an unknown shorthand and missing arguments" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var buf: [256]u8 = undefined;
+    var w: Writer = .fixed(&buf);
+    try testing.expectError(error.Usage, parse(a, &test_cmd, &.{"-dz"}, &w));
+    try testing.expectEqualStrings("unknown shorthand flag: 'z' in -dz\n", w.buffered());
+    const needs_two: Command = .{ .name = "add", .summary = "", .usage = "<a> <b>", .min_args = 2, .max_args = 2 };
+    w = .fixed(&buf);
+    try testing.expectError(error.Usage, parse(a, &needs_two, &.{"x"}, &w));
+    try testing.expectEqualStrings("not enough arguments: add <a> <b>\n", w.buffered());
+}
+
 test "negative numbers and -- stay positional" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const p = try testParse(arena.allocator(), &.{ "--", "--state" });
     try testing.expectEqualStrings("--state", p.arg(0).?);
     try testing.expect(!p.has("state"));
+    try testing.expectEqualStrings("-5", (try testParse(arena.allocator(), &.{"-5"})).arg(0).?);
 }
 
 test "resolve walks subcommands" {
