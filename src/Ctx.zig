@@ -294,3 +294,140 @@ pub fn confirm(ctx: *Ctx, question: []const u8, assumed: bool) !bool {
     const answer = try ctx.prompt(try std.fmt.allocPrint(ctx.alloc, "{s} [y/N]", .{question}));
     return answer.len > 0 and (answer[0] == 'y' or answer[0] == 'Y');
 }
+
+const testing = std.testing;
+
+const Fixture = struct {
+    arena: std.heap.ArenaAllocator,
+    env: std.process.Environ.Map,
+    out: Writer.Allocating,
+    err: Writer.Allocating,
+    http: std.http.Client,
+    tmp: testing.TmpDir,
+    ctx: Ctx,
+
+    fn init(f: *Fixture) void {
+        f.arena = .init(testing.allocator);
+        const a = f.arena.allocator();
+        f.env = .init(a);
+        f.out = .init(a);
+        f.err = .init(a);
+        f.http = .{ .allocator = a, .io = testing.io };
+        f.tmp = testing.tmpDir(.{});
+        f.ctx = .{ .alloc = a, .io = testing.io, .env = &f.env, .out = &f.out.writer, .err = &f.err.writer, .http = &f.http };
+    }
+
+    fn deinit(f: *Fixture) void {
+        f.tmp.cleanup();
+        f.arena.deinit();
+    }
+
+    fn path(f: *Fixture, sub: []const u8) ![]const u8 {
+        var buf: [Io.Dir.max_path_bytes]u8 = undefined;
+        const len = try f.tmp.dir.realPath(testing.io, &buf);
+        return std.fs.path.join(f.arena.allocator(), &.{ buf[0..len], sub });
+    }
+
+    fn stdinFrom(f: *Fixture, data: []const u8) !void {
+        try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "stdin", .data = data });
+        f.ctx.stdin = try f.tmp.dir.openFile(testing.io, "stdin", .{});
+    }
+};
+
+test "the pager receives writes larger than its buffer, vectors and splats" {
+    var f: Fixture = undefined;
+    f.init();
+    defer f.deinit();
+    const a = f.arena.allocator();
+    try f.env.put("PATH", testing.environ.getPosix("PATH") orelse "/usr/bin:/bin");
+    try f.env.put("SMITH_PAGER", try std.fmt.allocPrint(a, "cat > '{s}'", .{try f.path("paged")}));
+    f.ctx.stdout_tty = true;
+    try f.ctx.startPager();
+    try testing.expect(f.ctx.paged != null);
+    const big = try a.alloc(u8, 20000);
+    @memset(big, 'a');
+    try f.ctx.out.writeAll(big);
+    var parts = [_][]const u8{ "head", "ab" };
+    try f.ctx.out.writeSplatAll(&parts, 10000);
+    try testing.expect(f.ctx.stopPager());
+    const got = try f.tmp.dir.readFileAlloc(testing.io, "paged", a, .limited(1024 * 1024));
+    try testing.expectEqual(@as(usize, 20000 + 4 + 20000), got.len);
+    try testing.expect(std.mem.startsWith(u8, got[20000..], "headabab"));
+}
+
+test "prompts read lines from standard input, then the rest of it" {
+    var f: Fixture = undefined;
+    f.init();
+    defer f.deinit();
+    try f.stdinFrom(" first \nrest\nof it");
+    defer f.ctx.stdin.close(testing.io);
+    try testing.expectEqualStrings("first", (try f.ctx.promptOrEnd("Name?")).?);
+    try testing.expectEqualStrings("rest\nof it", try f.ctx.readStdin());
+    try testing.expectEqual(@as(?[]const u8, null), try f.ctx.promptOrEnd("More?"));
+    try testing.expectEqualStrings("? Name? ? More? ", f.err.written());
+}
+
+test "a prompt takes a last line without a newline" {
+    var f: Fixture = undefined;
+    f.init();
+    defer f.deinit();
+    try f.stdinFrom("yes");
+    defer f.ctx.stdin.close(testing.io);
+    try testing.expectEqualStrings("yes", try f.ctx.prompt("Sure?"));
+}
+
+test "a secret prompt reads a file as it is when standard input is no terminal" {
+    var f: Fixture = undefined;
+    f.init();
+    defer f.deinit();
+    try f.stdinFrom("hunter2\n");
+    defer f.ctx.stdin.close(testing.io);
+    try testing.expectEqualStrings("hunter2", try f.ctx.promptSecret("Token:"));
+    try testing.expectEqualStrings("? Token: ", f.err.written());
+}
+
+test "a secret prompt turns echo off on a terminal and back on after" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const linux = std.os.linux;
+    var f: Fixture = undefined;
+    f.init();
+    defer f.deinit();
+    const master = Io.Dir.cwd().openFile(testing.io, "/dev/ptmx", .{ .mode = .read_write }) catch return error.SkipZigTest;
+    defer master.close(testing.io);
+    var unlock: c_int = 0;
+    if (linux.errno(linux.ioctl(master.handle, linux.T.IOCSPTLCK, @intFromPtr(&unlock))) != .SUCCESS) return error.SkipZigTest;
+    var n: c_uint = 0;
+    if (linux.errno(linux.ioctl(master.handle, linux.T.IOCGPTN, @intFromPtr(&n))) != .SUCCESS) return error.SkipZigTest;
+    const name = try std.fmt.allocPrint(f.arena.allocator(), "/dev/pts/{d}", .{n});
+    const slave = Io.Dir.cwd().openFile(testing.io, name, .{ .mode = .read_write }) catch return error.SkipZigTest;
+    defer slave.close(testing.io);
+    try master.writeStreamingAll(testing.io, "s3cret\n");
+    f.ctx.stdin = slave;
+    f.ctx.stdin_data = null;
+    try testing.expectEqualStrings("s3cret", try f.ctx.promptSecret("Password:"));
+    try testing.expectEqualStrings("? Password: \n", f.err.written());
+    try testing.expect((try std.posix.tcgetattr(slave.handle)).lflag.ECHO);
+}
+
+test "a browser needs an opener or a desktop session" {
+    var f: Fixture = undefined;
+    f.init();
+    defer f.deinit();
+    try testing.expect(!f.ctx.canOpenBrowser());
+    if (builtin.os.tag != .macos) try testing.expectEqualStrings("xdg-open", f.ctx.browserOpener());
+    try f.env.put("WAYLAND_DISPLAY", "wayland-0");
+    try testing.expect(f.ctx.canOpenBrowser());
+    _ = f.env.swapRemove("WAYLAND_DISPLAY");
+    try f.env.put("DISPLAY", ":0");
+    try testing.expect(f.ctx.canOpenBrowser());
+}
+
+test "a browser that cannot start is reported" {
+    var f: Fixture = undefined;
+    f.init();
+    defer f.deinit();
+    try f.env.put("SMITH_BROWSER", "/nonexistent/smith-opener");
+    f.ctx.stdout_tty = true;
+    try testing.expectError(error.Reported, f.ctx.openBrowser("https://example.test/x"));
+    try testing.expectEqualStrings("Opening https://example.test/x in your browser.\ncould not run /nonexistent/smith-opener to open https://example.test/x\n", f.err.written());
+}
