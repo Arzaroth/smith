@@ -14,7 +14,10 @@
   `mise-tasks/installer-check` (shellcheck of `install.sh`, its Zig
   version against `.mise.toml`'s, and an offline run of it), tests, ReleaseSafe build), `release <x.y.z>` (`mise-tasks/release`), `dist` (`mise-tasks/dist`:
   stripped ReleaseSafe archives for x86_64 and aarch64 Linux (static musl)
-  and macOS, with `SHA256SUMS`).
+  and macOS, with `SHA256SUMS`), `coverage` (`mise-tasks/coverage`:
+  `zig build coverage` runs the tests under kcov, which must be installed,
+  and it prints the files below 100% and the total; the HTML report lands in
+  `zig-out/coverage`).
 - **CI**: `.github/workflows/ci.yml` runs the gate on Forgejo Actions and,
   through the mirror, on GitHub Actions. A `v*` tag runs
   `.github/workflows/release.yml`: the gate, `mise run dist`, then the release
@@ -48,3 +51,4 @@
 - `mise-tasks/release`
 - `.github/workflows/ci.yml`, `.github/workflows/release.yml`
 - `mise-tasks/dist`
+- `mise-tasks/coverage`

@@ -1,6 +1,9 @@
 # Testing
 
 `mise run test` (or `zig build test`, `-Dtest-filter=<text>` for a subset).
+`mise run coverage` measures line coverage of `src/` (tests excluded) with
+kcov. Its test binary is built with LLVM: kcov cannot map the self-hosted
+backend's debug info to the sources.
 
 - **Unit tests** sit next to the code (parsers, time formatting, URL
   parsing, config merging).
