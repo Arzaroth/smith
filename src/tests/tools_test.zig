@@ -356,3 +356,45 @@ test "notification list --json and an empty inbox" {
     try h.expectErr("No notifications");
     try std.testing.expectEqualStrings("", h.stdout());
 }
+
+test "api reads -F @file and @- fields and --input bodies, and names files it cannot read" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .method = .POST, .path = "/api/v1/markdown", .body = "<p>hi</p>", .content_type = "text/html" },
+    }, .{});
+    defer h.deinit();
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "text.md", .data = "**hi**" });
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "body.json", .data = "{\"Text\":\"raw\"}" });
+
+    try h.expectRun(0, &.{ "api", "/markdown", "-F", try std.fmt.allocPrint(h.arena.allocator(), "Text=@{s}", .{try h.path("text.md")}), "-F", "Mode=gfm" });
+    try std.testing.expectEqualStrings("{\"Text\":\"**hi**\",\"Mode\":\"gfm\"}", h.mock.lastBody(.POST, "/api/v1/markdown").?);
+    try std.testing.expectEqualStrings("<p>hi</p>", h.stdout());
+
+    h.ctx.stdin_data = "from stdin";
+    try h.expectRun(0, &.{ "api", "/markdown", "-F", "Text=@-" });
+    try std.testing.expectEqualStrings("{\"Text\":\"from stdin\"}", h.mock.lastBody(.POST, "/api/v1/markdown").?);
+
+    try h.expectRun(0, &.{ "api", "/markdown", "--input", try h.path("body.json") });
+    try std.testing.expectEqualStrings("{\"Text\":\"raw\"}", h.mock.lastBody(.POST, "/api/v1/markdown").?);
+
+    try h.expectRun(1, &.{ "api", "/markdown", "-F", try std.fmt.allocPrint(h.arena.allocator(), "Text=@{s}", .{try h.path("nope.md")}) });
+    try h.expectErr("nope.md: FileNotFound");
+    try h.expectRun(1, &.{ "api", "/markdown", "--input", try h.path("nope.json") });
+    try h.expectErr("nope.json: FileNotFound");
+    try std.testing.expectEqual(@as(usize, 3), h.mock.count(.POST, "/api/v1/markdown"));
+}
+
+test "api on a terminal pretty-prints JSON and ends any other body with a newline" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/version", .body = "{\"version\":\"1\"}" },
+        .{ .method = .POST, .path = "/api/v1/markdown", .body = "<p>hi</p>", .content_type = "text/html" },
+    }, .{});
+    defer h.deinit();
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "api", "/version" });
+    try h.expectOut("\"version\"");
+    try std.testing.expect(!std.mem.eql(u8, "{\"version\":\"1\"}", h.stdout()));
+    try h.expectRun(0, &.{ "api", "/markdown", "-f", "Text=hi" });
+    try std.testing.expect(std.mem.endsWith(u8, h.stdout(), "<p>hi</p>\n"));
+}
