@@ -330,4 +330,8 @@ test parseAliasFile {
     try testing.expectEqualStrings("pr list --draft\n", gh_example[3].expansion);
     try testing.expectError(error.InvalidAliasFile, parseAliasFile(a, "co:\n  nested: x\n"));
     try testing.expectError(error.InvalidAliasFile, parseAliasFile(a, "just words\n"));
+    const kept = try parseAliasFile(a, "co: |+\n  pr checkout\n\n\nnext: x\n");
+    try testing.expectEqualStrings("pr checkout\n\n\n", kept[0].expansion);
+    try testing.expectError(error.InvalidAliasFile, parseAliasFile(a, "co: 'pr checkout\n"));
+    try testing.expectError(error.InvalidAliasFile, parseAliasFile(a, "co: \"pr \\q\"\n"));
 }
