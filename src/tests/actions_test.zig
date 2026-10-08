@@ -137,3 +137,49 @@ test "variables: set creates when missing and updates otherwise, get prints the 
     try h.expectRun(0, &.{ "variable", "delete", "A", "--user", "--yes" });
     try std.testing.expectEqual(@as(usize, 1), h.mock.count(.DELETE, "/api/v1/user/actions/variables/A"));
 }
+
+test "workflow list --json, and a repository without workflows" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/v1/repos/owner/repo/contents/.forgejo/workflows", .body = "[{\"name\":\"ci.yml\",\"path\":\".forgejo/workflows/ci.yml\",\"type\":\"file\"},{\"name\":\"lib\",\"path\":\"y\",\"type\":\"dir\"}]" },
+        .{ .path = "/api/v1/repos/owner/bare/contents/.forgejo/workflows", .status = 404, .body = "{}" },
+        .{ .path = "/api/v1/repos/owner/bare/contents/.gitea/workflows", .status = 404, .body = "{}" },
+        .{ .path = "/api/v1/repos/owner/bare/contents/.github/workflows", .status = 404, .body = "{}" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "workflow", "list", "-R", "owner/repo", "--json" });
+    const v = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqual(@as(usize, 1), v.array.items.len);
+    try std.testing.expectEqualStrings("ci.yml", v.array.items[0].object.get("name").?.string);
+    try h.expectRun(0, &.{ "workflow", "list", "-R", "owner/bare" });
+    try h.expectErr("No workflows in owner/bare");
+}
+
+test "secret set prompts on a terminal; secret and variable lists, as JSON or empty" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .method = .PUT, .path = actions ++ "/secrets/TOKEN", .status = 201, .body = "" },
+        .{ .path = actions ++ "/secrets", .body = "[{\"name\":\"TOKEN\",\"created_at\":\"2026-09-29T11:00:00Z\"}]" },
+        .{ .path = actions ++ "/variables", .body = "[{\"name\":\"REGION\",\"data\":\"eu\"}]" },
+        .{ .path = "/api/v1/orgs/team/actions/secrets", .body = "[]" },
+        .{ .path = "/api/v1/orgs/team/actions/variables", .body = "[]" },
+    }, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "secret", "list", "-R", "owner/repo", "--json" });
+    const s = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqualStrings("TOKEN", s.array.items[0].object.get("name").?.string);
+    try h.expectRun(0, &.{ "secret", "list", "--org", "team" });
+    try h.expectErr("No secrets in organization team");
+    try h.expectRun(0, &.{ "variable", "list", "-R", "owner/repo", "--json" });
+    const v = try std.json.parseFromSliceLeaky(std.json.Value, h.arena.allocator(), h.stdout(), .{});
+    try std.testing.expectEqualStrings("eu", v.array.items[0].object.get("data").?.string);
+    try h.expectRun(0, &.{ "variable", "list", "--org", "team" });
+    try h.expectErr("No variables in organization team");
+
+    h.ctx.stdin_tty = true;
+    h.ctx.stdout_tty = true;
+    h.ctx.stdin_data = "typed\n";
+    try h.expectRun(0, &.{ "secret", "set", "TOKEN", "-R", "owner/repo" });
+    try h.expectErr("Value for TOKEN:");
+    try std.testing.expectEqualStrings("{\"data\":\"typed\"}", h.mock.lastBody(.PUT, actions ++ "/secrets/TOKEN").?);
+}
