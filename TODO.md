@@ -39,6 +39,9 @@ the Secret Service keyring were exercised on git.arzaroth.com on 2026-09-29; the
 - **`pr view` of a merged pull request** still says "wants to merge", and
   once its branch is deleted the head shows as `refs/pull/<n>/head`
   (Forgejo's ref then); gh says "merged" and keeps the branch name.
+- **`pr checks` flags against gh**: `--watch` with `--json` prints the table
+  where gh refuses the pair, `--interval` without `--watch` is accepted
+  where gh refuses it, and there is no `--fail-fast`.
 - **`mise run coverage` with `-p`** reads `zig-out/coverage` whatever the
   prefix, and the keychain backend (`security`) is never run by a test: it
   is found on smith's `PATH` and would be the developer's real keychain.

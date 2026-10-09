@@ -306,7 +306,7 @@ const Fixture = struct {
     tmp: testing.TmpDir,
     ctx: Ctx,
 
-    fn init(f: *Fixture) void {
+    fn init(f: *Fixture) !void {
         f.arena = .init(testing.allocator);
         const a = f.arena.allocator();
         f.env = .init(a);
@@ -315,6 +315,11 @@ const Fixture = struct {
         f.http = .{ .allocator = a, .io = testing.io };
         f.tmp = testing.tmpDir(.{});
         f.ctx = .{ .alloc = a, .io = testing.io, .env = &f.env, .out = &f.out.writer, .err = &f.err.writer, .http = &f.http };
+        errdefer f.deinit();
+        const root = try f.path("");
+        f.ctx.cwd = root;
+        try f.env.put("GIT_CEILING_DIRECTORIES", std.fs.path.dirname(root) orelse root);
+        try f.env.put("SMITH_KEYRING", "none");
     }
 
     fn deinit(f: *Fixture) void {
@@ -336,7 +341,7 @@ const Fixture = struct {
 
 test "the pager receives writes larger than its buffer, vectors and splats" {
     var f: Fixture = undefined;
-    f.init();
+    try f.init();
     defer f.deinit();
     const a = f.arena.allocator();
     try f.env.put("PATH", testing.environ.getPosix("PATH") orelse "/usr/bin:/bin");
@@ -358,7 +363,7 @@ test "the pager receives writes larger than its buffer, vectors and splats" {
 
 test "prompts read lines from standard input, then the rest of it" {
     var f: Fixture = undefined;
-    f.init();
+    try f.init();
     defer f.deinit();
     try f.stdinFrom(" first \nrest\nof it");
     defer f.ctx.stdin.close(testing.io);
@@ -370,7 +375,7 @@ test "prompts read lines from standard input, then the rest of it" {
 
 test "a prompt takes a last line without a newline" {
     var f: Fixture = undefined;
-    f.init();
+    try f.init();
     defer f.deinit();
     try f.stdinFrom("yes");
     defer f.ctx.stdin.close(testing.io);
@@ -379,7 +384,7 @@ test "a prompt takes a last line without a newline" {
 
 test "a secret prompt reads a file as it is when standard input is no terminal" {
     var f: Fixture = undefined;
-    f.init();
+    try f.init();
     defer f.deinit();
     try f.stdinFrom("hunter2\n");
     defer f.ctx.stdin.close(testing.io);
@@ -391,7 +396,7 @@ test "a secret prompt turns echo off on a terminal and back on after" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const linux = std.os.linux;
     var f: Fixture = undefined;
-    f.init();
+    try f.init();
     defer f.deinit();
     const master = Io.Dir.cwd().openFile(testing.io, "/dev/ptmx", .{ .mode = .read_write }) catch return error.SkipZigTest;
     defer master.close(testing.io);
@@ -430,7 +435,7 @@ fn typeOnceSilent(master: Io.File, slave: Io.File) void {
 
 test "a browser needs an opener or a desktop session" {
     var f: Fixture = undefined;
-    f.init();
+    try f.init();
     defer f.deinit();
     if (builtin.os.tag != .macos) {
         try testing.expect(!f.ctx.canOpenBrowser());
@@ -445,7 +450,7 @@ test "a browser needs an opener or a desktop session" {
 
 test "a browser that cannot start is reported" {
     var f: Fixture = undefined;
-    f.init();
+    try f.init();
     defer f.deinit();
     try f.env.put("SMITH_BROWSER", "/nonexistent/smith-opener");
     f.ctx.stdout_tty = true;
