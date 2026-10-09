@@ -240,17 +240,29 @@ test "checks summarises statuses and exits 1 on failure, 8 while pending, 0 when
     try h.expectOut("All checks were successful");
 }
 
-test "checks --watch polls until nothing is pending" {
+test "checks --watch polls until nothing is pending, a table per poll piped as gh does, redrawn on a terminal" {
     var h: Harness = undefined;
     const status = "/api/v1/repos/owner/repo/commits/abc123/status";
     try h.init(&.{
         .{ .path = pulls ++ "/12", .body = fx.pr_same },
+        .{ .path = status, .body = fx.status_pending, .times = 1 },
+        .{ .path = status, .body = fx.status_green, .times = 1 },
         .{ .path = status, .body = fx.status_pending, .times = 1 },
         .{ .path = status, .body = fx.status_green },
     }, .{});
     defer h.deinit();
     try h.expectRun(0, &.{ "pr", "checks", "12", "-R", "owner/repo", "--watch", "-i", "0" });
     try std.testing.expectEqual(@as(usize, 2), h.mock.count(.GET, status));
+    try std.testing.expectEqualStrings(
+        try std.fmt.allocPrint(h.arena.allocator(), "pending\tci / build\tRunning\t\nsuccess\tci / build\tSuccessful in 1m\t{s}/owner/repo/actions/runs/1/jobs/0\n", .{try h.base()}),
+        h.stdout(),
+    );
+
+    h.ctx.stdout_tty = true;
+    try h.expectRun(0, &.{ "pr", "checks", "12", "-R", "owner/repo", "--watch", "-i", "0" });
+    try h.expectOut("Some checks are still pending");
+    try h.expectOut("\x1b[H\x1b[2J");
+    try h.expectOut("All checks were successful");
 }
 
 /// A bare repository standing in for the forge's git side: `main`, a
