@@ -43,7 +43,9 @@ backend's debug info to the sources.
 - `run download` gets a real zip built by the test (one stored entry and its
   CRC), since no zip writer is assumed on the machine.
 - Browser logins are driven end to end by a `curl` "browser" script
-  (skipped when curl is missing). `--jq` tests point `SMITH_JQ` at a
+  (skipped when curl is missing). The callback's edge cases need no curl:
+  their "browser" only notes the authorize URL, and a task in the test
+  answers on smith's loopback port. `--jq` tests point `SMITH_JQ` at a
   stand-in script, so they run whether or not jq is installed. The pager
   test does the same with `SMITH_PAGER`, a command writing to a file,
   never to stdout.
