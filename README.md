@@ -43,11 +43,13 @@ binary; `smith auth logout` first removes its tokens from the keyring, and
 
 ### Packages
 
-On Debian and Ubuntu, each release has a `.deb` for amd64 and arm64 (the
-same static binary, with shell completions):
+On Debian and Ubuntu, each release has a `.deb` for amd64 and arm64, and
+on Fedora, openSUSE and other RPM systems an `.rpm` for x86_64 and aarch64
+(the same static binary, with shell completions):
 
 ```sh
 sudo apt install ./smith-cli_<version>_amd64.deb
+sudo dnf install ./smith-cli-<version>-1.x86_64.rpm
 ```
 
 For Arch, PKGBUILDs for `smith-cli` (built from source) and `smith-cli-bin`
@@ -213,7 +215,7 @@ mise install          # Zig 0.16.0, shellcheck, nfpm
 mise run build        # zig-out/bin/smith
 mise run test         # unit and invocation tests (-Dtest-filter=... for a subset)
 mise run check        # the gate: zig fmt --check, shellcheck, installer and packaging checks, tests, ReleaseSafe build
-mise run dist         # release archives, .deb packages and the source tarball in dist/
+mise run dist         # release archives, .deb and .rpm packages and the source tarball in dist/
 mise run aur 0.5.0    # the Arch PKGBUILDs for a published release, in dist/aur
 mise run coverage     # line coverage under kcov (needs kcov installed)
 ```

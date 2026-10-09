@@ -6,6 +6,18 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- RPM packages: each release has `smith-cli-<version>-1.x86_64.rpm` and
+  `.aarch64.rpm`, with bash, zsh and fish completions.
+
+### Changed
+
+- The Linux binaries are static PIE, loaded at a random address, with full
+  RELRO.
+- The Arch PKGBUILD `smith-cli` builds with Arch's own `zig` (0.16.x)
+  instead of downloading one.
+
 ## [0.5.0] - 2026-10-09
 
 ### Added

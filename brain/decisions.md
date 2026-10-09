@@ -218,8 +218,23 @@ Zig has no `cargo-deb`, so the `.deb` comes from nfpm (pinned in
 already ship, with completions and docs, and needs neither dpkg nor a
 Debian machine. The Arch packages are named `smith-cli` and `smith-cli-bin`
 because the AUR's `smith` is an unrelated editor that installs a `smith`
-binary too, so both conflict with it; they are not uploaded yet. `smith-cli` builds from the release's
-source tarball with the pinned Zig downloaded in its sources (Arch's own
-`zig` moves on), and runs the test suite in `check()`. The release archives
+binary too, so both conflict with it; they are not uploaded yet.
+`smith-cli` builds from the release's source tarball with Arch's `zig`,
+held to the pinned minor version
+(`zig>=0.16.0`, `zig<0.17.0`) since Zig breaks its standard library between
+minor versions: when Arch moves on, the package cannot be built until smith
+does, which an AUR package that downloads its own Zig would avoid, at the
+price of running a compiler Arch did not build. It runs the test suite in
+`check()`. The `.rpm` comes from the same nfpm config, with Fedora's paths
+(`site-functions`, `%license`) where they differ from Debian's.
+
+## Static PIE on Linux (2026-10-09)
+
+The Linux binaries and the test binary are built with `pie = true`: a static
+PIE that relocates itself at start, so the kernel loads it at a random
+address, with full RELRO (`BIND_NOW`). A fixed load address would hand an
+attacker who found a memory-safety bug the location of every gadget; smith
+reads data from servers it treats as hostile. ReleaseSafe's checks make such
+a bug unlikely, and PIE costs nothing measurable. The release archives
 are not byte-reproducible, so the PKGBUILDs are rendered after a release
 from its published `SHA256SUMS` (`mise run aur`), not at build time.

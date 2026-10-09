@@ -13,12 +13,14 @@
   gate: `zig fmt --check`, `shellcheck mise-tasks/*`,
   `mise-tasks/installer-check` (shellcheck of `install.sh`, its Zig
   version against `.mise.toml`'s, and an offline run of it),
-  `mise-tasks/packaging-check` (shellcheck of the PKGBUILD templates, their
-  Zig version and checksums against `.mise.toml` and `install.sh`), tests,
+  `mise-tasks/packaging-check` (shellcheck of the PKGBUILD templates, and
+  `smith-cli`'s `zig` bounds against the minor version `.mise.toml` pins),
+  tests,
   ReleaseSafe build), `release <x.y.z>` (`mise-tasks/release`), `dist`
   (`mise-tasks/dist`: stripped ReleaseSafe archives for x86_64 and aarch64
-  Linux (static musl) and macOS, `smith-cli_<version>_{amd64,arm64}.deb`
-  built by nfpm from `packaging/nfpm.yaml` with completions, the source
+  Linux (static musl, PIE) and macOS, `smith-cli_<version>_{amd64,arm64}.deb`
+  and `smith-cli-<version>-1.{x86_64,aarch64}.rpm` built by nfpm from
+  `packaging/nfpm.yaml` with completions, the source
   tarball `smith-<version>.tar.gz` (`git archive` of HEAD, without what
   `.gitattributes` marks `export-ignore`), and `SHA256SUMS` over
   all of them), `aur <x.y.z>` (`mise-tasks/aur`: renders
