@@ -6,7 +6,7 @@ section: devel
 priority: optional
 maintainer: Arzaroth <gitea@barrut.me>
 description: |-
-  A Forgejo CLI with gh's command surface
+  Forgejo CLI with gh's command surface
   smith manages Forgejo repositories, issues, pull requests, releases and
   Actions runs from the terminal, with the commands and flags of GitHub's gh.
 homepage: https://github.com/Arzaroth/smith
