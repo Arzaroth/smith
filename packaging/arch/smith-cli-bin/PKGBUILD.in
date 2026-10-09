@@ -1,0 +1,28 @@
+# Maintainer: Arzaroth <gitea@barrut.me>
+pkgname=smith-cli-bin
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="Forgejo CLI with gh's command surface (prebuilt)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/Arzaroth/smith"
+license=('MIT')
+options=('!debug')
+depends=('git')
+optdepends=('libsecret: keep tokens in the Secret Service keyring'
+            'xdg-utils: open pages in the browser')
+provides=("smith-cli=${pkgver}")
+conflicts=('smith-cli' 'smith')
+source_x86_64=("${url}/releases/download/v${pkgver}/smith-${pkgver}-x86_64-linux-musl.tar.gz")
+source_aarch64=("${url}/releases/download/v${pkgver}/smith-${pkgver}-aarch64-linux-musl.tar.gz")
+sha256sums_x86_64=('@SHA256_X86_64@')
+sha256sums_aarch64=('@SHA256_AARCH64@')
+
+package() {
+  cd "smith-${pkgver}-${CARCH}-linux-musl"
+  install -Dm755 smith "${pkgdir}/usr/bin/smith"
+  ./smith completion bash | install -Dm644 /dev/stdin "${pkgdir}/usr/share/bash-completion/completions/smith"
+  ./smith completion zsh | install -Dm644 /dev/stdin "${pkgdir}/usr/share/zsh/site-functions/_smith"
+  ./smith completion fish | install -Dm644 /dev/stdin "${pkgdir}/usr/share/fish/vendor_completions.d/smith.fish"
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 README.md CHANGELOG.md -t "${pkgdir}/usr/share/doc/${pkgname}"
+}

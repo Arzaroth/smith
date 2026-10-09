@@ -55,7 +55,8 @@ uncommitted: `git checkout -- CHANGELOG.md build.zig.zon`, fix the cause, re-run
 - The tag starts `.github/workflows/release.yml` on both forges. Follow the
   Forgejo run with `smith run list -e push -L 1` then `smith run watch <id>`,
   and the GitHub one with `gh run watch -R Arzaroth/smith`.
-- Check both releases carry the four archives and `SHA256SUMS`:
+- Check both releases carry the four archives, the two `.deb` packages,
+  the source tarball `smith-X.Y.Z.tar.gz` and `SHA256SUMS`:
   `smith release view vX.Y.Z` and `gh release view vX.Y.Z -R Arzaroth/smith`.
 - If the Forgejo publish step fails with 403, the job token cannot create
   releases there: set a `RELEASE_TOKEN` secret (`smith secret set

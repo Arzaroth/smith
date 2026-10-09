@@ -1,0 +1,47 @@
+# Maintainer: Arzaroth <gitea@barrut.me>
+pkgname=smith-cli
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="Forgejo CLI with gh's command surface"
+arch=('x86_64' 'aarch64')
+url="https://github.com/Arzaroth/smith"
+license=('MIT')
+options=('!debug')
+depends=('git')
+optdepends=('libsecret: keep tokens in the Secret Service keyring'
+            'xdg-utils: open pages in the browser')
+conflicts=('smith')
+_zig=0.16.0
+source=("${pkgname}-${pkgver}.tar.gz::${url}/releases/download/v${pkgver}/smith-${pkgver}.tar.gz")
+source_x86_64=("https://ziglang.org/download/${_zig}/zig-x86_64-linux-${_zig}.tar.xz")
+source_aarch64=("https://ziglang.org/download/${_zig}/zig-aarch64-linux-${_zig}.tar.xz")
+sha256sums=('@SHA256_SOURCE@')
+sha256sums_x86_64=('70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00')
+sha256sums_aarch64=('ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17')
+
+_zig() {
+  ZIG_GLOBAL_CACHE_DIR="${srcdir}/zig-cache" "${srcdir}/zig-${CARCH}-linux-${_zig}/zig" "$@"
+}
+
+build() {
+  cd "smith-${pkgver}"
+  _zig build -Doptimize=ReleaseSafe -Dcpu=baseline --prefix "${srcdir}/out"
+  for shell in bash zsh fish; do
+    "${srcdir}/out/bin/smith" completion "${shell}" >"${srcdir}/smith.${shell}"
+  done
+}
+
+check() {
+  cd "smith-${pkgver}"
+  _zig build test
+}
+
+package() {
+  install -Dm755 "${srcdir}/out/bin/smith" "${pkgdir}/usr/bin/smith"
+  install -Dm644 "${srcdir}/smith.bash" "${pkgdir}/usr/share/bash-completion/completions/smith"
+  install -Dm644 "${srcdir}/smith.zsh" "${pkgdir}/usr/share/zsh/site-functions/_smith"
+  install -Dm644 "${srcdir}/smith.fish" "${pkgdir}/usr/share/fish/vendor_completions.d/smith.fish"
+  cd "smith-${pkgver}"
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 README.md CHANGELOG.md -t "${pkgdir}/usr/share/doc/${pkgname}"
+}

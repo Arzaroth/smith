@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#MISE description="Lint the PKGBUILD templates and check the Zig they build with against .mise.toml and install.sh"
+set -euo pipefail
+
+shellcheck -s bash -e SC2034,SC2154,SC2164 packaging/arch/*/PKGBUILD.in
+pinned="$(sed -n 's/^zig = "\(.*\)"$/\1/p' .mise.toml)"
+pkgbuild=packaging/arch/smith-cli/PKGBUILD.in
+packaged="$(sed -n 's/^_zig=\(.*\)$/\1/p' "${pkgbuild}")"
+if [[ "${pinned}" != "${packaged}" ]]; then
+  echo "${pkgbuild} builds with Zig ${packaged}, .mise.toml pins ${pinned}: update _zig and its checksums" >&2
+  exit 1
+fi
+for arch in x86_64 aarch64; do
+  installer="$(sed -n "s/^ *${arch}-linux) sum=\"\([0-9a-f]*\)\" ;;$/\1/p" install.sh)"
+  packaged="$(sed -n "s/^sha256sums_${arch}=('\([0-9a-f]*\)')$/\1/p" "${pkgbuild}")"
+  if [[ -z "${installer}" || "${installer}" != "${packaged}" ]]; then
+    echo "${pkgbuild} and install.sh disagree on the ${arch} Zig checksum" >&2
+    exit 1
+  fi
+done

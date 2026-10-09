@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+#MISE description="Render the AUR packages smith-cli and smith-cli-bin, PKGBUILD and .SRCINFO, for a published release into dist/aur"
+#USAGE arg "<version>" help="Released version, e.g. 0.5.0"
+#USAGE flag "--sums <file>" help="Take the checksums from this SHA256SUMS instead of the GitHub release's"
+set -euo pipefail
+
+version="${usage_version:-}"
+if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "usage: mise run aur <x.y.z> [--sums <file>]" >&2
+  exit 1
+fi
+if [[ -n "${usage_sums:-}" ]]; then
+  sums="$(cd "${MISE_ORIGINAL_CWD:-.}" && cat "${usage_sums}")"
+else
+  sums="$(curl -fsSL "https://github.com/Arzaroth/smith/releases/download/v${version}/SHA256SUMS")"
+fi
+
+sum() {
+  local found
+  found="$(awk -v f="$1" '$2 == f || $2 == "*" f { print $1 }' <<<"${sums}")"
+  if [[ -z "${found}" ]]; then
+    echo "SHA256SUMS has no $1" >&2
+    return 1
+  fi
+  printf '%s' "${found}"
+}
+
+field() {
+  local key="$1"
+  shift
+  local value
+  for value in "$@"; do printf '\t%s = %s\n' "${key}" "${value}"; done
+}
+
+# The fields and order of `makepkg --printsrcinfo`.
+# shellcheck disable=SC2154
+srcinfo() (
+  # shellcheck disable=SC1090
+  source "$1"
+  printf 'pkgbase = %s\n' "${pkgname}"
+  field pkgdesc "${pkgdesc}"
+  field pkgver "${pkgver}"
+  field pkgrel "${pkgrel}"
+  field epoch ${epoch:+"${epoch}"}
+  field url "${url}"
+  field install ${install:+"${install}"}
+  field changelog ${changelog:+"${changelog}"}
+  local name a
+  for name in arch groups license checkdepends makedepends depends optdepends provides conflicts replaces noextract options backup source validpgpkeys b2sums sha256sums; do
+    eval "field ${name} \${${name}[@]+\"\${${name}[@]}\"}"
+  done
+  for a in "${arch[@]}"; do
+    for name in source provides conflicts depends replaces optdepends makedepends checkdepends b2sums sha256sums; do
+      eval "field ${name}_${a} \${${name}_${a}[@]+\"\${${name}_${a}[@]}\"}"
+    done
+  done
+  printf '\npkgname = %s\n' "${pkgname}"
+)
+
+source_sum="$(sum "smith-${version}.tar.gz")"
+x86_64_sum="$(sum "smith-${version}-x86_64-linux-musl.tar.gz")"
+aarch64_sum="$(sum "smith-${version}-aarch64-linux-musl.tar.gz")"
+
+rm -rf dist/aur
+for pkg in smith-cli smith-cli-bin; do
+  mkdir -p "dist/aur/${pkg}"
+  sed -e "s/@VERSION@/${version}/" \
+    -e "s/@SHA256_SOURCE@/${source_sum}/" \
+    -e "s/@SHA256_X86_64@/${x86_64_sum}/" \
+    -e "s/@SHA256_AARCH64@/${aarch64_sum}/" \
+    "packaging/arch/${pkg}/PKGBUILD.in" >"dist/aur/${pkg}/PKGBUILD"
+  srcinfo "dist/aur/${pkg}/PKGBUILD" >"dist/aur/${pkg}/.SRCINFO"
+done
+ls -lA dist/aur/*

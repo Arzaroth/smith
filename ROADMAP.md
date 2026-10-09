@@ -94,7 +94,8 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
       `--input`, `--paginate`, `-H`, `{owner}`/`{repo}`),
       `completion <bash|zsh|fish>`.
 - [x] Release pipeline: `mise run dist` cross-compiles stripped static
-      binaries for x86_64/aarch64 Linux (musl) and macOS with `SHA256SUMS`; a
+      binaries for x86_64/aarch64 Linux (musl) and macOS, `.deb` packages and
+      a source tarball, with `SHA256SUMS`; a
       `v*` tag runs `.github/workflows/release.yml`, which publishes with `gh
       release create` on GitHub and with smith's own `release create` on
       Forgejo. Open question: whether Forgejo's job token may create
@@ -143,7 +144,8 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
 - OAuth2 device flow login, if Forgejo gains it.
 - `pr checkout` into a new worktree.
 - `auth logout` revoking a password-route token (needs the password again).
-- Packaging: AUR, Homebrew tap, Nix flake.
+- Packaging: publish the PKGBUILDs on the AUR (`mise run aur` renders them),
+  Homebrew tap, Nix flake. The `.deb` ships with each release.
 
 ## Not planned
 
