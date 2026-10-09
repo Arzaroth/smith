@@ -1,5 +1,5 @@
 name: smith-cli
-arch: ${DEB_ARCH}
+arch: ${ARCH}
 platform: linux
 version: ${VERSION}
 section: devel
@@ -14,9 +14,19 @@ license: MIT
 
 depends:
   - git
-suggests:
-  - libsecret-tools
-  - xdg-utils
+overrides:
+  deb:
+    suggests:
+      - libsecret-tools
+      - xdg-utils
+  rpm:
+    suggests:
+      - libsecret
+      - xdg-utils
+
+rpm:
+  summary: Forgejo CLI with gh's command surface
+  group: Development/Tools
 
 contents:
   - src: smith
@@ -25,13 +35,22 @@ contents:
       mode: 0755
   - src: completions/smith.bash
     dst: /usr/share/bash-completion/completions/smith
-  - src: completions/_smith
-    dst: /usr/share/zsh/vendor-completions/_smith
   - src: completions/smith.fish
     dst: /usr/share/fish/vendor_completions.d/smith.fish
-  - src: LICENSE
-    dst: /usr/share/doc/smith-cli/copyright
   - src: README.md
     dst: /usr/share/doc/smith-cli/README.md
   - src: CHANGELOG.md
     dst: /usr/share/doc/smith-cli/CHANGELOG.md
+  - src: completions/_smith
+    dst: /usr/share/zsh/vendor-completions/_smith
+    packager: deb
+  - src: LICENSE
+    dst: /usr/share/doc/smith-cli/copyright
+    packager: deb
+  - src: completions/_smith
+    dst: /usr/share/zsh/site-functions/_smith
+    packager: rpm
+  - src: LICENSE
+    dst: /usr/share/licenses/smith-cli/LICENSE
+    type: license
+    packager: rpm
