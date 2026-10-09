@@ -12,15 +12,25 @@
   -Dtest-filter=<text>` for a subset), `fmt`, `check` (the
   gate: `zig fmt --check`, `shellcheck mise-tasks/*`,
   `mise-tasks/installer-check` (shellcheck of `install.sh`, its Zig
-  version against `.mise.toml`'s, and an offline run of it), tests, ReleaseSafe build), `release <x.y.z>` (`mise-tasks/release`), `dist` (`mise-tasks/dist`:
-  stripped ReleaseSafe archives for x86_64 and aarch64 Linux (static musl)
-  and macOS, with `SHA256SUMS`), `coverage` (`mise-tasks/coverage`:
+  version against `.mise.toml`'s, and an offline run of it),
+  `mise-tasks/packaging-check` (shellcheck of the PKGBUILD templates, their
+  Zig version and checksums against `.mise.toml` and `install.sh`), tests,
+  ReleaseSafe build), `release <x.y.z>` (`mise-tasks/release`), `dist`
+  (`mise-tasks/dist`: stripped ReleaseSafe archives for x86_64 and aarch64
+  Linux (static musl) and macOS, `smith-cli_<version>_{amd64,arm64}.deb`
+  built by nfpm from `packaging/nfpm.yaml` with completions, the source
+  tarball `smith-<version>.tar.gz` (`git archive`), and `SHA256SUMS` over
+  all of them), `aur <x.y.z>` (`mise-tasks/aur`: renders
+  `packaging/arch/{smith-cli,smith-cli-bin}/PKGBUILD.in` and their
+  `.SRCINFO` into `dist/aur` with the published release's checksums, or a
+  local `SHA256SUMS` with `--sums`), `coverage` (`mise-tasks/coverage`:
   `zig build coverage` runs the tests under kcov, which must be installed,
   and it prints the files below 100% and the total; the HTML report lands in
   `zig-out/coverage`).
 - **CI**: `.github/workflows/ci.yml` runs the gate on Forgejo Actions and,
   through the mirror, on GitHub Actions. A `v*` tag runs
-  `.github/workflows/release.yml`: the gate, `mise run dist`, then the release
+  `.github/workflows/release.yml`: the gate, `mise run dist` (archives, debs and
+  source tarball are all uploaded), then the release
   notes from `CHANGELOG.md`, published with `gh release create` on GitHub and
   with `smith release create` itself on Forgejo (the job token, or a
   `RELEASE_TOKEN` secret). The Forgejo runner reaches its server as
@@ -52,3 +62,4 @@
 - `.github/workflows/ci.yml`, `.github/workflows/release.yml`
 - `mise-tasks/dist`
 - `mise-tasks/coverage`
+- `mise-tasks/aur`, `mise-tasks/packaging-check`, `packaging/`

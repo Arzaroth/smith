@@ -143,7 +143,7 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
 - OAuth2 device flow login, if Forgejo gains it.
 - `pr checkout` into a new worktree.
 - `auth logout` revoking a password-route token (needs the password again).
-- Packaging: AUR, Homebrew tap, Nix flake.
+- Packaging: Homebrew tap, Nix flake (AUR and .deb are done).
 
 ## Not planned
 

@@ -210,3 +210,16 @@ day at the machine's offset and shows due dates in the local zone. The
 offset comes from the zone file through `std.tz`, plus an evaluator for its
 POSIX rule footer, rather than from `date`, to stay free of child processes
 and of GNU/BSD differences.
+
+## Distribution packages from the release assets (2026-10-09)
+
+Zig has no `cargo-deb`, so the `.deb` comes from nfpm (pinned in
+`.mise.toml`): it repackages the static musl binary that the archives
+already ship, with completions and docs, and needs neither dpkg nor a
+Debian machine. The Arch packages are named `smith-cli` and `smith-cli-bin`
+because the AUR's `smith` is an unrelated editor that installs a `smith`
+binary too, so both conflict with it. `smith-cli` builds from the release's
+source tarball with the pinned Zig downloaded in its sources (Arch's own
+`zig` moves on), and runs the test suite in `check()`. The release archives
+are not byte-reproducible, so the PKGBUILDs are rendered after a release
+from its published `SHA256SUMS` (`mise run aur`), not at build time.

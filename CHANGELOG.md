@@ -6,6 +6,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Debian packages: each release has `smith-cli_<version>_amd64.deb` and
+  `_arm64.deb`, with bash, zsh and fish completions.
+- Arch packages for the AUR: `smith-cli` (from source) and `smith-cli-bin`.
+- A source tarball, `smith-<version>.tar.gz`, among the release assets.
+
 ## [0.4.0] - 2026-09-29
 
 ### Added

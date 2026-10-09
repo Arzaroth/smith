@@ -41,6 +41,20 @@ FreeBSD, 32-bit ARM) can build it (below). To uninstall, delete the
 binary; `smith auth logout` first removes its tokens from the keyring, and
 `~/.config/smith` holds its settings.
 
+### Packages
+
+On Debian and Ubuntu, each release has a `.deb` for amd64 and arm64 (the
+same static binary, with shell completions):
+
+```sh
+sudo apt install ./smith-cli_<version>_amd64.deb
+```
+
+On Arch, the AUR has `smith-cli` (built from source) and `smith-cli-bin`
+(the release binary). The package is `smith-cli` because the AUR's `smith`
+is an unrelated text editor, which installs a `smith` of its own; the
+command is `smith` either way.
+
 ## Getting started
 
 ```sh
@@ -197,7 +211,8 @@ mise install          # Zig 0.16.0, shellcheck
 mise run build        # zig-out/bin/smith
 mise run test         # unit and invocation tests (-Dtest-filter=... for a subset)
 mise run check        # the gate: zig fmt --check, shellcheck, tests, ReleaseSafe build
-mise run dist         # release archives for Linux and macOS in dist/
+mise run dist         # release archives, .deb packages and the source tarball in dist/
+mise run aur 0.5.0    # the AUR packages for a published release, in dist/aur
 mise run coverage     # line coverage under kcov (needs kcov installed)
 ```
 
