@@ -2,16 +2,17 @@
 pkgname=smith-cli
 pkgver=@VERSION@
 pkgrel=1
-pkgdesc="A Forgejo CLI with gh's command surface"
+pkgdesc="Forgejo CLI with gh's command surface"
 arch=('x86_64' 'aarch64')
 url="https://github.com/Arzaroth/smith"
 license=('MIT')
+options=('!debug')
 depends=('git')
 optdepends=('libsecret: keep tokens in the Secret Service keyring'
             'xdg-utils: open pages in the browser')
 conflicts=('smith')
 _zig=0.16.0
-source=("${url}/releases/download/v${pkgver}/smith-${pkgver}.tar.gz")
+source=("${pkgname}-${pkgver}.tar.gz::${url}/releases/download/v${pkgver}/smith-${pkgver}.tar.gz")
 source_x86_64=("https://ziglang.org/download/${_zig}/zig-x86_64-linux-${_zig}.tar.xz")
 source_aarch64=("https://ziglang.org/download/${_zig}/zig-aarch64-linux-${_zig}.tar.xz")
 sha256sums=('@SHA256_SOURCE@')

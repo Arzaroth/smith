@@ -10,7 +10,7 @@ if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 if [[ -n "${usage_sums:-}" ]]; then
-  sums="$(cat "${usage_sums}")"
+  sums="$(cd "${MISE_ORIGINAL_CWD:-.}" && cat "${usage_sums}")"
 else
   sums="$(curl -fsSL "https://github.com/Arzaroth/smith/releases/download/v${version}/SHA256SUMS")"
 fi
@@ -32,6 +32,7 @@ field() {
   for value in "$@"; do printf '\t%s = %s\n' "${key}" "${value}"; done
 }
 
+# The fields and order of `makepkg --printsrcinfo`.
 # shellcheck disable=SC2154
 srcinfo() (
   # shellcheck disable=SC1090
@@ -40,19 +41,18 @@ srcinfo() (
   field pkgdesc "${pkgdesc}"
   field pkgver "${pkgver}"
   field pkgrel "${pkgrel}"
+  field epoch ${epoch:+"${epoch}"}
   field url "${url}"
-  field arch "${arch[@]}"
-  field license "${license[@]}"
-  field depends ${depends[@]+"${depends[@]}"}
-  field optdepends ${optdepends[@]+"${optdepends[@]}"}
-  field provides ${provides[@]+"${provides[@]}"}
-  field conflicts ${conflicts[@]+"${conflicts[@]}"}
-  field source ${source[@]+"${source[@]}"}
-  field sha256sums ${sha256sums[@]+"${sha256sums[@]}"}
-  local a
+  field install ${install:+"${install}"}
+  field changelog ${changelog:+"${changelog}"}
+  local name a
+  for name in arch groups license checkdepends makedepends depends optdepends provides conflicts replaces noextract options backup source validpgpkeys b2sums sha256sums; do
+    eval "field ${name} \${${name}[@]+\"\${${name}[@]}\"}"
+  done
   for a in "${arch[@]}"; do
-    eval "field source_${a} \${source_${a}[@]+\"\${source_${a}[@]}\"}"
-    eval "field sha256sums_${a} \${sha256sums_${a}[@]+\"\${sha256sums_${a}[@]}\"}"
+    for name in source provides conflicts depends replaces optdepends makedepends checkdepends b2sums sha256sums; do
+      eval "field ${name}_${a} \${${name}_${a}[@]+\"\${${name}_${a}[@]}\"}"
+    done
   done
   printf '\npkgname = %s\n' "${pkgname}"
 )

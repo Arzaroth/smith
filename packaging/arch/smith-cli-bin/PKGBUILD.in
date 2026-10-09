@@ -2,14 +2,15 @@
 pkgname=smith-cli-bin
 pkgver=@VERSION@
 pkgrel=1
-pkgdesc="A Forgejo CLI with gh's command surface (prebuilt)"
+pkgdesc="Forgejo CLI with gh's command surface (prebuilt)"
 arch=('x86_64' 'aarch64')
 url="https://github.com/Arzaroth/smith"
 license=('MIT')
+options=('!debug')
 depends=('git')
 optdepends=('libsecret: keep tokens in the Secret Service keyring'
             'xdg-utils: open pages in the browser')
-provides=('smith-cli')
+provides=("smith-cli=${pkgver}")
 conflicts=('smith-cli' 'smith')
 source_x86_64=("${url}/releases/download/v${pkgver}/smith-${pkgver}-x86_64-linux-musl.tar.gz")
 source_aarch64=("${url}/releases/download/v${pkgver}/smith-${pkgver}-aarch64-linux-musl.tar.gz")
