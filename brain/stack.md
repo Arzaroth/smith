@@ -19,7 +19,8 @@
   (`mise-tasks/dist`: stripped ReleaseSafe archives for x86_64 and aarch64
   Linux (static musl) and macOS, `smith-cli_<version>_{amd64,arm64}.deb`
   built by nfpm from `packaging/nfpm.yaml` with completions, the source
-  tarball `smith-<version>.tar.gz` (`git archive`), and `SHA256SUMS` over
+  tarball `smith-<version>.tar.gz` (`git archive` of HEAD, without what
+  `.gitattributes` marks `export-ignore`), and `SHA256SUMS` over
   all of them), `aur <x.y.z>` (`mise-tasks/aur`: renders
   `packaging/arch/{smith-cli,smith-cli-bin}/PKGBUILD.in` and their
   `.SRCINFO` into `dist/aur` with the published release's checksums, or a

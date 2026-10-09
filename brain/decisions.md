@@ -218,7 +218,7 @@ Zig has no `cargo-deb`, so the `.deb` comes from nfpm (pinned in
 already ship, with completions and docs, and needs neither dpkg nor a
 Debian machine. The Arch packages are named `smith-cli` and `smith-cli-bin`
 because the AUR's `smith` is an unrelated editor that installs a `smith`
-binary too, so both conflict with it. `smith-cli` builds from the release's
+binary too, so both conflict with it; they are not uploaded yet. `smith-cli` builds from the release's
 source tarball with the pinned Zig downloaded in its sources (Arch's own
 `zig` moves on), and runs the test suite in `check()`. The release archives
 are not byte-reproducible, so the PKGBUILDs are rendered after a release

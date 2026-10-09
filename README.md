@@ -50,9 +50,11 @@ same static binary, with shell completions):
 sudo apt install ./smith-cli_<version>_amd64.deb
 ```
 
-On Arch, the AUR has `smith-cli` (built from source) and `smith-cli-bin`
-(the release binary). The package is `smith-cli` because the AUR's `smith`
-is an unrelated text editor, which installs a `smith` of its own; the
+For Arch, PKGBUILDs for `smith-cli` (built from source) and `smith-cli-bin`
+(the release binary) are in `packaging/arch`; they are not on the AUR yet.
+In a checkout, `mise run aur <version>` fills them in for a published release
+under `dist/aur`, ready for `makepkg -si`. They are `smith-cli` because the
+AUR's `smith` is an unrelated text editor with a `smith` of its own; the
 command is `smith` either way.
 
 ## Getting started
@@ -207,12 +209,12 @@ smith completion fish > ~/.config/fish/completions/smith.fish
 Toolchain and tasks come from [mise](https://mise.jdx.dev):
 
 ```sh
-mise install          # Zig 0.16.0, shellcheck
+mise install          # Zig 0.16.0, shellcheck, nfpm
 mise run build        # zig-out/bin/smith
 mise run test         # unit and invocation tests (-Dtest-filter=... for a subset)
-mise run check        # the gate: zig fmt --check, shellcheck, tests, ReleaseSafe build
+mise run check        # the gate: zig fmt --check, shellcheck, installer and packaging checks, tests, ReleaseSafe build
 mise run dist         # release archives, .deb packages and the source tarball in dist/
-mise run aur 0.5.0    # the AUR packages for a published release, in dist/aur
+mise run aur 0.5.0    # the Arch PKGBUILDs for a published release, in dist/aur
 mise run coverage     # line coverage under kcov (needs kcov installed)
 ```
 
