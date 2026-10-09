@@ -19,11 +19,12 @@ description = "Format every Zig source"
 run = "zig fmt build.zig build.zig.zon src"
 
 [tasks.check]
-description = "The gate: formatting, shellcheck, tests, and a ReleaseSafe build"
+description = "The gate: formatting, shellcheck, the installer and packaging checks, tests, and a ReleaseSafe build"
 run = [
   "zig fmt --check build.zig build.zig.zon src",
   "shellcheck mise-tasks/*",
   "mise-tasks/installer-check",
+  "mise-tasks/packaging-check",
   "zig build test --summary all",
   "zig build -Doptimize=ReleaseSafe",
 ]
