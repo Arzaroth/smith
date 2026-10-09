@@ -235,9 +235,6 @@ test "the browser login gives up when no sign-in comes back" {
     try h.expectErr("no sign-in came back from the browser in time");
 }
 
-/// A "browser" that skips the consent page and calls smith's loopback port
-/// itself: first with no query, then with an unrelated one, then with the
-/// query in `<tmp>/callback`, where STATE stands for the request's state.
 /// A "browser" that only notes the authorize URL; `answer` then calls
 /// smith's loopback port the way the forge's redirect would.
 fn callbackBrowser(h: *Harness) !void {
@@ -280,7 +277,7 @@ fn answer(opened: []const u8, callback: []const u8) !void {
     const state_at = (std.mem.indexOf(u8, url, "state=") orelse return error.NoState) + "state=".len;
     const state = url[state_at .. std.mem.indexOfScalarPos(u8, url, state_at, '&') orelse url.len];
     const query = try std.mem.replaceOwned(u8, a, callback, "STATE", state);
-    for ([_][]const u8{ "/", "/?unrelated=1", try std.fmt.allocPrint(a, "/?{s}", .{query}) }) |target| {
+    for ([_][]const u8{ "/", "/?unrelated=1", try std.fmt.allocPrint(a, "/?{s}", .{query}) }, 0..) |target, i| {
         const address = try std.Io.net.IpAddress.parse("127.0.0.1", port);
         const stream = try address.connect(io, .{ .mode = .stream });
         defer stream.close(io);
@@ -290,6 +287,8 @@ fn answer(opened: []const u8, callback: []const u8) !void {
         try out.interface.flush();
         var in_buf: [1024]u8 = undefined;
         var in = stream.reader(io, &in_buf);
+        const status_line = try in.interface.takeDelimiterInclusive('\n');
+        if (i < 2 and !std.mem.startsWith(u8, status_line, "HTTP/1.1 404 ")) return error.ExpectedNotFound;
         _ = in.interface.discardRemaining() catch {};
     }
 }
