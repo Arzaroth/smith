@@ -46,7 +46,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" dist/*.tar.gz dist/SHA256SUMS --title "smith ${TAG#v}" --notes-file notes.md --repo "${{ github.repository }}"
+        run: gh release create "$TAG" dist/*.tar.gz dist/*.deb dist/SHA256SUMS --title "smith ${TAG#v}" --notes-file notes.md --repo "${{ github.repository }}"
 
       - name: Publish on Forgejo
         if: github.server_url != 'https://github.com'
@@ -59,5 +59,5 @@ jobs:
           host="${SERVER#*://}"
           export SMITH_HOST="$host" SMITH_CONFIG_DIR="$(mktemp -d)"
           printf '.{ .default_host = "%s", .hosts = .{ .{ .name = "%s", .scheme = "%s" } } }\n' "$host" "$host" "${SERVER%%://*}" > "$SMITH_CONFIG_DIR/hosts.zon"
-          zig-out/bin/smith release create "$TAG" dist/*.tar.gz dist/SHA256SUMS \
+          zig-out/bin/smith release create "$TAG" dist/*.tar.gz dist/*.deb dist/SHA256SUMS \
             --title "smith ${TAG#v}" --notes-file notes.md -R "$host/$REPOSITORY"

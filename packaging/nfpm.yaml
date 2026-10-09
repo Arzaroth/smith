@@ -1,0 +1,37 @@
+name: smith-cli
+arch: ${DEB_ARCH}
+platform: linux
+version: ${VERSION}
+section: devel
+priority: optional
+maintainer: Arzaroth <gitea@barrut.me>
+description: |-
+  A Forgejo CLI with gh's command surface
+  smith manages Forgejo repositories, issues, pull requests, releases and
+  Actions runs from the terminal, with the commands and flags of GitHub's gh.
+homepage: https://github.com/Arzaroth/smith
+license: MIT
+
+depends:
+  - git
+suggests:
+  - libsecret-tools
+  - xdg-utils
+
+contents:
+  - src: smith
+    dst: /usr/bin/smith
+    file_info:
+      mode: 0755
+  - src: completions/smith.bash
+    dst: /usr/share/bash-completion/completions/smith
+  - src: completions/_smith
+    dst: /usr/share/zsh/vendor-completions/_smith
+  - src: completions/smith.fish
+    dst: /usr/share/fish/vendor_completions.d/smith.fish
+  - src: LICENSE
+    dst: /usr/share/doc/smith-cli/copyright
+  - src: README.md
+    dst: /usr/share/doc/smith-cli/README.md
+  - src: CHANGELOG.md
+    dst: /usr/share/doc/smith-cli/CHANGELOG.md
