@@ -3,8 +3,10 @@ const Io = std.Io;
 const app = @import("app.zig");
 const term = @import("term.zig");
 const Ctx = @import("Ctx.zig");
+const relro = @import("relro.zig");
 
 pub fn main(init: std.process.Init) !u8 {
+    relro.protect();
     const alloc = init.arena.allocator();
     const io = init.io;
     const argv = try init.minimal.args.toSlice(alloc);
@@ -53,6 +55,7 @@ fn refAll(comptime T: type) void {
 
 test {
     refAll(@import("cli.zig"));
+    refAll(@import("relro.zig"));
     refAll(@import("config.zig"));
     refAll(@import("api.zig"));
     refAll(@import("Ctx.zig"));

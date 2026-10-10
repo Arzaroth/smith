@@ -27,5 +27,6 @@ run = [
   "mise-tasks/installer-check",
   "mise-tasks/packaging-check",
   "zig build test --summary all",
+  "zig build test -Doptimize=ReleaseSafe -Dtest-filter=relro",
   "zig build -Doptimize=ReleaseSafe",
 ]
