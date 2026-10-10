@@ -5,7 +5,7 @@ set -euo pipefail
 shellcheck -s bash -e SC2034,SC2154,SC2164 packaging/arch/*/PKGBUILD.in
 pinned="$(sed -n 's/^zig = "\(.*\)"$/\1/p' .mise.toml)"
 IFS=. read -r major minor _ <<<"${pinned}"
-want="makedepends=('zig>=${pinned}' 'zig<${major}.$((minor + 1)).0')"
+want="makedepends=('zig>=${major}.${minor}.0' 'zig<${major}.$((minor + 1)).0')"
 pkgbuild=packaging/arch/smith-cli/PKGBUILD.in
 if ! grep -qxF "${want}" "${pkgbuild}"; then
   echo "${pkgbuild} must build with the Zig .mise.toml pins: ${want}" >&2

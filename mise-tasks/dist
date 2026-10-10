@@ -33,7 +33,7 @@ for target in "${targets[@]}"; do
   esac
   stage="dist/build/package-${arch}"
   mkdir -p "${stage}"
-  cp -r "${prefix}/bin/smith" dist/completions README.md LICENSE CHANGELOG.md "${stage}/"
+  cp -r "${prefix}/bin/smith" dist/completions README.md LICENSE CHANGELOG.md packaging/lintian-overrides "${stage}/"
   for packager in deb rpm; do
     (cd "${stage}" && VERSION="${version}" ARCH="${arch}" nfpm package --config ../../../packaging/nfpm.yaml --packager "${packager}" --target ../..)
   done

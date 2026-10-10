@@ -21,7 +21,7 @@ overrides:
       - xdg-utils
   rpm:
     suggests:
-      - libsecret
+      - /usr/bin/secret-tool
       - xdg-utils
 
 rpm:
@@ -39,14 +39,33 @@ contents:
     dst: /usr/share/fish/vendor_completions.d/smith.fish
   - src: README.md
     dst: /usr/share/doc/smith-cli/README.md
+    packager: deb
   - src: CHANGELOG.md
     dst: /usr/share/doc/smith-cli/CHANGELOG.md
+    packager: deb
   - src: completions/_smith
     dst: /usr/share/zsh/vendor-completions/_smith
     packager: deb
   - src: LICENSE
     dst: /usr/share/doc/smith-cli/copyright
     packager: deb
+  - src: lintian-overrides
+    dst: /usr/share/lintian/overrides/smith-cli
+    packager: deb
+  - dst: /usr/share/doc/smith-cli
+    type: dir
+    packager: rpm
+  - dst: /usr/share/licenses/smith-cli
+    type: dir
+    packager: rpm
+  - src: README.md
+    dst: /usr/share/doc/smith-cli/README.md
+    type: doc
+    packager: rpm
+  - src: CHANGELOG.md
+    dst: /usr/share/doc/smith-cli/CHANGELOG.md
+    type: doc
+    packager: rpm
   - src: completions/_smith
     dst: /usr/share/zsh/site-functions/_smith
     packager: rpm
