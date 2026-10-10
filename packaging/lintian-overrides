@@ -1,0 +1,2 @@
+smith-cli: statically-linked-binary [usr/bin/smith]
+smith-cli: shared-library-lacks-prerequisites [usr/bin/smith]

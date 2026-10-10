@@ -21,6 +21,7 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+    if (target.result.os.tag == .linux) exe.pie = true;
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -29,7 +30,9 @@ pub fn build(b: *std.Build) void {
     b.step("run", "Run smith").dependOn(&run_cmd.step);
 
     const filters = b.option([]const []const u8, "test-filter", "Run only the tests whose name contains this") orelse &.{};
-    const tests = b.addRunArtifact(b.addTest(.{ .root_module = exe.root_module, .filters = filters }));
+    const unit_tests = b.addTest(.{ .root_module = exe.root_module, .filters = filters });
+    unit_tests.pie = exe.pie;
+    const tests = b.addRunArtifact(unit_tests);
     b.step("test", "Run unit tests").dependOn(&tests.step);
 
     // kcov cannot map the self-hosted backend's debug info to the sources.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Release assets into dist/: archives for Linux (static musl) and macOS, x86_64 and aarch64, .deb packages, and the source tarball"
+#MISE description="Release assets into dist/: archives for Linux (static musl) and macOS, x86_64 and aarch64, .deb and .rpm packages, and the source tarball"
 set -euo pipefail
 
 version="$(sed -n 's/^    \.version = "\([^"]*\)",$/\1/p' build.zig.zon)"
@@ -27,20 +27,22 @@ for target in "${targets[@]}"; do
   tar -C dist -czf "dist/${name}.tar.gz" "${name}"
   rm -rf "dist/${name}"
   case "${target}" in
-    x86_64-linux-musl) deb_arch=amd64 ;;
-    aarch64-linux-musl) deb_arch=arm64 ;;
+    x86_64-linux-musl) arch=amd64 ;;
+    aarch64-linux-musl) arch=arm64 ;;
     *) continue ;;
   esac
-  stage="dist/build/deb-${deb_arch}"
+  stage="dist/build/package-${arch}"
   mkdir -p "${stage}"
-  cp -r "${prefix}/bin/smith" dist/completions README.md LICENSE CHANGELOG.md "${stage}/"
-  (cd "${stage}" && VERSION="${version}" DEB_ARCH="${deb_arch}" nfpm package --config ../../../packaging/nfpm.yaml --packager deb --target ../..)
+  cp -r "${prefix}/bin/smith" dist/completions README.md LICENSE CHANGELOG.md packaging/lintian-overrides "${stage}/"
+  for packager in deb rpm; do
+    (cd "${stage}" && VERSION="${version}" ARCH="${arch}" nfpm package --config ../../../packaging/nfpm.yaml --packager "${packager}" --target ../..)
+  done
 done
 git archive --format=tar.gz --prefix="smith-${version}/" -o "dist/smith-${version}.tar.gz" HEAD
 rm -rf dist/build dist/completions
 if command -v sha256sum >/dev/null; then
-  (cd dist && sha256sum -- *.tar.gz *.deb >SHA256SUMS)
+  (cd dist && sha256sum -- *.tar.gz *.deb *.rpm >SHA256SUMS)
 else
-  (cd dist && shasum -a 256 -- *.tar.gz *.deb >SHA256SUMS)
+  (cd dist && shasum -a 256 -- *.tar.gz *.deb *.rpm >SHA256SUMS)
 fi
 ls -l dist
