@@ -226,15 +226,23 @@ minor versions: when Arch moves on, the package cannot be built until smith
 does, which an AUR package that downloads its own Zig would avoid, at the
 price of running a compiler Arch did not build. It runs the test suite in
 `check()`. The `.rpm` comes from the same nfpm config, with Fedora's paths
-(`site-functions`, `%license`) where they differ from Debian's.
+(`site-functions`, `%license`, `%doc`) and a file dependency for
+`secret-tool` (its package is `libsecret` on Fedora, `secret-tool` on
+openSUSE) where they differ from Debian's. The release archives are not
+byte-reproducible, so the PKGBUILDs are rendered after a release from its
+published `SHA256SUMS` (`mise run aur`), not at build time.
 
 ## Static PIE on Linux (2026-10-09)
 
 The Linux binaries and the test binary are built with `pie = true`: a static
 PIE that relocates itself at start, so the kernel loads it at a random
-address, with full RELRO (`BIND_NOW`). A fixed load address would hand an
-attacker who found a memory-safety bug the location of every gadget; smith
-reads data from servers it treats as hostile. ReleaseSafe's checks make such
-a bug unlikely, and PIE costs nothing measurable. The release archives
-are not byte-reproducible, so the PKGBUILDs are rendered after a release
-from its published `SHA256SUMS` (`mise run aur`), not at build time.
+address. A fixed load address would hand an attacker who found a
+memory-safety bug the location of every gadget; smith reads data from
+servers it treats as hostile. ReleaseSafe's checks make such a bug unlikely.
+PIE moves the pointer tables (vtables included) from read-only `.rodata` to
+`.data.rel.ro`, which only a loader makes read-only again, and a static
+binary has none: `relro.protect`, first thing in `main`, finds the
+`PT_GNU_RELRO` segment through the auxiliary vector and `mprotect`s it, as
+glibc's loader would. Debug builds use Zig's own linker, which emits no
+RELRO segment, so its test runs in ReleaseSafe in the gate. The binary grows
+by about 1.4%.

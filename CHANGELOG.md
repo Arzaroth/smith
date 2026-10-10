@@ -13,8 +13,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- The Linux binaries are static PIE, loaded at a random address, with full
-  RELRO.
+- The Linux binaries are static PIE, loaded at a random address, and make
+  their relocated read-only data read-only again at start.
 - The Arch PKGBUILD `smith-cli` builds with Arch's own `zig` (0.16.x)
   instead of downloading one.
 

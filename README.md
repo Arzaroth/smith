@@ -50,6 +50,7 @@ on Fedora, openSUSE and other RPM systems an `.rpm` for x86_64 and aarch64
 ```sh
 sudo apt install ./smith-cli_<version>_amd64.deb
 sudo dnf install ./smith-cli-<version>-1.x86_64.rpm
+sudo zypper install --allow-unsigned-rpm ./smith-cli-<version>-1.x86_64.rpm
 ```
 
 For Arch, PKGBUILDs for `smith-cli` (built from source) and `smith-cli-bin`
