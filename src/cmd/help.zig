@@ -1,6 +1,6 @@
-//! `help`: a command's help, the whole reference in Markdown, and a skill
-//! file that teaches coding agents to drive smith. The reference is walked
-//! from the command tree, so it is as current as `--help`.
+//! `help`: a command's help, the whole reference in Markdown or as a man
+//! page, and a skill file that teaches coding agents to drive smith. The
+//! reference is walked from the command tree, so it is as current as `--help`.
 const std = @import("std");
 const Writer = std.Io.Writer;
 const cli = @import("../cli.zig");
@@ -8,8 +8,8 @@ const Ctx = @import("../Ctx.zig");
 
 pub const command: cli.Command = .{
     .name = "help",
-    .summary = "Show help for a command, or a topic: reference (every command and flag as Markdown), skill (a SKILL.md for coding agents), environment, exit-codes, formatting.",
-    .usage = "[<command>... | reference | skill | environment | exit-codes | formatting]",
+    .summary = "Show help for a command, or a topic: reference (every command and flag as Markdown), man (the same as a smith(1) man page), skill (a SKILL.md for coding agents), environment, exit-codes, formatting.",
+    .usage = "[<command>... | reference | man | skill | environment | exit-codes | formatting]",
     .max_args = 8,
     .run = run,
 };
@@ -91,6 +91,10 @@ fn run(ctx: *Ctx, args: *const cli.Args) !u8 {
         try reference(ctx.out, root);
         return 0;
     }
+    if (words.len == 1 and std.mem.eql(u8, words[0], "man")) {
+        try man(ctx.out, root);
+        return 0;
+    }
     if (words.len == 1 and std.mem.eql(u8, words[0], "skill")) {
         try skill(ctx.out);
         return 0;
@@ -148,6 +152,178 @@ fn commandSection(w: *Writer, root: *const cli.Command, cmd: *const cli.Command,
         if (f.value) |v| try w.print(" {s}", .{v});
         try w.print("`: {s}\n", .{f.help});
     };
+}
+
+fn man(w: *Writer, root: *const cli.Command) !void {
+    try w.print(".TH SMITH 1 \"\" \"smith {s}\" \"User Commands\"\n.SH NAME\nsmith \\- ", .{@import("../app.zig").version});
+    const name = std.mem.trimEnd(u8, root.summary, ".");
+    try w.writeByte(std.ascii.toLower(name[0]));
+    try roff(w, name[1..]);
+    try w.writeAll(
+        \\
+        \\.SH SYNOPSIS
+        \\\fBsmith\fR \fIcommand\fR [\fIsubcommand\fR] [\fIarguments\fR] [\fIflags\fR]
+        \\.SH DESCRIPTION
+        \\\fBsmith\fR works with Forgejo repositories, issues, pull requests,
+        \\releases and Actions runs from the terminal, with the commands and flags
+        \\of GitHub's \fBgh\fR.
+        \\\fBsmith help reference\fR prints this page as Markdown.
+        \\
+    );
+    var items = std.mem.splitSequence(u8, conventions, "\n- ");
+    while (items.next()) |item| {
+        try w.writeAll(".IP \\(bu 2\n");
+        try roff(w, std.mem.trim(u8, std.mem.trimStart(u8, item, "- "), "\n"));
+        try w.writeByte('\n');
+    }
+    try w.writeAll(".SH OPTIONS\n");
+    try flagItems(w, root.flags);
+    try w.writeAll(".TP\n\\fB\\-h\\fR, \\fB\\-\\-help\\fR\nShow help for any command\n.SH COMMANDS\n");
+    var buffer: [8]*const cli.Command = undefined;
+    var path: std.ArrayList(*const cli.Command) = .initBuffer(&buffer);
+    for (root.subs) |*sub| try manCommand(w, root, sub, &path);
+    try w.writeAll(".SH FORMATTING\n");
+    var paragraphs = std.mem.splitSequence(u8, std.mem.trimEnd(u8, formatting, "\n"), "\n\n");
+    while (paragraphs.next()) |p| {
+        if (p[0] == ' ') {
+            try w.writeAll(".PP\n.nf\n");
+            try roffVerbatim(w, p);
+            try w.writeAll("\n.fi\n");
+        } else {
+            try w.writeAll(".PP\n");
+            try roff(w, p);
+            try w.writeByte('\n');
+        }
+    }
+    try w.writeAll(".SH EXIT STATUS\n");
+    for (exit_codes) |e| {
+        try w.print(".TP\n\\fB{s}\\fR\n", .{e[0]});
+        try roff(w, e[1]);
+        try w.writeByte('\n');
+    }
+    try w.writeAll(".SH ENVIRONMENT\n");
+    for (environment) |e| {
+        try w.writeAll(".TP\n\\fB");
+        try roff(w, e[0]);
+        try w.writeAll("\\fR\n");
+        try roff(w, e[1]);
+        try w.writeByte('\n');
+    }
+    try w.writeAll(
+        \\.SH FILES
+        \\.TP
+        \\\fI$SMITH_CONFIG_DIR/hosts.zon\fR
+        \\The hosts and their logins, readable by you alone; tokens stay in the
+        \\system keyring when there is one.
+        \\The directory defaults to \fI$XDG_CONFIG_HOME/smith\fR, then
+        \\\fI~/.config/smith\fR.
+        \\.TP
+        \\\fI$SMITH_CONFIG_DIR/config.zon\fR
+        \\Preferences (\fBsmith config\fR) and aliases (\fBsmith alias\fR).
+        \\.SH SEE ALSO
+        \\\fBgit\fR(1), \fBgh\fR(1)
+        \\
+    );
+}
+
+fn manCommand(w: *Writer, root: *const cli.Command, cmd: *const cli.Command, path: *std.ArrayList(*const cli.Command)) !void {
+    path.appendAssumeCapacity(cmd);
+    defer _ = path.pop();
+    try w.print(".SS \"{s}", .{root.name});
+    for (path.items) |c| try w.print(" {s}", .{c.name});
+    try w.writeAll("\"\n");
+    try roff(w, cmd.summary);
+    try w.writeByte('\n');
+    if (cmd.subs.len > 0) {
+        for (cmd.subs) |*sub| try manCommand(w, root, sub, path);
+        return;
+    }
+    try w.print(".PP\n\\fB{s}", .{root.name});
+    for (path.items) |c| try w.print(" {s}", .{c.name});
+    try w.writeAll("\\fR");
+    if (cmd.usage.len > 0) {
+        try w.writeByte(' ');
+        try roff(w, cmd.usage);
+    }
+    try w.writeAll(" [flags]\n");
+    try flagItems(w, cmd.flags);
+    try flagItems(w, cli.implicitFlags(cmd));
+}
+
+fn flagItems(w: *Writer, flags: []const cli.Flag) !void {
+    for (flags) |f| {
+        try w.writeAll(".TP\n");
+        if (f.short) |s| try w.print("\\fB\\-{c}\\fR, ", .{s});
+        try w.writeAll("\\fB\\-\\-");
+        try roff(w, f.long);
+        try w.writeAll("\\fR");
+        if (f.value) |v| {
+            try w.writeAll(" \\fI");
+            try roff(w, v);
+            try w.writeAll("\\fR");
+        }
+        try w.writeByte('\n');
+        try roff(w, f.help);
+        try w.writeByte('\n');
+    }
+}
+
+/// Roff text from the help topics. Filled text reads their Markdown
+/// (`code` and **strong** in bold) and unindents continuation lines;
+/// verbatim text is kept as written.
+fn roff(w: *Writer, text: []const u8) !void {
+    return roffText(w, text, true);
+}
+
+fn roffVerbatim(w: *Writer, text: []const u8) !void {
+    return roffText(w, text, false);
+}
+
+fn roffText(w: *Writer, text: []const u8, filled: bool) !void {
+    var bold = false;
+    var line_start = true;
+    var i: usize = 0;
+    while (i < text.len) : (i += 1) {
+        const c = text[i];
+        if (line_start) {
+            if (filled and c == ' ') continue;
+            if (c == '.' or c == '\'') try w.writeAll("\\&");
+            line_start = false;
+        }
+        if (filled and (c == '`' or (c == '*' and i + 1 < text.len and text[i + 1] == '*'))) {
+            if (c == '*') i += 1;
+            bold = !bold;
+            try w.writeAll(if (bold) "\\fB" else "\\fR");
+            continue;
+        }
+        switch (c) {
+            '\\' => try w.writeAll("\\e"),
+            '-' => try w.writeAll("\\-"),
+            '\n' => {
+                try w.writeByte(c);
+                line_start = true;
+            },
+            0x80...0xff => {
+                const len = std.unicode.utf8ByteSequenceLength(c) catch 1;
+                const end = @min(i + len, text.len);
+                const cp = std.unicode.utf8Decode(text[i..end]) catch std.unicode.replacement_character;
+                try w.print("\\[u{X:0>4}]", .{cp});
+                i = end - 1;
+            },
+            else => try w.writeByte(c),
+        }
+    }
+    if (bold) try w.writeAll("\\fR");
+}
+
+test roff {
+    var buf: [256]u8 = undefined;
+    var w: Writer = .fixed(&buf);
+    try roff(&w, "a `x-y` and **b**\n  .c 'd\n'e \\ $1… `open");
+    try std.testing.expectEqualStrings("a \\fBx\\-y\\fR and \\fBb\\fR\n\\&.c 'd\n\\&'e \\e $1\\[u2026] \\fBopen\\fR", w.buffered());
+    w = .fixed(&buf);
+    try roffVerbatim(&w, "  `x` -y\n.z");
+    try std.testing.expectEqualStrings("  `x` \\-y\n\\&.z", w.buffered());
 }
 
 fn skill(w: *Writer) !void {
