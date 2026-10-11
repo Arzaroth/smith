@@ -8,7 +8,7 @@ const Ctx = @import("../Ctx.zig");
 
 pub const command: cli.Command = .{
     .name = "help",
-    .summary = "Show help for a command, or a topic: reference (every command and flag as Markdown), man (the same as a smith(1) man page), skill (a SKILL.md for coding agents), environment, exit-codes, formatting.",
+    .summary = "Show help for a command, or a topic: reference (every command and flag as Markdown), man (the same as the smith(1) man page, in roff: `smith help man | man -l -`), skill (a SKILL.md for coding agents), environment, exit-codes, formatting.",
     .usage = "[<command>... | reference | man | skill | environment | exit-codes | formatting]",
     .max_args = 8,
     .run = run,
@@ -155,7 +155,7 @@ fn commandSection(w: *Writer, root: *const cli.Command, cmd: *const cli.Command,
 }
 
 fn man(w: *Writer, root: *const cli.Command) !void {
-    try w.print(".TH SMITH 1 \"\" \"smith {s}\" \"User Commands\"\n.SH NAME\nsmith \\- ", .{@import("../app.zig").version});
+    try w.print(".TH SMITH 1 \"\" \"smith {s}\" \"User Commands\"\n.nh\n.SH NAME\nsmith \\- ", .{@import("../app.zig").version});
     const name = std.mem.trimEnd(u8, root.summary, ".");
     try w.writeByte(std.ascii.toLower(name[0]));
     try roff(w, name[1..]);
@@ -167,7 +167,7 @@ fn man(w: *Writer, root: *const cli.Command) !void {
         \\\fBsmith\fR works with Forgejo repositories, issues, pull requests,
         \\releases and Actions runs from the terminal, with the commands and flags
         \\of GitHub's \fBgh\fR.
-        \\\fBsmith help reference\fR prints this page as Markdown.
+        \\\fBsmith help reference\fR prints the commands and flags as Markdown.
         \\
     );
     var items = std.mem.splitSequence(u8, conventions, "\n- ");
@@ -178,7 +178,13 @@ fn man(w: *Writer, root: *const cli.Command) !void {
     }
     try w.writeAll(".SH OPTIONS\n");
     try flagItems(w, root.flags);
-    try w.writeAll(".TP\n\\fB\\-h\\fR, \\fB\\-\\-help\\fR\nShow help for any command\n.SH COMMANDS\n");
+    try w.writeAll(".TP\n\\fB\\-h\\fR, \\fB\\-\\-help\\fR\nShow help for a command (\\fBconfig get\\fR and \\fBconfig set\\fR take \\fB\\-h\\fR for \\fB\\-\\-host\\fR)\n.SH EXIT STATUS\n");
+    for (exit_codes) |e| {
+        try w.print(".TP\n\\fB{s}\\fR\n", .{e[0]});
+        try roff(w, e[1]);
+        try w.writeByte('\n');
+    }
+    try w.writeAll(".SH COMMANDS\n");
     var buffer: [8]*const cli.Command = undefined;
     var path: std.ArrayList(*const cli.Command) = .initBuffer(&buffer);
     for (root.subs) |*sub| try manCommand(w, root, sub, &path);
@@ -194,12 +200,6 @@ fn man(w: *Writer, root: *const cli.Command) !void {
             try roff(w, p);
             try w.writeByte('\n');
         }
-    }
-    try w.writeAll(".SH EXIT STATUS\n");
-    for (exit_codes) |e| {
-        try w.print(".TP\n\\fB{s}\\fR\n", .{e[0]});
-        try roff(w, e[1]);
-        try w.writeByte('\n');
     }
     try w.writeAll(".SH ENVIRONMENT\n");
     for (environment) |e| {
@@ -229,8 +229,8 @@ fn man(w: *Writer, root: *const cli.Command) !void {
 fn manCommand(w: *Writer, root: *const cli.Command, cmd: *const cli.Command, path: *std.ArrayList(*const cli.Command)) !void {
     path.appendAssumeCapacity(cmd);
     defer _ = path.pop();
-    try w.print(".SS \"{s}", .{root.name});
-    for (path.items) |c| try w.print(" {s}", .{c.name});
+    try w.writeAll(".SS \"");
+    try commandName(w, root, path.items);
     try w.writeAll("\"\n");
     try roff(w, cmd.summary);
     try w.writeByte('\n');
@@ -238,8 +238,8 @@ fn manCommand(w: *Writer, root: *const cli.Command, cmd: *const cli.Command, pat
         for (cmd.subs) |*sub| try manCommand(w, root, sub, path);
         return;
     }
-    try w.print(".PP\n\\fB{s}", .{root.name});
-    for (path.items) |c| try w.print(" {s}", .{c.name});
+    try w.writeAll(".PP\n\\fB");
+    try commandName(w, root, path.items);
     try w.writeAll("\\fR");
     if (cmd.usage.len > 0) {
         try w.writeByte(' ');
@@ -248,6 +248,14 @@ fn manCommand(w: *Writer, root: *const cli.Command, cmd: *const cli.Command, pat
     try w.writeAll(" [flags]\n");
     try flagItems(w, cmd.flags);
     try flagItems(w, cli.implicitFlags(cmd));
+}
+
+fn commandName(w: *Writer, root: *const cli.Command, path: []const *const cli.Command) !void {
+    try roff(w, root.name);
+    for (path) |c| {
+        try w.writeByte(' ');
+        try roff(w, c.name);
+    }
 }
 
 fn flagItems(w: *Writer, flags: []const cli.Flag) !void {
@@ -282,11 +290,13 @@ fn roffVerbatim(w: *Writer, text: []const u8) !void {
 fn roffText(w: *Writer, text: []const u8, filled: bool) !void {
     var bold = false;
     var line_start = true;
+    var indent = false;
     var i: usize = 0;
     while (i < text.len) : (i += 1) {
         const c = text[i];
+        if (filled and indent and c == ' ') continue;
+        indent = false;
         if (line_start) {
-            if (filled and c == ' ') continue;
             if (c == '.' or c == '\'') try w.writeAll("\\&");
             line_start = false;
         }
@@ -302,13 +312,13 @@ fn roffText(w: *Writer, text: []const u8, filled: bool) !void {
             '\n' => {
                 try w.writeByte(c);
                 line_start = true;
+                indent = true;
             },
             0x80...0xff => {
                 const len = std.unicode.utf8ByteSequenceLength(c) catch 1;
-                const end = @min(i + len, text.len);
-                const cp = std.unicode.utf8Decode(text[i..end]) catch std.unicode.replacement_character;
-                try w.print("\\[u{X:0>4}]", .{cp});
-                i = end - 1;
+                const cp = if (len > 1 and i + len <= text.len) std.unicode.utf8Decode(text[i..][0..len]) catch null else null;
+                try w.print("\\[u{X:0>4}]", .{cp orelse std.unicode.replacement_character});
+                if (cp != null) i += len - 1;
             },
             else => try w.writeByte(c),
         }
@@ -321,6 +331,9 @@ test roff {
     var w: Writer = .fixed(&buf);
     try roff(&w, "a `x-y` and **b**\n  .c 'd\n'e \\ $1… `open");
     try std.testing.expectEqualStrings("a \\fBx\\-y\\fR and \\fBb\\fR\n\\&.c 'd\n\\&'e \\e $1\\[u2026] \\fBopen\\fR", w.buffered());
+    w = .fixed(&buf);
+    try roff(&w, " a-b \xE2z \x85 \xE2\x80");
+    try std.testing.expectEqualStrings(" a\\-b \\[uFFFD]z \\[uFFFD] \\[uFFFD]\\[uFFFD]", w.buffered());
     w = .fixed(&buf);
     try roffVerbatim(&w, "  `x` -y\n.z");
     try std.testing.expectEqualStrings("  `x` \\-y\n\\&.z", w.buffered());
