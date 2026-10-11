@@ -25,6 +25,7 @@ build() {
   for shell in bash zsh fish; do
     "${srcdir}/out/bin/smith" completion "${shell}" >"${srcdir}/smith.${shell}"
   done
+  "${srcdir}/out/bin/smith" help man >"${srcdir}/smith.1"
 }
 
 check() {
@@ -37,6 +38,7 @@ package() {
   install -Dm644 "${srcdir}/smith.bash" "${pkgdir}/usr/share/bash-completion/completions/smith"
   install -Dm644 "${srcdir}/smith.zsh" "${pkgdir}/usr/share/zsh/site-functions/_smith"
   install -Dm644 "${srcdir}/smith.fish" "${pkgdir}/usr/share/fish/vendor_completions.d/smith.fish"
+  install -Dm644 "${srcdir}/smith.1" "${pkgdir}/usr/share/man/man1/smith.1"
   cd "smith-${pkgver}"
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
   install -Dm644 README.md CHANGELOG.md -t "${pkgdir}/usr/share/doc/${pkgname}"

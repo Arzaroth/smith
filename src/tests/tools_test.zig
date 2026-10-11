@@ -228,6 +228,39 @@ test "help reference has every command and flag, help skill a skill file, help <
     try h.expectErr("unknown command \"frobnicate\"");
 }
 
+test "help man is the reference as a smith(1) page" {
+    var h: Harness = undefined;
+    try h.init(&.{}, .{});
+    defer h.deinit();
+    try h.expectRun(0, &.{ "help", "man" });
+    const out = h.stdout();
+    try std.testing.expect(std.mem.startsWith(u8, out, ".TH SMITH 1 \"\" \"smith "));
+    try h.expectOut("\"User Commands\"\n.nh\n");
+    try h.expectOut("\n.SH NAME\nsmith \\- work with Forgejo from the command line\n");
+    try h.expectOut("\n.IP \\(bu 2\n\\fBRepository\\fR: inside a clone");
+    try h.expectOut("\n.TP\n\\fB\\-L\\fR, \\fB\\-\\-limit\\fR \\fIint\\fR\nMaximum number");
+    try h.expectOut("\n.PP\n\\fBsmith pr checks\\fR [<number> | <url> | <branch>] [flags]\n");
+    try h.expectOut("\n.PP\n.nf\n  \\-\\-json ");
+    try h.expectOut("format them with a Go text/template\n.fi\n.PP\nTemplates: ");
+    try h.expectOut("\n.TP\n\\fB\\-q\\fR, \\fB\\-\\-jq\\fR \\fIexpression\\fR\n");
+    try h.expectOut("\n.SS \"smith repo set\\-default\"\n");
+    try std.testing.expect(std.mem.indexOf(u8, out, ".SH EXIT STATUS").? < std.mem.indexOf(u8, out, ".SH COMMANDS").?);
+    try h.expectOut("\n.TP\n\\fB4\\fR\nAuthentication failed");
+    try h.expectOut("\n.TP\n\\fBSMITH_TOKEN\\fR\n");
+    try h.expectOut("\n.SH FILES\n");
+    const app = @import("../app.zig");
+    const a = h.arena.allocator();
+    for (app.root.subs) |group| {
+        const heading = try std.fmt.allocPrint(a, "\n.SS \"smith {s}\"\n", .{group.name});
+        try std.testing.expect(std.mem.indexOf(u8, out, try std.mem.replaceOwned(u8, a, heading, "-", "\\-")) != null);
+        for (group.subs) |sub| {
+            const sub_heading = try std.fmt.allocPrint(a, "\n.SS \"smith {s} {s}\"\n", .{ group.name, sub.name });
+            try std.testing.expect(std.mem.indexOf(u8, out, try std.mem.replaceOwned(u8, a, sub_heading, "-", "\\-")) != null);
+        }
+    }
+    for (out) |c| try std.testing.expect(c < 0x80);
+}
+
 test "api takes --template and --jq, and refuses them on a body that is not JSON" {
     var h: Harness = undefined;
     try h.init(&.{

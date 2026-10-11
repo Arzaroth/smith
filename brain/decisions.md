@@ -231,6 +231,16 @@ price of running a compiler Arch did not build. It runs the test suite in
 openSUSE) where they differ from Debian's. The release archives are not
 byte-reproducible, so the PKGBUILDs are rendered after a release from its
 published `SHA256SUMS` (`mise run aur`), not at build time.
+Both package formats carry a changelog converted from `CHANGELOG.md`
+(`packaging/changelog.awk`, one entry per bullet; it stops on a heading
+without a date, a release without bullets or a line it cannot place, so
+the gate's `packaging-check` catches a `CHANGELOG.md` it would misread). nfpm builds the rpm's
+`%changelog` from it, but its Debian rendering neither wraps lines nor
+uses the name lintian wants for a native package (`changelog.gz`), so the
+`.deb` ships a `changelog.gz` the script writes itself and `mise run dist`
+gives nfpm the changelog for the rpm only. The man page is generated
+(`smith help man`) like the completions, not written by hand, so it lists
+the same commands and flags as `--help`.
 
 ## Static PIE on Linux (2026-10-09)
 

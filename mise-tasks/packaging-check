@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Lint the PKGBUILD templates and check the Zig they build with against .mise.toml's"
+#MISE description="Lint the PKGBUILD templates, check the Zig they build with against .mise.toml's, and the package changelogs against CHANGELOG.md"
 set -euo pipefail
 
 shellcheck -s bash -e SC2034,SC2154,SC2164 packaging/arch/*/PKGBUILD.in
@@ -9,5 +9,12 @@ want="makedepends=('zig>=${major}.${minor}.0' 'zig<${major}.$((minor + 1)).0')"
 pkgbuild=packaging/arch/smith-cli/PKGBUILD.in
 if ! grep -qxF "${want}" "${pkgbuild}"; then
   echo "${pkgbuild} must build with the Zig .mise.toml pins: ${want}" >&2
+  exit 1
+fi
+releases="$(grep -c '^## \[[0-9]' CHANGELOG.md)"
+deb="$(awk -v format=deb -v name=smith-cli -v packager=p -f packaging/changelog.awk CHANGELOG.md | grep -c '^ -- ')"
+chglog="$(awk -v format=chglog -v packager=p -f packaging/changelog.awk CHANGELOG.md | grep -c '^- semver: ')"
+if [[ "${deb}" != "${releases}" || "${chglog}" != "${releases}" ]]; then
+  echo "packaging/changelog.awk found ${deb} (deb) and ${chglog} (rpm) of CHANGELOG.md's ${releases} releases" >&2
   exit 1
 fi
