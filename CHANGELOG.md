@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-11
+
 ### Added
 
 - A man page, `smith(1)`: `smith help man` prints it, the `.deb` and `.rpm`
