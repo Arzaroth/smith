@@ -23,12 +23,14 @@ completes subcommands and the flags of the command typed so far; zsh loads
 the bash script through `bashcompinit`; fish uses a helper that works out the
 command path from the tokens typed.
 
-**`help [<command>... | reference | skill | environment | exit-codes |
+**`help [<command>... | reference | man | skill | environment | exit-codes |
 formatting]`**: `help pr checks` is `pr checks --help`; the last three
 are gh's help topics, each a section of the reference. `help reference` writes the whole command tree as
 Markdown (conventions, exit codes, environment, then every command with its
 usage and flags), walked from `app.root` like completion, so it cannot fall
-behind the code. `help skill` writes a `SKILL.md` that teaches a coding
+behind the code. `help man` writes the same as the `smith(1)` man page
+(roff, ASCII only: the Markdown of the topics becomes bold, other
+characters `\[uXXXX]`), which the release archives and packages ship. `help skill` writes a `SKILL.md` that teaches a coding
 agent to drive smith: the non-interactive flags, structured output, exit
 codes, asking before `--yes`, and to read `help reference` rather than
 guess from gh. Install it with

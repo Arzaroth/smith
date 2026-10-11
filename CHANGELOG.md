@@ -6,6 +6,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- A man page, `smith(1)`: `smith help man` prints it, the `.deb` and `.rpm`
+  install it and the release archives carry `smith.1`.
+- The `.deb` and `.rpm` have a changelog (`changelog.gz`, `rpm -q
+  --changelog smith-cli`) made from `CHANGELOG.md`.
+
 ## [0.6.0] - 2026-10-10
 
 ### Added

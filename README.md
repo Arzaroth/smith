@@ -45,7 +45,7 @@ binary; `smith auth logout` first removes its tokens from the keyring, and
 
 On Debian and Ubuntu, each release has a `.deb` for amd64 and arm64, and
 on Fedora, openSUSE and other RPM systems an `.rpm` for x86_64 and aarch64
-(the same static binary, with shell completions):
+(the same static binary, with shell completions and the man page):
 
 ```sh
 sudo apt install ./smith-cli_<version>_amd64.deb
@@ -205,6 +205,16 @@ smith help skill > ~/.claude/skills/smith/SKILL.md
 smith completion bash > ~/.local/share/bash-completion/completions/smith
 smith completion zsh > "${fpath[1]}/_smith"
 smith completion fish > ~/.config/fish/completions/smith.fish
+```
+
+## Man page
+
+The packages install `smith(1)` and the release archives carry `smith.1`.
+`smith help man` prints it anywhere:
+
+```sh
+mkdir -p ~/.local/share/man/man1
+smith help man > ~/.local/share/man/man1/smith.1
 ```
 
 ## Building
