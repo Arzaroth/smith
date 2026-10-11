@@ -49,6 +49,12 @@ contents:
   - src: LICENSE
     dst: /usr/share/doc/smith-cli/copyright
     packager: deb
+  - src: smith.1.gz
+    dst: /usr/share/man/man1/smith.1.gz
+    packager: deb
+  - src: changelog.gz
+    dst: /usr/share/doc/smith-cli/changelog.gz
+    packager: deb
   - src: lintian-overrides
     dst: /usr/share/lintian/overrides/smith-cli
     packager: deb
@@ -64,6 +70,10 @@ contents:
     packager: rpm
   - src: CHANGELOG.md
     dst: /usr/share/doc/smith-cli/CHANGELOG.md
+    type: doc
+    packager: rpm
+  - src: smith.1.gz
+    dst: /usr/share/man/man1/smith.1.gz
     type: doc
     packager: rpm
   - src: completions/_smith

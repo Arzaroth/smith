@@ -9,21 +9,27 @@ if [[ -n "$(git status --porcelain)" ]]; then
   echo "warning: uncommitted changes are in the binaries but not in the source tarball, which is cut from HEAD" >&2
 fi
 rm -rf dist
-mkdir -p dist/completions
+mkdir -p dist/share/completions
 zig build -Doptimize=ReleaseSafe --prefix dist/build/host
-for shell in bash zsh fish; do
-  dist/build/host/bin/smith completion "${shell}" >"dist/completions/${shell}"
-done
-mv dist/completions/bash dist/completions/smith.bash
-mv dist/completions/zsh dist/completions/_smith
-mv dist/completions/fish dist/completions/smith.fish
+smith=dist/build/host/bin/smith
+"${smith}" completion bash >dist/share/completions/smith.bash
+"${smith}" completion zsh >dist/share/completions/_smith
+"${smith}" completion fish >dist/share/completions/smith.fish
+"${smith}" help man >dist/share/smith.1
+gzip -9nc dist/share/smith.1 >dist/share/smith.1.gz
+package="$(sed -n 's/^name: //p' packaging/nfpm.yaml)"
+maintainer="$(sed -n 's/^maintainer: //p' packaging/nfpm.yaml)"
+awk -v format=chglog -v packager="${maintainer}" -f packaging/changelog.awk CHANGELOG.md >dist/share/changelog.yaml
+awk -v format=deb -v name="${package}" -v packager="${maintainer}" -f packaging/changelog.awk CHANGELOG.md | gzip -9n >dist/share/changelog.gz
+cp packaging/nfpm.yaml dist/share/nfpm-deb.yaml
+{ cat packaging/nfpm.yaml; echo "changelog: changelog.yaml"; } >dist/share/nfpm-rpm.yaml
 
 for target in "${targets[@]}"; do
   prefix="dist/build/${target}"
   zig build -Doptimize=ReleaseSafe -Dtarget="${target}" --prefix "${prefix}"
   name="smith-${version}-${target}"
   mkdir -p "dist/${name}"
-  cp "${prefix}/bin/smith" README.md LICENSE CHANGELOG.md "dist/${name}/"
+  cp "${prefix}/bin/smith" dist/share/smith.1 README.md LICENSE CHANGELOG.md "dist/${name}/"
   tar -C dist -czf "dist/${name}.tar.gz" "${name}"
   rm -rf "dist/${name}"
   case "${target}" in
@@ -33,13 +39,13 @@ for target in "${targets[@]}"; do
   esac
   stage="dist/build/package-${arch}"
   mkdir -p "${stage}"
-  cp -r "${prefix}/bin/smith" dist/completions README.md LICENSE CHANGELOG.md packaging/lintian-overrides "${stage}/"
+  cp -r "${prefix}/bin/smith" dist/share/. README.md LICENSE CHANGELOG.md packaging/lintian-overrides "${stage}/"
   for packager in deb rpm; do
-    (cd "${stage}" && VERSION="${version}" ARCH="${arch}" nfpm package --config ../../../packaging/nfpm.yaml --packager "${packager}" --target ../..)
+    (cd "${stage}" && VERSION="${version}" ARCH="${arch}" nfpm package --config "nfpm-${packager}.yaml" --packager "${packager}" --target ../..)
   done
 done
 git archive --format=tar.gz --prefix="smith-${version}/" -o "dist/smith-${version}.tar.gz" HEAD
-rm -rf dist/build dist/completions
+rm -rf dist/build dist/share
 if command -v sha256sum >/dev/null; then
   (cd dist && sha256sum -- *.tar.gz *.deb *.rpm >SHA256SUMS)
 else
