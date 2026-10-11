@@ -31,16 +31,22 @@ function flush() {
     print wrap(note, "  * ", "    ")
   } else {
     note = substr(wrap(note, "- ", "  "), 3)
-    gsub(/\\/, "\\\\", note)
-    gsub(/"/, "\\\"", note)
-    gsub(/\n/, "\\n", note)
-    print "    - note: \"" note "\""
+    gsub(/\n/, "\n        ", note)
+    print "    - note: |-\n        " note
   }
   note = ""
+  notes++
+}
+
+function fail(why) {
+  printf "%s:%d: %s\n", FILENAME, NR, why > "/dev/stderr"
+  failed = 1
+  exit 1
 }
 
 function close_release() {
   flush()
+  if (release && !notes) fail("release " version " has no bullets")
   if (format == "deb" && trailer != "") print "\n" trailer
   trailer = ""
 }
@@ -51,6 +57,8 @@ function close_release() {
   if (!release) next
   version = $2
   gsub(/\[|\]/, "", version)
+  if ($3 != "-" || $4 !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) fail("expected ## [x.y.z] - YYYY-MM-DD")
+  notes = 0
   split($4, ymd, "-")
   if (format == "deb") {
     if (entries++) print ""
@@ -79,6 +87,13 @@ function close_release() {
   next
 }
 
-{ flush() }
+/^(### .*)?$/ {
+  flush()
+  next
+}
 
-END { close_release() }
+{ fail("not a bullet, a continuation line or a ### heading") }
+
+END {
+  if (!failed) close_release()
+}
