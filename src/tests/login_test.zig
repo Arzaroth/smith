@@ -80,7 +80,7 @@ test "password login asks for the 2FA code when needed and stores the token it c
     try std.testing.expectEqualStrings("Basic bWU6aHVudGVyMg==", posts[0].authorization.?);
     try std.testing.expect(posts[0].header("X-Forgejo-OTP") == null);
     try std.testing.expectEqualStrings("123456", posts[1].header("X-Forgejo-OTP").?);
-    try std.testing.expect(std.mem.indexOf(u8, posts[1].body, "\"scopes\":[\"write:repository\",\"write:issue\",\"read:user\",\"read:organization\",\"write:user\"]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, posts[1].body, "\"scopes\":[\"write:repository\",\"write:issue\",\"read:user\",\"read:organization\"]") != null);
 
     const cfg = try readConfig(&h);
     try std.testing.expectEqualStrings("minted", cfg.hosts[0].token.?);
@@ -116,6 +116,37 @@ test "password login with an email finds the username before creating the token"
     const cfg = try readConfig(&h);
     try std.testing.expectEqualStrings("minted", cfg.hosts[0].token.?);
     try std.testing.expectEqualStrings("me", cfg.hosts[0].user.?);
+}
+
+test "password login with an email: a wrong password, a refused code, a server that names no user" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/forgejo/v1/version", .body = fx.version },
+        .{ .path = "/api/v1/user", .status = 401, .body = "{\"message\":\"user's password is invalid [uid: 1, name: me]\"}", .times = 1 },
+        .{ .path = "/api/v1/user", .status = 401, .body = "{\"message\":\"Only signed in user is allowed to call APIs.\"}", .times = 2 },
+        .{ .path = "/api/v1/user", .body = "{\"login\":\"me@example.com\"}", .times = 1 },
+        .{ .path = "/api/v1/user", .body = "{}" },
+    }, .{ .config = false });
+    defer h.deinit();
+    const argv = &.{ "auth", "login", "--hostname", try host(&h), "--scheme", "http", "--password" };
+
+    interactive(&h, "me@example.com\nwrong\n");
+    try h.expectRun(1, argv);
+    try h.expectErr("wrong username or password");
+    try std.testing.expect(std.mem.indexOf(u8, h.stderr(), "Two-factor") == null);
+
+    interactive(&h, "me@example.com\nhunter2\n000000\n");
+    try h.expectRun(1, argv);
+    try h.expectErr("refused the two-factor code");
+
+    interactive(&h, "me@example.com\nhunter2\n");
+    try h.expectRun(1, argv);
+    try h.expectErr("gave \"me@example.com\" as the username for me@example.com");
+
+    interactive(&h, "me@example.com\nhunter2\n");
+    try h.expectRun(1, argv);
+    try h.expectErr("did not say which user me@example.com is");
+    try std.testing.expectEqual(@as(usize, 0), h.mock.count(.POST, "/api/v1/users/me/tokens"));
 }
 
 test "password login reports a wrong password without asking for a code" {

@@ -12,10 +12,8 @@ const types = @import("../types.zig");
 
 const hostname_flag: cli.Flag = .{ .long = "hostname", .value = "string", .help = "The Forgejo host, e.g. git.example.com" };
 
-/// Scopes of the token the password login creates; `write:user` only when
-/// git goes over SSH, to add the machine's key to the account.
+/// Scopes of the token the password login creates.
 const token_scopes = [_][]const u8{ "write:repository", "write:issue", "read:user", "read:organization" };
-const ssh_token_scopes = token_scopes ++ [_][]const u8{"write:user"};
 
 pub const command: cli.Command = .{
     .name = "auth",
@@ -35,6 +33,7 @@ pub const command: cli.Command = .{
                 .{ .long = "ssh-host", .value = "string", .help = "Hostname git uses over SSH, when it is not the web one" },
                 .{ .long = "scheme", .value = "https|http", .help = "Scheme of the web address (default https)" },
                 .{ .long = "insecure-storage", .help = "Keep the token in hosts.zon instead of the system keyring" },
+                .{ .long = "skip-ssh-key", .help = "Do not offer to add or generate an SSH key" },
             },
             .run = login,
         },
@@ -124,6 +123,7 @@ fn login(ctx: *Ctx, args: *const cli.Args) !u8 {
     else
         .password;
 
+    var password: ?Password = null;
     switch (route) {
         .token => {
             host.token = std.mem.trim(u8, try ctx.readStdin(), " \r\n\t");
@@ -131,7 +131,7 @@ fn login(ctx: *Ctx, args: *const cli.Args) !u8 {
             host.oauth_client_id = null;
         },
         .password => {
-            host = try loginWithPassword(ctx, host, args);
+            host = try loginWithPassword(ctx, host, args, &password);
             host.oauth_client_id = null;
         },
         .web => {
@@ -177,15 +177,33 @@ fn login(ctx: *Ctx, args: *const cli.Args) !u8 {
         try ctx.err.writeAll("- the token is in hosts.zon, readable only by you (no system keyring, or --insecure-storage)\n");
     }
     switch (host.git_protocol) {
-        .https => try offerGitSetup(ctx, host),
-        .ssh => try offerSshKey(ctx, &client, host),
+        .https => offerGitSetup(ctx, host) catch |e| switch (e) {
+            error.Reported => try ctx.err.print("! git is not set up for this login; run `smith auth setup-git --hostname {s}`\n", .{host.name}),
+            else => return e,
+        },
+        .ssh => if (!args.has("skip-ssh-key")) offerSshKey(ctx, &client, host, password) catch |e| switch (e) {
+            error.Reported => {},
+            else => return e,
+        },
     }
     return 0;
 }
 
+/// The basic credentials and two-factor code of a password login, kept for
+/// adding an SSH key: the token it creates cannot write to the account.
+const Password = struct { basic: []const u8, otp: ?[]const u8 };
+
+fn otpHeaders(ctx: *Ctx, otp: ?[]const u8) ![]const std.http.Header {
+    const code = otp orelse return &.{};
+    return ctx.alloc.dupe(std.http.Header, &.{
+        .{ .name = "X-Forgejo-OTP", .value = code },
+        .{ .name = "X-Gitea-OTP", .value = code },
+    });
+}
+
 /// Trades a username, password and, if the account has one, a TOTP code for
 /// an access token scoped to what smith needs.
-fn loginWithPassword(ctx: *Ctx, host: config.Host, args: *const cli.Args) !config.Host {
+fn loginWithPassword(ctx: *Ctx, host: config.Host, args: *const cli.Args, kept: *?Password) !config.Host {
     const user = args.get("user") orelse try ctx.prompt("Username:");
     if (user.len == 0) return ctx.fail("a username is required", .{});
     const password = try ctx.promptSecret("Password:");
@@ -195,16 +213,13 @@ fn loginWithPassword(ctx: *Ctx, host: config.Host, args: *const cli.Args) !confi
 
     const machine = std.posix.uname();
     const token_name = try std.fmt.allocPrint(ctx.alloc, "smith on {s} ({d})", .{ std.mem.sliceTo(&machine.nodename, 0), ctx.now });
-    const body = try std.json.Stringify.valueAlloc(ctx.alloc, .{ .name = token_name, .scopes = if (host.git_protocol == .ssh) &ssh_token_scopes else &token_scopes }, .{});
+    const body = try std.json.Stringify.valueAlloc(ctx.alloc, .{ .name = token_name, .scopes = token_scopes }, .{});
 
     var client: api.Client = .{ .ctx = ctx, .host = host, .base = try host.apiBase(ctx.alloc) };
     var name = user;
     var otp: ?[]const u8 = null;
     while (true) {
-        const headers: []const std.http.Header = if (otp) |code| &.{
-            .{ .name = "X-Forgejo-OTP", .value = code },
-            .{ .name = "X-Gitea-OTP", .value = code },
-        } else &.{};
+        const headers = try otpHeaders(ctx, otp);
         const by_email = std.mem.indexOfScalar(u8, name, '@') != null;
         const method: std.http.Method = if (by_email) .GET else .POST;
         const path = if (by_email) "/user" else try std.fmt.allocPrint(ctx.alloc, "/users/{s}/tokens", .{try api.escape(ctx.alloc, name)});
@@ -213,6 +228,7 @@ fn loginWithPassword(ctx: *Ctx, host: config.Host, args: *const cli.Args) !confi
             const User = struct { login: []const u8 };
             const u = std.json.parseFromSliceLeaky(User, ctx.alloc, r.body, .{ .ignore_unknown_fields = true }) catch
                 return ctx.fail("{s} did not say which user {s} is", .{ host.name, user });
+            if (std.mem.indexOfScalar(u8, u.login, '@') != null) return ctx.fail("{s} gave \"{s}\" as the username for {s}", .{ host.name, u.login, user });
             name = u.login;
             continue;
         }
@@ -223,6 +239,7 @@ fn loginWithPassword(ctx: *Ctx, host: config.Host, args: *const cli.Args) !confi
             var h = host;
             h.token = created.sha1;
             h.user = name;
+            kept.* = .{ .basic = basic, .otp = otp };
             return h;
         }
         if (r.status != 401 and r.status != 403) return client.failStatus(method, path, r);
@@ -441,8 +458,9 @@ fn setupGit(ctx: *Ctx, args: *const cli.Args) !u8 {
         } else try hosts.append(ctx.alloc, h);
     }
     if (hosts.items.len == 0) return ctx.fail("not logged in to any Forgejo host; run `smith auth login`", .{});
+    const helper = try helperCommand(ctx);
     for (hosts.items) |h| {
-        try configureGit(ctx, h);
+        try configureGit(ctx, h, helper);
         try ctx.err.print("✓ git uses smith's login for {s}\n", .{try h.webBase(ctx.alloc)});
     }
     return 0;
@@ -452,17 +470,34 @@ fn helperKey(ctx: *Ctx, h: config.Host) ![]const u8 {
     return std.fmt.allocPrint(ctx.alloc, "credential.{s}.helper", .{try h.webBase(ctx.alloc)});
 }
 
-fn configureGit(ctx: *Ctx, h: config.Host) !void {
-    const key = try helperKey(ctx, h);
+/// The helper git runs: smith by the name `PATH` finds it under when that
+/// is this binary (a symlink a package manager keeps across upgrades), else
+/// the binary's own path.
+fn helperCommand(ctx: *Ctx) ![]const u8 {
     const exe = std.process.executablePathAlloc(ctx.io, ctx.alloc) catch |e| return ctx.fail("cannot find smith's own path: {t}", .{e});
-    const helper = try std.fmt.allocPrint(ctx.alloc, "!{s} auth git-credential", .{try shellQuote(ctx.alloc, exe)});
+    const cwd = std.Io.Dir.cwd();
+    var dirs = std.mem.tokenizeScalar(u8, ctx.getenv("PATH") orelse "", ':');
+    const chosen = while (dirs.next()) |dir| {
+        if (!std.fs.path.isAbsolute(dir)) continue;
+        const candidate = try std.fs.path.join(ctx.alloc, &.{ dir, "smith" });
+        const real = cwd.realPathFileAlloc(ctx.io, candidate, ctx.alloc) catch continue;
+        if (std.mem.eql(u8, real, exe)) break candidate;
+    } else exe;
+    return std.fmt.allocPrint(ctx.alloc, "!{s} auth git-credential", .{try shellQuote(ctx.alloc, chosen)});
+}
+
+fn configureGit(ctx: *Ctx, h: config.Host, helper: []const u8) !void {
+    const key = try helperKey(ctx, h);
     try git.run(ctx, &.{ "config", "--global", "--replace-all", key, "" });
     try git.run(ctx, &.{ "config", "--global", "--add", key, helper });
 }
 
-fn gitConfigured(ctx: *Ctx, h: config.Host) !bool {
+/// Whether git already asks this very binary for the host's credentials.
+fn gitConfigured(ctx: *Ctx, h: config.Host, helper: []const u8) !bool {
     const helpers = try git.capture(ctx, &.{ "config", "--global", "--get-all", try helperKey(ctx, h) }) orelse return false;
-    return std.mem.indexOf(u8, helpers, " auth git-credential") != null;
+    var lines = std.mem.splitScalar(u8, helpers, '\n');
+    while (lines.next()) |line| if (std.mem.eql(u8, line, helper)) return true;
+    return false;
 }
 
 fn shellQuote(alloc: std.mem.Allocator, s: []const u8) ![]const u8 {
@@ -476,17 +511,18 @@ fn shellQuote(alloc: std.mem.Allocator, s: []const u8) ![]const u8 {
 
 /// After an HTTPS login: offers to make git use it, unless it already does.
 fn offerGitSetup(ctx: *Ctx, host: config.Host) !void {
-    if (try gitConfigured(ctx, host)) {
+    const later = "- run `smith auth setup-git --hostname {s}` so git uses this login over HTTPS\n";
+    const helper = try helperCommand(ctx);
+    if (try gitConfigured(ctx, host, helper)) {
         try ctx.err.writeAll("- git uses this login over HTTPS\n");
         return;
     }
-    if (!ctx.interactive()) {
-        try ctx.err.writeAll("- run `smith auth setup-git` so git uses this login over HTTPS\n");
+    if (!ctx.interactive() or !try askYes(ctx, "Make git use this login over HTTPS?")) {
+        try ctx.err.print(later, .{host.name});
         return;
     }
-    if (!try askYes(ctx, "Make git use this login over HTTPS?")) return;
-    try configureGit(ctx, host);
-    try ctx.err.writeAll("- git uses this login over HTTPS\n");
+    try configureGit(ctx, host, helper);
+    try ctx.err.writeAll("✓ Configured git to use this login over HTTPS\n");
 }
 
 /// A yes/no question answered yes by default; ending the input says no.
@@ -499,8 +535,12 @@ fn askYes(ctx: *Ctx, question: []const u8) !bool {
 /// with the username and token of an account smith holds for exactly that
 /// scheme and host; `store` and `erase` have nothing to keep or forget.
 fn gitCredential(ctx: *Ctx, args: *const cli.Args) !u8 {
+    const op = args.arg(0).?;
+    const get = std.mem.eql(u8, op, "get");
+    if (!get and !std.mem.eql(u8, op, "store") and !std.mem.eql(u8, op, "erase"))
+        return ctx.fail("\"{s}\" is not a credential operation (get, store or erase)", .{op});
     const input = try ctx.readStdin();
-    if (!std.mem.eql(u8, args.arg(0).?, "get")) return 0;
+    if (!get) return 0;
     var protocol: ?[]const u8 = null;
     var hostname: ?[]const u8 = null;
     var username: ?[]const u8 = null;
@@ -551,7 +591,7 @@ fn localKeys(ctx: *Ctx, ssh_dir: []const u8) ![]const LocalKey {
     defer dir.close(ctx.io);
     var it = dir.iterate();
     while (it.next(ctx.io) catch null) |entry| {
-        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".pub")) continue;
+        if (entry.kind == .directory or !std.mem.endsWith(u8, entry.name, ".pub") or std.mem.endsWith(u8, entry.name, "-cert.pub")) continue;
         const text = dir.readFileAlloc(ctx.io, entry.name, ctx.alloc, .limited(64 * 1024)) catch continue;
         var fields = std.mem.tokenizeAny(u8, text, " \t\r\n");
         if (fields.next() == null or fields.next() == null) continue;
@@ -565,25 +605,41 @@ fn localKeys(ctx: *Ctx, ssh_dir: []const u8) ![]const LocalKey {
     return keys.items;
 }
 
+/// Every public key on the account, or null when they cannot be read.
+fn accountKeys(ctx: *Ctx, client: *api.Client) !?[]const []const u8 {
+    const Remote = struct { key: []const u8 = "" };
+    const limit = client.host.page_size orelse 50;
+    var keys: std.ArrayList([]const u8) = .empty;
+    var page: u32 = 1;
+    while (page <= 100) : (page += 1) {
+        const path = try std.fmt.allocPrint(ctx.alloc, "/user/keys?page={d}&limit={d}", .{ page, limit });
+        const r = client.raw(.GET, path, .{}) catch |e| switch (e) {
+            error.Reported => return null,
+            else => return e,
+        };
+        if (!r.ok()) return null;
+        const batch = std.json.parseFromSliceLeaky([]const Remote, ctx.alloc, r.body, .{ .ignore_unknown_fields = true }) catch return null;
+        for (batch) |k| try keys.append(ctx.alloc, k.key);
+        if (batch.len < limit) break;
+    }
+    return keys.items;
+}
+
 /// After an SSH login on a terminal: when none of the machine's public keys
 /// is on the account, offers to add one, or to generate one when there is
 /// none, so the first clone does not end at "Permission denied (publickey)".
-fn offerSshKey(ctx: *Ctx, client: *api.Client, host: config.Host) !void {
+fn offerSshKey(ctx: *Ctx, client: *api.Client, host: config.Host, password: ?Password) !void {
     if (!ctx.interactive()) return;
     const home = ctx.getenv("HOME") orelse return;
     const ssh_dir = try std.fs.path.join(ctx.alloc, &.{ home, ".ssh" });
     const local = try localKeys(ctx, ssh_dir);
-    if (local.len == 0 and !ctx.onPath("ssh-keygen")) return;
+    const generated = try std.fs.path.join(ctx.alloc, &.{ ssh_dir, "id_ed25519" });
+    const can_generate = ctx.onPath("ssh-keygen") and !exists(ctx, generated);
+    if (local.len == 0 and !can_generate) return;
 
-    const r = client.raw(.GET, "/user/keys?limit=50", .{}) catch |e| switch (e) {
-        error.Reported => return,
-        else => return e,
-    };
-    if (!r.ok()) return;
-    const Remote = struct { key: []const u8 = "" };
-    const remote = std.json.parseFromSliceLeaky([]const Remote, ctx.alloc, r.body, .{ .ignore_unknown_fields = true }) catch return;
+    const remote = try accountKeys(ctx, client) orelse return;
     for (local) |l| for (remote) |k| {
-        if (sameKey(l.text, k.key)) return;
+        if (sameKey(l.text, k)) return;
     };
 
     const chosen: LocalKey = if (local.len == 1) blk: {
@@ -593,48 +649,89 @@ fn offerSshKey(ctx: *Ctx, client: *api.Client, host: config.Host) !void {
         try ctx.err.print("None of your SSH keys is on {s}:\n", .{host.name});
         for (local, 1..) |l, i| try ctx.err.print("  {d}. {s}\n", .{ i, l.path });
         const answer = try ctx.promptOrEnd(try std.fmt.allocPrint(ctx.alloc, "Add which one? [1-{d}, Enter to skip]", .{local.len})) orelse return;
-        const i = std.fmt.parseInt(usize, answer, 10) catch return;
-        if (i == 0 or i > local.len) return;
+        if (answer.len == 0) return;
+        const i = std.fmt.parseInt(usize, answer, 10) catch 0;
+        if (i == 0 or i > local.len) {
+            try ctx.err.print("! no key added; add one with `smith ssh-key add <file> --hostname {s}`\n", .{host.name});
+            return;
+        }
         break :blk local[i - 1];
     } else blk: {
-        const path = try std.fs.path.join(ctx.alloc, &.{ ssh_dir, "id_ed25519" });
-        if (!try askYes(ctx, try std.fmt.allocPrint(ctx.alloc, "Generate an SSH key ({s}) and add it to {s}?", .{ path, host.name }))) return;
-        break :blk try generateKey(ctx, ssh_dir, path) orelse return;
+        if (!try askYes(ctx, try std.fmt.allocPrint(ctx.alloc, "Generate an SSH key ({s}) and add it to {s}?", .{ generated, host.name }))) return;
+        break :blk try generateKey(ctx, ssh_dir, generated) orelse return;
     };
+    try uploadKey(ctx, client, host, password, chosen);
+}
 
+fn exists(ctx: *Ctx, path: []const u8) bool {
+    std.Io.Dir.cwd().access(ctx.io, path, .{}) catch return false;
+    return true;
+}
+
+/// Adds the key, with the password login's credentials when there are some
+/// (asking for a fresh two-factor code if the first one has expired), else
+/// with the token.
+fn uploadKey(ctx: *Ctx, client: *api.Client, host: config.Host, password: ?Password, key: LocalKey) !void {
     const machine = std.posix.uname();
-    const title = std.mem.sliceTo(&machine.nodename, 0);
-    const body = try std.json.Stringify.valueAlloc(ctx.alloc, .{ .key = chosen.text, .title = title }, .{});
-    const added = client.raw(.POST, "/user/keys", .{ .body = body }) catch |e| switch (e) {
-        error.Reported => return,
-        else => return e,
+    const title = try std.fmt.allocPrint(ctx.alloc, "smith on {s} ({d})", .{ std.mem.sliceTo(&machine.nodename, 0), ctx.now });
+    const body = try std.json.Stringify.valueAlloc(ctx.alloc, .{ .key = key.text, .title = title }, .{});
+    var otp = if (password) |p| p.otp else null;
+    var asked = false;
+    const added = while (true) {
+        const r = try client.raw(.POST, "/user/keys", .{
+            .body = body,
+            .authorization = if (password) |p| p.basic else null,
+            .extra_headers = try otpHeaders(ctx, otp),
+        });
+        if (r.status != 401 or password == null or otp == null or asked) break r;
+        otp = try ctx.prompt("Two-factor code (to add the key):");
+        asked = true;
+        if (otp.?.len == 0) break r;
     };
     if (added.ok()) {
-        try ctx.err.print("✓ Added SSH key {s} to your account as \"{s}\"\n", .{ chosen.path, title });
+        try ctx.err.print("✓ Added SSH key {s} to your account as \"{s}\"\n", .{ key.path, title });
         return;
     }
     const why = api.errorMessage(ctx.alloc, added.body) orelse try std.fmt.allocPrint(ctx.alloc, "HTTP {d}", .{added.status});
-    try ctx.err.print("! {s} did not take the SSH key ({s}); add it with `smith ssh-key add {s}` or under Settings > SSH / GPG Keys\n", .{ host.name, firstLine(why), chosen.path });
+    try ctx.err.print("! {s} did not take the SSH key ({s}); add it with `smith ssh-key add {s} --hostname {s}` or under Settings > SSH / GPG Keys\n", .{ host.name, firstLine(why), key.path, host.name });
 }
 
+/// Runs ssh-keygen for a new ed25519 key; it asks for the passphrase itself,
+/// so the passphrase never appears in a command line. Null, with a warning,
+/// when it fails.
 fn generateKey(ctx: *Ctx, ssh_dir: []const u8, path: []const u8) !?LocalKey {
-    const passphrase = try ctx.promptSecret("Passphrase for the new key (empty for none):");
     const cwd = std.Io.Dir.cwd();
     cwd.createDir(ctx.io, ssh_dir, .fromMode(0o700)) catch |e| switch (e) {
         error.PathAlreadyExists => {},
-        else => return ctx.fail("cannot create {s}: {t}", .{ ssh_dir, e }),
+        else => {
+            try ctx.err.print("! cannot create {s}: {t}\n", .{ ssh_dir, e });
+            return null;
+        },
     };
+    var argv: std.ArrayList([]const u8) = .empty;
+    try argv.appendSlice(ctx.alloc, &.{ "ssh-keygen", "-q", "-t", "ed25519", "-f", path });
+    if (ctx.stdin_data != null) try argv.appendSlice(ctx.alloc, &.{ "-N", "" });
+    try ctx.out.flush();
     try ctx.err.flush();
     var child = std.process.spawn(ctx.io, .{
-        .argv = &.{ "ssh-keygen", "-q", "-t", "ed25519", "-N", passphrase, "-f", path },
-        .stdin = .ignore,
+        .argv = argv.items,
+        .stdin = if (ctx.stdin_data != null) .ignore else .inherit,
         .stdout = .{ .file = .stderr() },
         .environ_map = ctx.env,
-    }) catch |e| return ctx.fail("cannot run ssh-keygen: {t}", .{e});
+    }) catch |e| {
+        try ctx.err.print("! cannot run ssh-keygen: {t}\n", .{e});
+        return null;
+    };
     const exit = try child.wait(ctx.io);
-    if (exit != .exited or exit.exited != 0) return ctx.fail("ssh-keygen could not create {s}", .{path});
+    if (exit != .exited or exit.exited != 0) {
+        try ctx.err.print("! ssh-keygen did not create {s}\n", .{path});
+        return null;
+    }
     const pub_path = try std.fmt.allocPrint(ctx.alloc, "{s}.pub", .{path});
-    const text = cwd.readFileAlloc(ctx.io, pub_path, ctx.alloc, .limited(64 * 1024)) catch |e| return ctx.fail("cannot read {s}: {t}", .{ pub_path, e });
+    const text = cwd.readFileAlloc(ctx.io, pub_path, ctx.alloc, .limited(64 * 1024)) catch |e| {
+        try ctx.err.print("! cannot read {s}: {t}\n", .{ pub_path, e });
+        return null;
+    };
     return .{ .path = pub_path, .text = std.mem.trim(u8, text, " \t\r\n") };
 }
 
