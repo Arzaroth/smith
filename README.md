@@ -77,6 +77,12 @@ when there is one. Login also finds the SSH hostname your instance
 advertises, so `git@ssh.example.com:owner/repo` remotes map back to
 `git.example.com`.
 
+Login then sets git up to use it. Over SSH, the default, it offers to add one of
+your `~/.ssh` keys to the account, or to generate one, when none is there yet
+(`--skip-ssh-key` to skip). Over HTTPS (`-p https`) it offers to make smith
+git's credential helper for the host, which `smith auth setup-git` also does
+at any time.
+
 Inside a clone, smith works out the host and `owner/repo` from the git
 remotes (`upstream`, then `origin`; `smith repo set-default` picks another);
 `-R [HOST/]OWNER/REPO` overrides it anywhere. Public repositories on an https
@@ -101,7 +107,7 @@ smith status                              # what needs you across the host
 smith notification list | read
 smith ssh-key | gpg-key list | add | delete
 smith org list
-smith auth login | status | switch | logout | token
+smith auth login | status | switch | logout | token | setup-git
 smith alias set | list | delete | import
 smith config get | set | unset | list
 smith api <endpoint> [-X METHOD] [-f key=value] [-F key=typed] [--paginate]
