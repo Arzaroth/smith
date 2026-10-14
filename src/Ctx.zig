@@ -130,7 +130,7 @@ const Pager = struct {
 };
 
 /// Whether the first word of a shell command names a program that exists.
-fn onPath(ctx: *const Ctx, command: []const u8) bool {
+pub fn onPath(ctx: *const Ctx, command: []const u8) bool {
     var words = std.mem.tokenizeAny(u8, command, " \t");
     const program = words.next() orelse return false;
     if (std.mem.indexOfScalar(u8, program, '/') != null) {

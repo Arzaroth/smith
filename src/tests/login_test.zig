@@ -80,7 +80,7 @@ test "password login asks for the 2FA code when needed and stores the token it c
     try std.testing.expectEqualStrings("Basic bWU6aHVudGVyMg==", posts[0].authorization.?);
     try std.testing.expect(posts[0].header("X-Forgejo-OTP") == null);
     try std.testing.expectEqualStrings("123456", posts[1].header("X-Forgejo-OTP").?);
-    try std.testing.expect(std.mem.indexOf(u8, posts[1].body, "\"scopes\":[\"write:repository\",\"write:issue\",\"read:user\",\"read:organization\"]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, posts[1].body, "\"scopes\":[\"write:repository\",\"write:issue\",\"read:user\",\"read:organization\",\"write:user\"]") != null);
 
     const cfg = try readConfig(&h);
     try std.testing.expectEqualStrings("minted", cfg.hosts[0].token.?);
