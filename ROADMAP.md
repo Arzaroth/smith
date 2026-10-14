@@ -60,6 +60,10 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
       Capabilities probed at
       login: Forgejo or Gitea and version, OAuth with PKCE, built-in clients,
       page size, and `ssh_host` from a repo's `ssh_url`.
+- [x] git authenticated by the login, like gh: `auth setup-git` installs
+      `auth git-credential` as git's credential helper for HTTPS, offered after
+      an HTTPS login; an SSH login offers to add (or generate) the machine's
+      key when none of `~/.ssh/*.pub` is on the account.
 - [x] `repo clone <owner/repo|repo|url> [dir] [-- <git flags>]`: protocol from
       config; a fork gets an `upstream` remote, like gh. `repo view [--web]`,
       `repo list [owner]`.

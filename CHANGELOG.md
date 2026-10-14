@@ -6,6 +6,16 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `auth setup-git` makes git use smith's login over HTTPS through
+  `auth git-credential`, a git credential helper; a browser login is renewed
+  before git gets it. `auth login` offers it after an HTTPS login.
+- `auth login` over SSH offers to add one of your `~/.ssh/*.pub` keys to
+  the account when none is there yet, or to generate one, so the first
+  clone does not end at `Permission denied (publickey)`. The password route
+  asks for `write:user` in that case.
+
 ### Fixed
 
 - `auth login --password` with an email as the username: smith looks up the

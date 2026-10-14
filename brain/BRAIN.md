@@ -34,7 +34,7 @@ source of truth: when a doc disagrees with it, fix the doc.
 
 | Group | Commands | Doc |
 |---|---|---|
-| auth | login, status, switch, logout, token | [features/auth.md](features/auth.md) |
+| auth | login, status, switch, logout, token, setup-git, git-credential | [features/auth.md](features/auth.md) |
 | repo | clone, view, list, create, fork, edit, sync, archive, unarchive, delete, set-default | [features/repo.md](features/repo.md) |
 | issue | list, view, create, close, reopen, comment, edit | [features/issue.md](features/issue.md) |
 | pr | list, view, diff, create, checkout, merge, close, reopen, comment, ready, edit, review, update, status, checks | [features/pr.md](features/pr.md) |
