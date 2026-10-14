@@ -176,26 +176,36 @@ fn loginWithPassword(ctx: *Ctx, host: config.Host, args: *const cli.Args) !confi
     const machine = std.posix.uname();
     const token_name = try std.fmt.allocPrint(ctx.alloc, "smith on {s} ({d})", .{ std.mem.sliceTo(&machine.nodename, 0), ctx.now });
     const body = try std.json.Stringify.valueAlloc(ctx.alloc, .{ .name = token_name, .scopes = token_scopes }, .{});
-    const path = try std.fmt.allocPrint(ctx.alloc, "/users/{s}/tokens", .{try api.escape(ctx.alloc, user)});
 
     var client: api.Client = .{ .ctx = ctx, .host = host, .base = try host.apiBase(ctx.alloc) };
+    var name = user;
     var otp: ?[]const u8 = null;
     while (true) {
         const headers: []const std.http.Header = if (otp) |code| &.{
             .{ .name = "X-Forgejo-OTP", .value = code },
             .{ .name = "X-Gitea-OTP", .value = code },
         } else &.{};
-        const r = try client.raw(.POST, path, .{ .body = body, .authorization = basic, .extra_headers = headers });
+        const by_email = std.mem.indexOfScalar(u8, name, '@') != null;
+        const method: std.http.Method = if (by_email) .GET else .POST;
+        const path = if (by_email) "/user" else try std.fmt.allocPrint(ctx.alloc, "/users/{s}/tokens", .{try api.escape(ctx.alloc, name)});
+        const r = try client.raw(method, path, .{ .body = if (by_email) null else body, .authorization = basic, .extra_headers = headers });
+        if (r.ok() and by_email) {
+            const User = struct { login: []const u8 };
+            const u = std.json.parseFromSliceLeaky(User, ctx.alloc, r.body, .{ .ignore_unknown_fields = true }) catch
+                return ctx.fail("{s} did not say which user {s} is", .{ host.name, user });
+            name = u.login;
+            continue;
+        }
         if (r.ok()) {
             const Created = struct { sha1: []const u8 };
             const created = std.json.parseFromSliceLeaky(Created, ctx.alloc, r.body, .{ .ignore_unknown_fields = true }) catch
                 return ctx.fail("{s} created a token but did not return it", .{host.name});
             var h = host;
             h.token = created.sha1;
-            h.user = user;
+            h.user = name;
             return h;
         }
-        if (r.status != 401 and r.status != 403) return client.failStatus(.POST, path, r);
+        if (r.status != 401 and r.status != 403) return client.failStatus(method, path, r);
         const message = api.errorMessage(ctx.alloc, r.body) orelse "";
         if (std.mem.indexOf(u8, message, "password is invalid") != null or std.mem.indexOf(u8, message, "user does not exist") != null)
             return ctx.fail("wrong username or password", .{});
