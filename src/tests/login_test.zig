@@ -88,6 +88,36 @@ test "password login asks for the 2FA code when needed and stores the token it c
     for (h.mock.requests.items) |r| if (std.mem.eql(u8, r.target, "/api/v1/user")) try std.testing.expectEqualStrings("token minted", r.authorization.?);
 }
 
+test "password login with an email finds the username before creating the token" {
+    var h: Harness = undefined;
+    try h.init(&.{
+        .{ .path = "/api/forgejo/v1/version", .body = fx.version },
+        .{ .path = "/api/v1/user", .status = 401, .body = "{\"message\":\"Only signed in user is allowed to call APIs.\"}", .times = 1 },
+        .{ .path = "/api/v1/user", .body = fx.user },
+        .{ .method = .POST, .path = "/api/v1/users/me/tokens", .status = 201, .body = "{\"id\":1,\"name\":\"smith\",\"sha1\":\"minted\"}" },
+    }, .{ .config = false });
+    defer h.deinit();
+    interactive(&h, "me@example.com\nhunter2\n123456\n");
+
+    try h.expectRun(0, &.{ "auth", "login", "--hostname", try host(&h), "--scheme", "http", "--password" });
+    try h.expectErr("Two-factor code:");
+
+    var basic: std.ArrayList(Mock.Request) = .empty;
+    for (h.mock.requests.items) |r| if (r.authorization) |a| if (std.mem.startsWith(u8, a, "Basic ")) try basic.append(h.arena.allocator(), r);
+    try std.testing.expectEqual(@as(usize, 3), basic.items.len);
+    for (basic.items[0..2]) |r| try std.testing.expectEqualStrings("/api/v1/user", r.target);
+    try std.testing.expect(basic.items[0].header("X-Forgejo-OTP") == null);
+    try std.testing.expectEqualStrings("123456", basic.items[1].header("X-Forgejo-OTP").?);
+    try std.testing.expectEqual(std.http.Method.POST, basic.items[2].method);
+    try std.testing.expectEqualStrings("/api/v1/users/me/tokens", basic.items[2].target);
+    try std.testing.expectEqualStrings("Basic bWVAZXhhbXBsZS5jb206aHVudGVyMg==", basic.items[2].authorization.?);
+    try std.testing.expectEqualStrings("123456", basic.items[2].header("X-Forgejo-OTP").?);
+
+    const cfg = try readConfig(&h);
+    try std.testing.expectEqualStrings("minted", cfg.hosts[0].token.?);
+    try std.testing.expectEqualStrings("me", cfg.hosts[0].user.?);
+}
+
 test "password login reports a wrong password without asking for a code" {
     var h: Harness = undefined;
     try h.init(&.{

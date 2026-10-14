@@ -29,7 +29,10 @@ takes one of three routes:
   `write:issue`, `read:user`, `read:organization`. A 401 or 403 that is not
   "password is invalid" / "user does not exist" is taken as a 2FA challenge:
   smith asks for the code once and retries with `X-Forgejo-OTP` (and
-  `X-Gitea-OTP`). Accounts that sign in only through SSO or only with a
+  `X-Gitea-OTP`). An email given as the username authenticates too, but the
+  tokens route wants the username, so smith first reads it from `GET /user`
+  with the same credentials (and code), then creates the token under it and
+  stores that username. Accounts that sign in only through SSO or only with a
   security key cannot use this route.
 - **Token** (`--with-token`, the only route without a terminal): read from
   stdin, never from an argument.

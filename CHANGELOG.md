@@ -6,6 +6,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `auth login --password` with an email as the username: smith looks up the
+  account's username instead of failing with `user redirect does not exist`
+  (HTTP 404).
+
 ## [0.7.0] - 2026-10-11
 
 ### Added
