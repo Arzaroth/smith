@@ -81,6 +81,7 @@ test {
     _ = @import("tests/run_test.zig");
     _ = @import("tests/tools_test.zig");
     _ = @import("tests/login_test.zig");
+    _ = @import("tests/gitauth_test.zig");
     _ = @import("tests/hosts_test.zig");
     _ = @import("tests/release_test.zig");
     _ = @import("tests/planning_test.zig");

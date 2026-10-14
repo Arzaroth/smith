@@ -637,3 +637,21 @@ fn generateKey(ctx: *Ctx, ssh_dir: []const u8, path: []const u8) !?LocalKey {
     const text = cwd.readFileAlloc(ctx.io, pub_path, ctx.alloc, .limited(64 * 1024)) catch |e| return ctx.fail("cannot read {s}: {t}", .{ pub_path, e });
     return .{ .path = pub_path, .text = std.mem.trim(u8, text, " \t\r\n") };
 }
+
+test "shellQuote leaves a plain path alone and single-quotes anything else" {
+    const a = std.testing.allocator;
+    try std.testing.expectEqualStrings("/usr/bin/smith", try shellQuote(a, "/usr/bin/smith"));
+    const spaced = try shellQuote(a, "/opt/my tools/smith");
+    defer a.free(spaced);
+    try std.testing.expectEqualStrings("'/opt/my tools/smith'", spaced);
+    const quoted = try shellQuote(a, "/opt/it's/smith");
+    defer a.free(quoted);
+    try std.testing.expectEqualStrings("'/opt/it'\\''s/smith'", quoted);
+}
+
+test "sameKey compares the type and data, not the comment or spacing" {
+    try std.testing.expect(sameKey("ssh-ed25519 AAAA me@a\n", "ssh-ed25519\tAAAA"));
+    try std.testing.expect(!sameKey("ssh-ed25519 AAAA", "ssh-ed25519 AAAB"));
+    try std.testing.expect(!sameKey("ssh-rsa AAAA", "ssh-ed25519 AAAA"));
+    try std.testing.expect(!sameKey("ssh-rsa", "ssh-rsa"));
+}
