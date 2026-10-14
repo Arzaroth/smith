@@ -13,8 +13,15 @@ the Secret Service keyring were exercised on git.arzaroth.com on 2026-09-29; the
 - **The password login with TOTP** with a real account; only a wrong
   password was tried live.
 - **The keyring on a Mac** (`security`); Linux's Secret Service works.
+- **`auth setup-git` and the SSH key offer at login**: git cloning over
+  HTTPS through `auth git-credential`, and `POST /user/keys` with a browser
+  login's token and with a password login's basic credentials and 2FA code.
 
 ## Development
+
+- **Hide `auth git-credential` from help, the man page and completions**, as
+  gh does: it is plumbing for git. `cli.Command` has no hidden flag yet, and
+  help, man and both completion walkers would each have to honour one.
 
 - **Report the std 0.16 bugs upstream, in your own words**: Zig's code of
   conduct refuses LLM-written reports (codeberg ziglang/zig#31361, bug 2

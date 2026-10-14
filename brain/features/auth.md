@@ -28,9 +28,9 @@ takes one of three routes:
   (`-u` or a prompt) and password (no echo) authenticate
   `POST /users/{user}/tokens` with basic auth to create a token named
   `smith on <machine> (<time>)` with the scopes `write:repository`,
-  `write:issue`, `read:user`, `read:organization`, plus `write:user` when
-  git goes over SSH, so login can [add the machine's key](#git-credentials).
-  A 401 or 403 that is not
+  `write:issue`, `read:user`, `read:organization`; it cannot write to the
+  account, so [adding the machine's key](#git-credentials) reuses the basic
+  credentials and code instead. A 401 or 403 that is not
   "password is invalid" / "user does not exist" is taken as a 2FA challenge:
   smith asks for the code once and retries with `X-Forgejo-OTP` (and
   `X-Gitea-OTP`). An email given as the username authenticates too, but the
@@ -63,27 +63,38 @@ A keyring that refuses the token leaves it in the file, with a warning.
 ## Git credentials
 
 smith runs the user's git, so git authenticates on its own. Login closes the
-gap gh's login closes, for whichever protocol the host uses:
+gap gh's login closes, for whichever protocol the host uses. Both steps run
+after the login is saved and only warn when they fail: the login still
+exits 0.
 
 - **HTTPS**: `auth setup-git` (all hosts, or `--hostname`) sets git's global
   `credential.<scheme>://<host>.helper` to an empty value, which drops
   helpers configured before it for that address, then to `!<smith> auth
-  git-credential`, smith's own path from `/proc/self/exe`, shell-quoted when
-  needed. `auth git-credential get` reads git's request and answers with the
-  username and token only when the scheme and the host (port included)
-  match a stored account exactly, and the username too when git sends one; a
-  browser login is renewed first. Anything else, and `store` and `erase`,
-  print nothing. After an HTTPS login smith offers to run it (`[Y/n]`; end
-  of input says no), says it is in place when it already is, and without a
-  terminal names the command.
-- **SSH**: after a login on a terminal, smith lists `~/.ssh/*.pub` and
+  git-credential`. `<smith>` is the `PATH` entry that resolves to the running
+  binary (a symlink a package manager keeps across upgrades), else the
+  binary's own path, shell-quoted when needed. `auth git-credential get`
+  reads git's request and answers with the username and token only when the
+  scheme and the host (port included) match a stored account exactly, and
+  the username too when git sends one; a browser login is renewed first.
+  Anything else prints nothing; `store` and `erase` do nothing; another
+  operation is an error. After an HTTPS login smith offers to run it
+  (`[Y/n]`; end of input says no) unless git already runs this very helper
+  for the host, and otherwise names `auth setup-git --hostname <host>`.
+  `auth logout` leaves the helper in place, as gh does; git then gets nothing
+  from it and asks.
+- **SSH**: after a login on a terminal (not with `--skip-ssh-key`), smith
+  lists `~/.ssh/*.pub` (not `*-cert.pub`) and every page of
   `GET /user/keys`. When one of the local keys is on the account (type and
-  data compared, comment ignored) nothing happens. Otherwise it offers to
-  add the one key, or a numbered choice among several, or to generate
-  `~/.ssh/id_ed25519` with `ssh-keygen` (passphrase asked without echo,
-  `~/.ssh` created 0700) when there is none, then `POST /user/keys` titled
-  with the machine's name. A refusal (a token without `write:user`) is a
-  warning naming `smith ssh-key add`; it never fails the login.
+  data compared, comment ignored), or the keys cannot be listed, nothing
+  happens. Otherwise it offers to add the one key, or a numbered choice
+  among several, or, when there is none, to generate `~/.ssh/id_ed25519`
+  with `ssh-keygen` (`~/.ssh` created 0700), which asks for the passphrase
+  itself so it never sits in a command line; it is not offered when
+  `id_ed25519` exists without its `.pub`. The key goes to `POST /user/keys`
+  titled `smith on <machine> (<time>)`, with the password route's basic
+  credentials and code (a fresh code is asked once if that one has
+  expired), else the token. A refusal is a warning naming
+  `smith ssh-key add <file> --hostname <host>`.
 
 ## Discovery
 
