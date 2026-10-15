@@ -1,5 +1,6 @@
 const std = @import("std");
 const Harness = @import("../testing/Harness.zig");
+const platform = @import("../platform.zig");
 const api = @import("../api.zig");
 
 fn client(h: *Harness) !api.Client {
@@ -36,7 +37,7 @@ test "output that cannot be written fails, quietly when the reader went away" {
     h.ctx.out = &failing;
     try h.expectRun(1, &.{"--version"});
     try h.expectErr("smith: cannot write the output\n");
-    const nowhere: std.Io.File = .{ .handle = -1, .flags = .{ .nonblocking = false } };
+    const nowhere: std.Io.File = .{ .handle = if (platform.windows) std.os.windows.INVALID_HANDLE_VALUE else -1, .flags = .{ .nonblocking = false } };
     var closed = nowhere.writerStreaming(std.testing.io, &.{});
     closed.err = error.BrokenPipe;
     h.ctx.stdout_file = &closed;
@@ -45,6 +46,7 @@ test "output that cannot be written fails, quietly when the reader went away" {
 }
 
 test "a pager that quits before reading everything is no failure" {
+    if (platform.windows) return error.SkipZigTest;
     const a = std.testing.allocator;
     const description = try a.alloc(u8, 256 * 1024);
     defer a.free(description);
@@ -62,6 +64,7 @@ test "a pager that quits before reading everything is no failure" {
 }
 
 test "an unexpected error is printed by name" {
+    if (platform.windows) return error.SkipZigTest;
     var h: Harness = undefined;
     try h.init(&.{}, .{});
     defer h.deinit();

@@ -204,7 +204,7 @@ test "create on a terminal asks before submitting: cancel, edit, submit" {
     var h: Harness = undefined;
     try h.init(&.{.{ .method = .POST, .path = issues, .status = 201, .body = fx.issue_open }}, .{});
     defer h.deinit();
-    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "editor", .data = "#!/bin/sh\nprintf 'Written in the editor.' > \"$1\"\n", .flags = .{ .permissions = .fromMode(0o755) } });
+    _ = try h.script("editor", "#!/bin/sh\nprintf 'Written in the editor.' > \"$1\"\n");
     h.ctx.stdin_tty = true;
     h.ctx.stdout_tty = true;
     h.ctx.stdin_data = "Crash on start\nc\n";
@@ -312,7 +312,7 @@ test "reopen reopens a closed issue; comment writes in the editor or reads a fil
     try h.expectRun(0, &.{ "issue", "comment", "7", "-R", "owner/repo", "-F", try h.path("note.md") });
     try std.testing.expectEqualStrings("{\"body\":\"From a file.\\n\"}", h.mock.lastBody(.POST, issues ++ "/7/comments").?);
 
-    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "editor", .data = "#!/bin/sh\nprintf '  From the editor.\\n' > \"$1\"\n", .flags = .{ .permissions = .fromMode(0o755) } });
+    _ = try h.script("editor", "#!/bin/sh\nprintf '  From the editor.\\n' > \"$1\"\n");
     try h.env.put("SMITH_EDITOR", try h.path("editor"));
     h.ctx.stdin_tty = true;
     h.ctx.stdout_tty = true;

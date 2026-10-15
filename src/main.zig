@@ -2,6 +2,7 @@ const std = @import("std");
 const Io = std.Io;
 const app = @import("app.zig");
 const term = @import("term.zig");
+const platform = @import("platform.zig");
 const Ctx = @import("Ctx.zig");
 const relro = @import("relro.zig");
 
@@ -19,6 +20,8 @@ pub fn main(init: std.process.Init) !u8 {
     var http: std.http.Client = .{ .allocator = alloc, .io = io };
     http.initDefaultProxies(alloc, init.environ_map) catch {};
 
+    platform.enableColor(Io.File.stdout());
+    platform.enableColor(Io.File.stderr());
     const stdout_tty = Io.File.stdout().isTty(io) catch false;
     var scrub_buffer: [4096]u8 = undefined;
     var scrubber: term.Scrubber = .init(&stderr_writer.interface, &scrub_buffer);
@@ -69,6 +72,7 @@ test {
     refAll(@import("settings.zig"));
     refAll(@import("keyring.zig"));
     refAll(@import("localtime.zig"));
+    refAll(@import("platform.zig"));
     refAll(app);
 }
 

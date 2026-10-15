@@ -7,6 +7,7 @@ const Io = std.Io;
 const Ctx = @import("../Ctx.zig");
 const app = @import("../app.zig");
 const term = @import("../term.zig");
+const platform = @import("../platform.zig");
 pub const Mock = @import("Mock.zig");
 
 arena: std.heap.ArenaAllocator,
@@ -18,6 +19,11 @@ out: Io.Writer.Allocating,
 err: Io.Writer.Allocating,
 http: std.http.Client,
 ctx: Ctx,
+
+/// A command line that does nothing and succeeds, and a program that does
+/// the same with a URL as its argument.
+pub const noop = if (platform.windows) "cmd /c rem" else "true";
+pub const noop_browser = if (platform.windows) "where" else "true";
 
 pub const Options = struct {
     token: ?[]const u8 = "t0ken",
@@ -47,20 +53,23 @@ pub fn init(h: *Harness, routes: []const Mock.Route, opts: Options) !void {
     h.env = .init(a);
     try h.env.put("HOME", h.root);
     try h.env.put("SMITH_CONFIG_DIR", try std.fs.path.join(a, &.{ h.root, "config" }));
-    try h.env.put("PATH", std.testing.environ.getPosix("PATH") orelse "/usr/bin:/bin");
+    try h.env.put("PATH", std.testing.environ.getAlloc(a, "PATH") catch "/usr/bin:/bin");
+    if (platform.windows) for ([_][]const u8{ "SYSTEMROOT", "WINDIR", "PATHEXT", "COMSPEC", "TEMP", "TMP" }) |name| {
+        if (std.testing.environ.getAlloc(a, name)) |v| try h.env.put(name, v) else |_| {}
+    };
     try h.env.put("GIT_CONFIG_NOSYSTEM", "1");
     try h.env.put("GIT_TERMINAL_PROMPT", "0");
     try h.env.put("GIT_AUTHOR_NAME", "Test");
     try h.env.put("GIT_AUTHOR_EMAIL", "test@example.com");
     try h.env.put("GIT_COMMITTER_NAME", "Test");
     try h.env.put("GIT_COMMITTER_EMAIL", "test@example.com");
-    try h.env.put("SMITH_BROWSER", "true");
+    try h.env.put("SMITH_BROWSER", noop_browser);
     try h.env.put("TMPDIR", h.root);
     try h.env.put("TZ", "UTC0");
-    try h.env.put("SMITH_EDITOR", "true");
+    try h.env.put("SMITH_EDITOR", noop);
     try h.env.put("GIT_CEILING_DIRECTORIES", std.fs.path.dirname(h.root) orelse h.root);
     try h.env.put("SMITH_KEYRING", "none");
-    try h.env.put("SMITH_EDITOR", "true");
+    try h.env.put("SMITH_EDITOR", noop);
 
     if (opts.config) {
         try h.tmp.dir.createDirPath(io, "config");
@@ -107,6 +116,14 @@ pub fn stdout(h: *Harness) []const u8 {
 
 pub fn stderr(h: *Harness) []const u8 {
     return h.err.written();
+}
+
+/// Writes an executable `#!/bin/sh` script into the temporary directory and
+/// returns its path; a test that needs one is skipped on Windows.
+pub fn script(h: *Harness, name: []const u8, body: []const u8) ![]const u8 {
+    if (platform.windows) return error.SkipZigTest;
+    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = name, .data = body, .flags = .{ .permissions = .fromMode(0o755) } });
+    return h.path(name);
 }
 
 /// "http://127.0.0.1:PORT"

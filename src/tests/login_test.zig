@@ -167,11 +167,7 @@ test "password login reports a wrong password without asking for a code" {
 fn curlBrowser(h: *Harness) !bool {
     const probe = std.process.run(h.arena.allocator(), std.testing.io, .{ .argv = &.{ "curl", "--version" }, .environ_map = &h.env }) catch return false;
     if (probe.term != .exited or probe.term.exited != 0) return false;
-    try h.tmp.dir.writeFile(std.testing.io, .{
-        .sub_path = "browser",
-        .data = "#!/bin/sh\nexec curl -sfL -o /dev/null \"$1\"\n",
-        .flags = .{ .permissions = .fromMode(0o755) },
-    });
+    _ = try h.script("browser", "#!/bin/sh\nexec curl -sfL -o /dev/null \"$1\"\n");
     try h.env.put("SMITH_BROWSER", try h.path("browser"));
     return true;
 }
@@ -299,11 +295,7 @@ test "the browser login gives up when no sign-in comes back" {
 /// A "browser" that only notes the authorize URL; `answer` then calls
 /// smith's loopback port the way the forge's redirect would.
 fn callbackBrowser(h: *Harness) !void {
-    try h.tmp.dir.writeFile(std.testing.io, .{
-        .sub_path = "browser",
-        .data = "#!/bin/sh\nprintf '%s' \"$1\" > \"$(dirname \"$0\")/opening\"\nmv \"$(dirname \"$0\")/opening\" \"$(dirname \"$0\")/opened\"\n",
-        .flags = .{ .permissions = .fromMode(0o755) },
-    });
+    _ = try h.script("browser", "#!/bin/sh\nprintf '%s' \"$1\" > \"$(dirname \"$0\")/opening\"\nmv \"$(dirname \"$0\")/opening\" \"$(dirname \"$0\")/opened\"\n");
     try h.env.put("SMITH_BROWSER", try h.path("browser"));
 }
 

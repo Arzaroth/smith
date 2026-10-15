@@ -212,6 +212,7 @@ test "an invalid hosts.zon is named; an unwritable config directory fails the sa
     try h.expectErr("hosts.zon is not valid");
 
     try h.tmp.dir.writeFile(io, .{ .sub_path = "config/hosts.zon", .data = good });
+    if (@import("../platform.zig").windows) return error.SkipZigTest;
     try h.tmp.dir.setFilePermissions(io, "config", .fromMode(0o500), .{});
     defer h.tmp.dir.setFilePermissions(io, "config", .fromMode(0o700), .{}) catch {};
     if (h.tmp.dir.writeFile(io, .{ .sub_path = "config/probe", .data = "" })) |_| return error.SkipZigTest else |_| {}

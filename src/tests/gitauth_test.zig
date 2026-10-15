@@ -373,6 +373,7 @@ test "an SSH login with no key generates one and adds it" {
     try std.testing.expect(std.mem.startsWith(u8, public, "ssh-ed25519 "));
     const sent = try std.json.parseFromSliceLeaky(struct { key: []const u8, title: []const u8 }, h.arena.allocator(), h.mock.lastBody(.POST, "/api/v1/user/keys").?, .{});
     try std.testing.expectEqualStrings(std.mem.trimEnd(u8, public, "\n"), sent.key);
+    if (@import("../platform.zig").windows) return;
     const stat = try h.tmp.dir.statFile(std.testing.io, ".ssh", .{});
     try std.testing.expectEqual(@as(std.posix.mode_t, 0o700), @as(std.posix.mode_t, @intCast(stat.permissions.toMode() & 0o777)));
 }

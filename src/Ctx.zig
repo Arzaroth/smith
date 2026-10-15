@@ -7,6 +7,7 @@ const builtin = @import("builtin");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const Writer = Io.Writer;
+const platform = @import("platform.zig");
 
 /// Arena for the whole invocation; nothing is freed individually.
 alloc: Allocator,
@@ -14,7 +15,8 @@ io: Io,
 env: *const std.process.Environ.Map,
 out: *Writer,
 err: *Writer,
-stdin: Io.File = .stdin(),
+/// Standard input unless a test gives another file.
+stdin: ?Io.File = null,
 /// The writer behind `out` in a real process, for why a write failed.
 stdout_file: ?*Io.File.Writer = null,
 stdout_tty: bool = false,
@@ -44,6 +46,10 @@ paged: ?*Pager = null,
 /// `Reported`: the message is printed, exit 1. `AuthRequired`: likewise, but
 /// exit 4, as gh does when authentication is what failed.
 pub const Error = error{ Reported, AuthRequired };
+
+fn stdinFile(ctx: *const Ctx) Io.File {
+    return ctx.stdin orelse .stdin();
+}
 
 /// Prints a message to stderr; the caller returns the error to exit 1.
 pub fn fail(ctx: *const Ctx, comptime fmt: []const u8, args: anytype) Error {
@@ -95,8 +101,12 @@ const Pager = struct {
         var env = ctx.env.clone(ctx.alloc) catch return error.WriteFailed;
         if (env.get("LESS") == null) env.put("LESS", "FRX") catch return error.WriteFailed;
         if (env.get("LV") == null) env.put("LV", "-c") catch return error.WriteFailed;
+        const argv: []const []const u8 = if (platform.windows)
+            platform.words(ctx.alloc, p.program) catch return error.WriteFailed
+        else
+            &.{ "sh", "-c", p.program };
         p.child = std.process.spawn(ctx.io, .{
-            .argv = &.{ "sh", "-c", p.program },
+            .argv = argv,
             .stdin = .pipe,
             .environ_map = &env,
         }) catch return p.out;
@@ -131,20 +141,13 @@ const Pager = struct {
 
 /// Whether the first word of a shell command names a program that exists.
 pub fn onPath(ctx: *const Ctx, command: []const u8) bool {
-    var words = std.mem.tokenizeAny(u8, command, " \t");
-    const program = words.next() orelse return false;
-    if (std.mem.indexOfScalar(u8, program, '/') != null) {
-        Io.Dir.cwd().access(ctx.io, program, .{}) catch return false;
+    const program = (platform.words(ctx.alloc, command) catch return false);
+    if (program.len == 0) return false;
+    if (std.mem.indexOfAny(u8, program[0], "/\\") != null) {
+        Io.Dir.cwd().access(ctx.io, program[0], .{}) catch return false;
         return true;
     }
-    var dirs = std.mem.tokenizeScalar(u8, ctx.getenv("PATH") orelse return false, ':');
-    while (dirs.next()) |dir| {
-        var buf: [std.fs.max_path_bytes]u8 = undefined;
-        const path = std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, program }) catch continue;
-        Io.Dir.cwd().access(ctx.io, path, .{}) catch continue;
-        return true;
-    }
-    return false;
+    return (platform.findOnPath(ctx.alloc, ctx.io, ctx.env, program[0]) catch return false) != null;
 }
 
 /// Ends paging: the pager gets end of input and smith waits for it to exit.
@@ -203,7 +206,7 @@ pub fn promptOrEnd(ctx: *Ctx, label: []const u8) !?[]const u8 {
 fn stdinReader(ctx: *Ctx) !*Io.File.Reader {
     if (ctx.stdin_reader) |r| return r;
     const r = try ctx.alloc.create(Io.File.Reader);
-    r.* = ctx.stdin.readerStreaming(ctx.io, try ctx.alloc.alloc(u8, 4096));
+    r.* = ctx.stdinFile().readerStreaming(ctx.io, try ctx.alloc.alloc(u8, 4096));
     ctx.stdin_reader = r;
     return r;
 }
@@ -211,13 +214,9 @@ fn stdinReader(ctx: *Ctx) !*Io.File.Reader {
 /// Like `prompt`, with terminal echo turned off while the user types.
 pub fn promptSecret(ctx: *Ctx, label: []const u8) ![]const u8 {
     if (ctx.stdin_data != null) return ctx.prompt(label);
-    const fd = ctx.stdin.handle;
-    const saved = std.posix.tcgetattr(fd) catch return ctx.prompt(label);
-    var silent = saved;
-    silent.lflag.ECHO = false;
-    std.posix.tcsetattr(fd, .NOW, silent) catch return ctx.prompt(label);
+    const saved = platform.echoOff(ctx.stdinFile()) orelse return ctx.prompt(label);
     defer {
-        std.posix.tcsetattr(fd, .NOW, saved) catch {};
+        platform.restore(saved);
         ctx.err.writeByte('\n') catch {};
     }
     return ctx.prompt(label);
@@ -225,16 +224,21 @@ pub fn promptSecret(ctx: *Ctx, label: []const u8) ![]const u8 {
 
 /// Opens `initial` in the user's editor and returns what they saved.
 pub fn editText(ctx: *Ctx, name: []const u8, initial: []const u8) ![]const u8 {
-    const editor = ctx.getenv("SMITH_EDITOR") orelse ctx.editor orelse ctx.getenv("VISUAL") orelse ctx.getenv("EDITOR") orelse "vi";
-    const dir = ctx.getenv("TMPDIR") orelse "/tmp";
+    const editor = ctx.getenv("SMITH_EDITOR") orelse ctx.editor orelse ctx.getenv("VISUAL") orelse ctx.getenv("EDITOR") orelse
+        if (platform.windows) "notepad" else "vi";
+    const dir = ctx.getenv("TMPDIR") orelse (if (platform.windows) ctx.getenv("TEMP") else null) orelse "/tmp";
     const path = try std.fmt.allocPrint(ctx.alloc, "{s}/smith-{s}-{s}", .{ dir, try ctx.nonce(), name });
     const cwd = Io.Dir.cwd();
-    try cwd.writeFile(ctx.io, .{ .sub_path = path, .data = initial, .flags = .{ .permissions = .fromMode(0o600), .exclusive = true } });
+    try cwd.writeFile(ctx.io, .{ .sub_path = path, .data = initial, .flags = .{ .permissions = platform.private_file, .exclusive = true } });
     defer cwd.deleteFile(ctx.io, path) catch {};
 
     try ctx.out.flush();
     try ctx.err.flush();
-    var child = try std.process.spawn(ctx.io, .{ .argv = &.{ "sh", "-c", "exec $0 \"$1\"", editor, path }, .environ_map = ctx.env });
+    const argv: []const []const u8 = if (platform.windows)
+        try std.mem.concat(ctx.alloc, []const u8, &.{ try platform.words(ctx.alloc, editor), &.{path} })
+    else
+        &.{ "sh", "-c", "exec $0 \"$1\"", editor, path };
+    var child = try std.process.spawn(ctx.io, .{ .argv = argv, .environ_map = ctx.env });
     const term = try child.wait(ctx.io);
     if (term != .exited or term.exited != 0) return ctx.fail("editor exited with an error", .{});
     return cwd.readFileAlloc(ctx.io, path, ctx.alloc, .limited(16 * 1024 * 1024));
@@ -249,15 +253,18 @@ pub fn openBrowser(ctx: *Ctx, url: []const u8) !void {
 }
 
 fn browserOpener(ctx: *const Ctx) []const u8 {
-    return ctx.getenv("SMITH_BROWSER") orelse ctx.browser orelse ctx.getenv("BROWSER") orelse
-        if (builtin.os.tag == .macos) "open" else "xdg-open";
+    return ctx.getenv("SMITH_BROWSER") orelse ctx.browser orelse ctx.getenv("BROWSER") orelse switch (builtin.os.tag) {
+        .macos => "open",
+        .windows => "rundll32",
+        else => "xdg-open",
+    };
 }
 
 /// Whether `openBrowser` has a chance: an opener was named, or there is a
 /// desktop session to open one in.
 pub fn canOpenBrowser(ctx: *const Ctx) bool {
     if (ctx.getenv("SMITH_BROWSER") != null or ctx.browser != null or ctx.getenv("BROWSER") != null) return true;
-    if (builtin.os.tag == .macos) return true;
+    if (builtin.os.tag == .macos or platform.windows) return true;
     return ctx.getenv("DISPLAY") != null or ctx.getenv("WAYLAND_DISPLAY") != null;
 }
 
@@ -269,8 +276,13 @@ pub fn canOpenBrowser(ctx: *const Ctx) bool {
 pub fn launchBrowser(ctx: *Ctx, url: []const u8) !bool {
     if (!std.mem.startsWith(u8, url, "https://") and !std.mem.startsWith(u8, url, "http://"))
         return ctx.fail("refusing to open {s}: not an http(s) URL", .{url});
+    const opener = ctx.browserOpener();
+    const argv: []const []const u8 = if (platform.windows and std.mem.eql(u8, opener, "rundll32"))
+        &.{ opener, "url.dll,FileProtocolHandler", url }
+    else
+        &.{ opener, url };
     _ = std.process.spawn(ctx.io, .{
-        .argv = &.{ ctx.browserOpener(), url },
+        .argv = argv,
         .stdin = .ignore,
         .stdout = .ignore,
         .stderr = .ignore,
@@ -340,11 +352,12 @@ const Fixture = struct {
 };
 
 test "the pager receives writes larger than its buffer, vectors and splats" {
+    if (platform.windows) return error.SkipZigTest;
     var f: Fixture = undefined;
     try f.init();
     defer f.deinit();
     const a = f.arena.allocator();
-    try f.env.put("PATH", testing.environ.getPosix("PATH") orelse "/usr/bin:/bin");
+    try f.env.put("PATH", testing.environ.getAlloc(a, "PATH") catch "/usr/bin:/bin");
     try f.env.put("SMITH_PAGER", try std.fmt.allocPrint(a, "cat > '{s}'", .{try f.path("paged")}));
     f.ctx.stdout_tty = true;
     try f.ctx.startPager();
@@ -366,7 +379,7 @@ test "prompts read lines from standard input, then the rest of it" {
     try f.init();
     defer f.deinit();
     try f.stdinFrom(" first \nrest\nof it");
-    defer f.ctx.stdin.close(testing.io);
+    defer f.ctx.stdin.?.close(testing.io);
     try testing.expectEqualStrings("first", (try f.ctx.promptOrEnd("Name?")).?);
     try testing.expectEqualStrings("rest\nof it", try f.ctx.readStdin());
     try testing.expectEqual(@as(?[]const u8, null), try f.ctx.promptOrEnd("More?"));
@@ -378,7 +391,7 @@ test "a prompt takes a last line without a newline" {
     try f.init();
     defer f.deinit();
     try f.stdinFrom("yes");
-    defer f.ctx.stdin.close(testing.io);
+    defer f.ctx.stdin.?.close(testing.io);
     try testing.expectEqualStrings("yes", try f.ctx.prompt("Sure?"));
 }
 
@@ -387,7 +400,7 @@ test "a secret prompt reads a file as it is when standard input is no terminal" 
     try f.init();
     defer f.deinit();
     try f.stdinFrom("hunter2\n");
-    defer f.ctx.stdin.close(testing.io);
+    defer f.ctx.stdin.?.close(testing.io);
     try testing.expectEqualStrings("hunter2", try f.ctx.promptSecret("Token:"));
     try testing.expectEqualStrings("? Token: ", f.err.written());
 }

@@ -100,7 +100,7 @@ test "--jq hands the JSON and the expression to jq and reports its complaints" {
         \\esac
         \\
     ;
-    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "jq", .data = fake, .flags = .{ .permissions = .fromMode(0o755) } });
+    _ = try h.script("jq", fake);
     try h.env.put("SMITH_JQ", try h.path("jq"));
     try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo", "-q", ".[].user.login" });
     try std.testing.expectEqualStrings(".[].user.login:[\n", h.stdout());
@@ -289,7 +289,7 @@ test "api --jq filters a JSON answer; an error answer is printed as sent, with i
         \\esac
         \\
     ;
-    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "jq", .data = fake, .flags = .{ .permissions = .fromMode(0o755) } });
+    _ = try h.script("jq", fake);
     try h.env.put("SMITH_JQ", try h.path("jq"));
     try h.expectRun(0, &.{ "api", "/repos/owner/repo", "--jq", ".full_name" });
     try std.testing.expectEqualStrings(".full_name:{\n", h.stdout());

@@ -25,7 +25,7 @@ test "the browser preference is used for --web" {
     try h.init(&.{}, .{});
     defer h.deinit();
     _ = h.env.swapRemove("SMITH_BROWSER");
-    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "browser", .data = "#!/bin/sh\necho \"$1\" > \"$(dirname \"$0\")/opened\"\n", .flags = .{ .permissions = .fromMode(0o755) } });
+    _ = try h.script("browser", "#!/bin/sh\necho \"$1\" > \"$(dirname \"$0\")/opened\"\n");
     try h.expectRun(0, &.{ "config", "set", "browser", try h.path("browser") });
     try h.expectRun(0, &.{ "issue", "view", "7", "-R", "owner/repo", "--web" });
     var tries: usize = 0;
@@ -235,7 +235,7 @@ test "the pager: which one, when it starts, and what happens when it fails" {
     const a = h.arena.allocator();
     h.ctx.stdout_tty = true;
     const pager = try std.fmt.allocPrint(a, "#!/bin/sh\necho \"$LESS $LV\" > '{s}'\ncat >> '{s}'\n", .{ try h.path("paged"), try h.path("paged") });
-    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "pager", .data = pager, .flags = .{ .permissions = .fromMode(0o755) } });
+    _ = try h.script("pager", pager);
 
     try h.expectRun(0, &.{ "config", "set", "pager", try h.path("pager") });
     try h.expectRun(0, &.{ "issue", "list", "-R", "owner/repo" });

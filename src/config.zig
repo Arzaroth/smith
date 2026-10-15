@@ -5,6 +5,7 @@ const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const Ctx = @import("Ctx.zig");
+const platform = @import("platform.zig");
 const keyring = @import("keyring.zig");
 
 pub const Protocol = enum { ssh, https };
@@ -214,9 +215,8 @@ pub fn tokenWithheld(ctx: *const Ctx, host: Host) bool {
 
 pub fn dir(ctx: *const Ctx) ![]const u8 {
     if (ctx.getenv("SMITH_CONFIG_DIR")) |d| return d;
-    if (ctx.getenv("XDG_CONFIG_HOME")) |x| return std.fs.path.join(ctx.alloc, &.{ x, "smith" });
-    const home = ctx.getenv("HOME") orelse return ctx.fail("cannot find the config directory: HOME is not set", .{});
-    return std.fs.path.join(ctx.alloc, &.{ home, ".config", "smith" });
+    const root = try platform.configRoot(ctx.alloc, ctx.env) orelse return ctx.fail("cannot find the config directory: HOME is not set", .{});
+    return std.fs.path.join(ctx.alloc, &.{ root, "smith" });
 }
 
 pub fn load(ctx: *Ctx) !Config {
@@ -267,7 +267,7 @@ pub fn save(ctx: *Ctx, config_in: Config) !void {
 
     const path = try std.fs.path.join(ctx.alloc, &.{ d, "hosts.zon" });
     const tmp = try std.fmt.allocPrint(ctx.alloc, "{s}.{s}.tmp", .{ path, try ctx.nonce() });
-    cwd.writeFile(ctx.io, .{ .sub_path = tmp, .data = aw.written(), .flags = .{ .permissions = .fromMode(0o600), .exclusive = true } }) catch |e|
+    cwd.writeFile(ctx.io, .{ .sub_path = tmp, .data = aw.written(), .flags = .{ .permissions = platform.private_file, .exclusive = true } }) catch |e|
         return ctx.fail("cannot write {s}: {t}", .{ tmp, e });
     cwd.rename(tmp, cwd, path, ctx.io) catch |e| return ctx.fail("cannot write {s}: {t}", .{ path, e });
 }

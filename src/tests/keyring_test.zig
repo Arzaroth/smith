@@ -20,7 +20,7 @@ const fake_tool =
 ;
 
 fn useFakeKeyring(h: *Harness) !void {
-    try h.tmp.dir.writeFile(std.testing.io, .{ .sub_path = "secret-tool", .data = fake_tool, .flags = .{ .permissions = .fromMode(0o755) } });
+    _ = try h.script("secret-tool", fake_tool);
     try h.env.put("SMITH_KEYRING", try h.path("secret-tool"));
 }
 

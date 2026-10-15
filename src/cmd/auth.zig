@@ -9,6 +9,7 @@ const oauth = @import("../oauth.zig");
 const keyring = @import("../keyring.zig");
 const term = @import("../term.zig");
 const types = @import("../types.zig");
+const platform = @import("../platform.zig");
 
 const hostname_flag: cli.Flag = .{ .long = "hostname", .value = "string", .help = "The Forgejo host, e.g. git.example.com" };
 
@@ -211,8 +212,7 @@ fn loginWithPassword(ctx: *Ctx, host: config.Host, args: *const cli.Args, kept: 
     const encoded = try ctx.alloc.alloc(u8, std.base64.standard.Encoder.calcSize(credentials.len));
     const basic = try std.fmt.allocPrint(ctx.alloc, "Basic {s}", .{std.base64.standard.Encoder.encode(encoded, credentials)});
 
-    const machine = std.posix.uname();
-    const token_name = try std.fmt.allocPrint(ctx.alloc, "smith on {s} ({d})", .{ std.mem.sliceTo(&machine.nodename, 0), ctx.now });
+    const token_name = try std.fmt.allocPrint(ctx.alloc, "smith on {s} ({d})", .{ try platform.machineName(ctx.alloc, ctx.env), ctx.now });
     const body = try std.json.Stringify.valueAlloc(ctx.alloc, .{ .name = token_name, .scopes = token_scopes }, .{});
 
     var client: api.Client = .{ .ctx = ctx, .host = host, .base = try host.apiBase(ctx.alloc) };
@@ -476,10 +476,10 @@ fn helperKey(ctx: *Ctx, h: config.Host) ![]const u8 {
 fn helperCommand(ctx: *Ctx) ![]const u8 {
     const exe = std.process.executablePathAlloc(ctx.io, ctx.alloc) catch |e| return ctx.fail("cannot find smith's own path: {t}", .{e});
     const cwd = std.Io.Dir.cwd();
-    var dirs = std.mem.tokenizeScalar(u8, ctx.getenv("PATH") orelse "", ':');
+    var dirs = std.mem.tokenizeScalar(u8, ctx.getenv("PATH") orelse "", std.fs.path.delimiter);
     const chosen = while (dirs.next()) |dir| {
         if (!std.fs.path.isAbsolute(dir)) continue;
-        const candidate = try std.fs.path.join(ctx.alloc, &.{ dir, "smith" });
+        const candidate = try std.fs.path.join(ctx.alloc, &.{ dir, if (platform.windows) "smith.exe" else "smith" });
         const real = cwd.realPathFileAlloc(ctx.io, candidate, ctx.alloc) catch continue;
         if (std.mem.eql(u8, real, exe)) break candidate;
     } else exe;
@@ -630,7 +630,7 @@ fn accountKeys(ctx: *Ctx, client: *api.Client) !?[]const []const u8 {
 /// none, so the first clone does not end at "Permission denied (publickey)".
 fn offerSshKey(ctx: *Ctx, client: *api.Client, host: config.Host, password: ?Password) !void {
     if (!ctx.interactive()) return;
-    const home = ctx.getenv("HOME") orelse return;
+    const home = platform.home(ctx.env) orelse return;
     const ssh_dir = try std.fs.path.join(ctx.alloc, &.{ home, ".ssh" });
     const local = try localKeys(ctx, ssh_dir);
     const generated = try std.fs.path.join(ctx.alloc, &.{ ssh_dir, "id_ed25519" });
@@ -672,8 +672,7 @@ fn exists(ctx: *Ctx, path: []const u8) bool {
 /// (asking for a fresh two-factor code if the first one has expired), else
 /// with the token.
 fn uploadKey(ctx: *Ctx, client: *api.Client, host: config.Host, password: ?Password, key: LocalKey) !void {
-    const machine = std.posix.uname();
-    const title = try std.fmt.allocPrint(ctx.alloc, "smith on {s} ({d})", .{ std.mem.sliceTo(&machine.nodename, 0), ctx.now });
+    const title = try std.fmt.allocPrint(ctx.alloc, "smith on {s} ({d})", .{ try platform.machineName(ctx.alloc, ctx.env), ctx.now });
     const body = try std.json.Stringify.valueAlloc(ctx.alloc, .{ .key = key.text, .title = title }, .{});
     var otp = if (password) |p| p.otp else null;
     var asked = false;
@@ -701,7 +700,7 @@ fn uploadKey(ctx: *Ctx, client: *api.Client, host: config.Host, password: ?Passw
 /// when it fails.
 fn generateKey(ctx: *Ctx, ssh_dir: []const u8, path: []const u8) !?LocalKey {
     const cwd = std.Io.Dir.cwd();
-    cwd.createDir(ctx.io, ssh_dir, .fromMode(0o700)) catch |e| switch (e) {
+    cwd.createDir(ctx.io, ssh_dir, platform.private_dir) catch |e| switch (e) {
         error.PathAlreadyExists => {},
         else => {
             try ctx.err.print("! cannot create {s}: {t}\n", .{ ssh_dir, e });
