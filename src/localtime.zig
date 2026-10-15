@@ -6,12 +6,14 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 
+const windows = @import("builtin").os.tag == .windows;
+
 /// Seconds east of UTC at `unix`; 0 when the zone cannot be read.
 pub fn offset(ctx: *Ctx, unix: i64) i32 {
-    const tz = ctx.env.get("TZ") orelse return fromFile(ctx, "/etc/localtime", unix) orelse 0;
+    const tz = ctx.env.get("TZ") orelse return (if (windows) windowsOffset(unix) else fromFile(ctx, "/etc/localtime", unix)) orelse 0;
     const spec = if (tz.len > 0 and tz[0] == ':') tz[1..] else tz;
     if (spec.len == 0) return 0;
-    const path = if (spec[0] == '/')
+    const path = if (std.fs.path.isAbsolute(spec))
         spec
     else if (std.mem.indexOf(u8, spec, "..") == null)
         std.fmt.allocPrint(ctx.alloc, "/usr/share/zoneinfo/{s}", .{spec}) catch return 0
@@ -62,6 +64,32 @@ fn fromFile(ctx: *Ctx, path: []const u8, unix: i64) ?i32 {
     if (i > 0) return tz.transitions[i - 1].timetype.offset;
     return if (tz.timetypes.len > 0) tz.timetypes[0].offset else null;
 }
+
+/// Windows' own zone, daylight saving included, at `unix`.
+fn windowsOffset(unix: i64) ?i32 {
+    const days = @divFloor(unix, 86400);
+    const secs = unix - days * 86400;
+    const d = civil(days);
+    if (d.year < 1601 or d.year > 30827) return null;
+    const utc_time: SystemTime = .{
+        .year = @intCast(d.year),
+        .month = d.month,
+        .day_of_week = 0,
+        .day = d.day,
+        .hour = @intCast(@divFloor(secs, 3600)),
+        .minute = @intCast(@mod(@divFloor(secs, 60), 60)),
+        .second = @intCast(@mod(secs, 60)),
+        .milliseconds = 0,
+    };
+    var local: SystemTime = undefined;
+    if (SystemTimeToTzSpecificLocalTime(null, &utc_time, &local) == 0) return null;
+    const local_unix = daysFromCivil(local.year, @intCast(local.month), @intCast(local.day)) * 86400 +
+        @as(i64, local.hour) * 3600 + @as(i64, local.minute) * 60 + local.second;
+    return @intCast(local_unix - unix);
+}
+
+const SystemTime = extern struct { year: u16, month: u16, day_of_week: u16, day: u16, hour: u16, minute: u16, second: u16, milliseconds: u16 };
+extern "kernel32" fn SystemTimeToTzSpecificLocalTime(zone: ?*const anyopaque, utc: *const SystemTime, local: *SystemTime) callconv(.winapi) c_int;
 
 /// Evaluates a POSIX TZ rule such as `CET-1CEST,M3.5.0,M10.5.0/3` at `unix`;
 /// a daylight name without dates takes the US rules, as glibc does.

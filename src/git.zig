@@ -2,6 +2,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Ctx = @import("Ctx.zig");
+const platform = @import("platform.zig");
 
 fn argv(ctx: *const Ctx, args: []const []const u8) ![]const []const u8 {
     var list: std.ArrayList([]const u8) = .empty;
@@ -27,10 +28,11 @@ pub fn run(ctx: *Ctx, args: []const []const u8) !void {
     var child = std.process.spawn(ctx.io, .{
         .argv = try argv(ctx, args),
         .stdin = .ignore,
-        .stdout = .{ .file = .stderr() },
+        .stdout = platform.stdoutToStderr(),
         .environ_map = ctx.env,
     }) catch |e|
         return ctx.fail("cannot run git: {t}", .{e});
+    platform.copyOut(ctx.io, &child, ctx.err);
     const term = try child.wait(ctx.io);
     if (term != .exited or term.exited != 0) {
         const joined = try std.mem.join(ctx.alloc, " ", args);

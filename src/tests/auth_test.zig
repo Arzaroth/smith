@@ -33,6 +33,7 @@ test "login stores the token, user and discovered ssh host with mode 0600" {
     try std.testing.expect(std.mem.indexOf(u8, cfg, ".token = \"s3cret\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, cfg, ".ssh_host = \"ssh.forge.test\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, cfg, ".default_host") != null);
+    if (@import("../platform.zig").windows) return;
     const stat = try h.tmp.dir.statFile(std.testing.io, "config/hosts.zon", .{});
     try std.testing.expectEqual(@as(u32, 0o600), @as(u32, @intCast(@intFromEnum(stat.permissions))) & 0o777);
 

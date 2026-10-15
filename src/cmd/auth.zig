@@ -715,12 +715,13 @@ fn generateKey(ctx: *Ctx, ssh_dir: []const u8, path: []const u8) !?LocalKey {
     var child = std.process.spawn(ctx.io, .{
         .argv = argv.items,
         .stdin = if (ctx.stdin_data != null) .ignore else .inherit,
-        .stdout = .{ .file = .stderr() },
+        .stdout = platform.stdoutToStderr(),
         .environ_map = ctx.env,
     }) catch |e| {
         try ctx.err.print("! cannot run ssh-keygen: {t}\n", .{e});
         return null;
     };
+    platform.copyOut(ctx.io, &child, ctx.err);
     const exit = try child.wait(ctx.io);
     if (exit != .exited or exit.exited != 0) {
         try ctx.err.print("! ssh-keygen did not create {s}\n", .{path});

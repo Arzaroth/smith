@@ -64,6 +64,7 @@ test "aliases expand with placeholders, append the rest, and cannot shadow comma
 }
 
 test "a ! alias runs with sh and passes its arguments" {
+    if (@import("../platform.zig").windows) return error.SkipZigTest;
     var h: Harness = undefined;
     try h.init(&.{}, .{});
     defer h.deinit();
@@ -155,6 +156,7 @@ test "prompt disabled makes a terminal behave like a script" {
 }
 
 test "lists go through the pager on a terminal" {
+    if (@import("../platform.zig").windows) return error.SkipZigTest;
     var h: Harness = undefined;
     try h.init(&.{.{ .path = "/api/v1/repos/owner/repo/issues", .body = fx.issue_list, .times = 2 }}, .{});
     defer h.deinit();

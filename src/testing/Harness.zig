@@ -118,6 +118,13 @@ pub fn stderr(h: *Harness) []const u8 {
     return h.err.written();
 }
 
+/// Like `path`, with forward slashes: Windows takes them too, and they need
+/// no escaping in a JSON body or a git URL.
+pub fn slashPath(h: *Harness, sub: []const u8) ![]const u8 {
+    const p = try h.path(sub);
+    return std.mem.replaceOwned(u8, h.arena.allocator(), p, "\\", "/");
+}
+
 /// Writes an executable `#!/bin/sh` script into the temporary directory and
 /// returns its path; a test that needs one is skipped on Windows.
 pub fn script(h: *Harness, name: []const u8, body: []const u8) ![]const u8 {

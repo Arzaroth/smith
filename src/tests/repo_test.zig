@@ -16,8 +16,8 @@ test "clone uses the https URL, names the directory after the repo, and adds ups
     try h.git(&.{ "init", "-q", "--bare", "-b", "main", "parent.git" });
     const parent = try std.fmt.allocPrint(h.arena.allocator(),
         \\{{"id":2,"name":"tool","full_name":"up/tool","html_url":"x","clone_url":"{s}","ssh_url":"git@x:up/tool.git"}}
-    , .{try h.path("parent.git")});
-    const body = try repoJson(&h, "tool", try h.path("origin.git"), parent);
+    , .{try h.slashPath("parent.git")});
+    const body = try repoJson(&h, "tool", try h.slashPath("origin.git"), parent);
     h.mock.routes = &.{.{ .path = "/api/v1/repos/me/tool", .body = body }};
     h.mock.used = try h.arena.allocator().alloc(u32, 1);
     h.mock.used[0] = 0;
@@ -98,7 +98,7 @@ test "clone HOST:OWNER/REPO picks the host by its SSH name, HOST/OWNER/REPO by i
     try h.init(&.{}, .{});
     defer h.deinit();
     try h.git(&.{ "init", "-q", "--bare", "-b", "main", "origin.git" });
-    const body = try repoJson(&h, "tool", try h.path("origin.git"), null);
+    const body = try repoJson(&h, "tool", try h.slashPath("origin.git"), null);
     const routes = try h.arena.allocator().dupe(Harness.Mock.Route, &.{.{ .path = "/api/v1/repos/team/tool", .body = body }});
     h.mock.routes = routes;
     h.mock.used = try h.arena.allocator().alloc(u32, 1);
@@ -152,7 +152,7 @@ test "create --source adds the remote and pushes" {
     try h.init(&.{}, .{});
     defer h.deinit();
     try h.git(&.{ "init", "-q", "--bare", "-b", "main", "remote.git" });
-    try setRoutes(&h, &.{.{ .method = .POST, .path = "/api/v1/user/repos", .status = 201, .body = try created(&h, "proj", try h.path("remote.git")) }});
+    try setRoutes(&h, &.{.{ .method = .POST, .path = "/api/v1/user/repos", .status = 201, .body = try created(&h, "proj", try h.slashPath("remote.git")) }});
     try h.git(&.{ "init", "-q", "-b", "main", "proj" });
     try h.git(&.{ "-C", "proj", "commit", "-q", "--allow-empty", "-m", "first" });
     try h.expectRun(0, &.{ "repo", "create", "--source", try h.path("proj"), "--public", "--push" });
@@ -319,11 +319,11 @@ test "clone over ssh takes the ssh URL" {
     try h.git(&.{ "init", "-q", "--bare", "-b", "main", "origin.git" });
     const body = try std.fmt.allocPrint(h.arena.allocator(),
         \\{{"id":3,"name":"tool","full_name":"me/tool","html_url":"x","clone_url":"file:///nonexistent/tool.git","ssh_url":"{s}","fork":false}}
-    , .{try h.path("origin.git")});
+    , .{try h.slashPath("origin.git")});
     try setRoutes(&h, &.{.{ .path = "/api/v1/repos/me/tool", .body = body }});
     try h.expectRun(0, &.{ "repo", "clone", "me/tool", "--", "-q" });
     const r = try std.process.run(h.arena.allocator(), std.testing.io, .{ .argv = &.{ "git", "-C", try h.path("tool"), "remote", "get-url", "origin" }, .environ_map = &h.env });
-    try std.testing.expectEqualStrings(try std.fmt.allocPrint(h.arena.allocator(), "{s}\n", .{try h.path("origin.git")}), r.stdout);
+    try std.testing.expectEqualStrings(try std.fmt.allocPrint(h.arena.allocator(), "{s}\n", .{try h.slashPath("origin.git")}), r.stdout);
 }
 
 test "view and list --json print the API objects" {
@@ -372,16 +372,16 @@ test "fork --clone clones the fork and adds the parent as upstream" {
     try h.git(&.{ "init", "-q", "--bare", "-b", "main", "parent.git" });
     const parent = try std.fmt.allocPrint(h.arena.allocator(),
         \\{{"id":1,"name":"repo","full_name":"owner/repo","html_url":"x","clone_url":"{s}"}}
-    , .{try h.path("parent.git")});
+    , .{try h.slashPath("parent.git")});
     try setRoutes(&h, &.{
-        .{ .method = .POST, .path = "/api/v1/repos/owner/repo/forks", .status = 202, .body = try created(&h, "repo", try h.path("fork.git")) },
+        .{ .method = .POST, .path = "/api/v1/repos/owner/repo/forks", .status = 202, .body = try created(&h, "repo", try h.slashPath("fork.git")) },
         .{ .path = "/api/v1/repos/owner/repo", .body = parent },
     });
     try h.expectRun(0, &.{ "repo", "fork", "owner/repo", "--clone" });
     try h.expectErr("Created fork me/repo");
     try h.expectErr("Added remote upstream for owner/repo");
     const r = try std.process.run(h.arena.allocator(), std.testing.io, .{ .argv = &.{ "git", "-C", try h.path("repo"), "remote", "get-url", "upstream" }, .environ_map = &h.env });
-    try std.testing.expectEqualStrings(try std.fmt.allocPrint(h.arena.allocator(), "{s}\n", .{try h.path("parent.git")}), r.stdout);
+    try std.testing.expectEqualStrings(try std.fmt.allocPrint(h.arena.allocator(), "{s}\n", .{try h.slashPath("parent.git")}), r.stdout);
 }
 
 test "unarchive patches the repository back" {

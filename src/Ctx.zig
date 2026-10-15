@@ -450,6 +450,11 @@ test "a browser needs an opener or a desktop session" {
     var f: Fixture = undefined;
     try f.init();
     defer f.deinit();
+    if (platform.windows) {
+        try testing.expect(f.ctx.canOpenBrowser());
+        try testing.expectEqualStrings("rundll32", f.ctx.browserOpener());
+        return;
+    }
     if (builtin.os.tag != .macos) {
         try testing.expect(!f.ctx.canOpenBrowser());
         try testing.expectEqualStrings("xdg-open", f.ctx.browserOpener());
