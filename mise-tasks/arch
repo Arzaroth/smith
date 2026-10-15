@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+#MISE description="On Arch, as a regular user, after mise run dist: build smith-cli-bin for x86_64 and aarch64 from the musl archives, and smith-cli from the source tarball when pacman's Zig can build it; the packages and the rendered PKGBUILDs (smith-X.Y.Z-pkgbuild.tar.gz) land in dist/"
+set -euo pipefail
+
+cd "$(dirname "$(readlink -f "$0")")/.."
+version="$(sed -n 's/^    \.version = "\([^"]*\)",$/\1/p' build.zig.zon)"
+dist="${PWD}/dist"
+work="$(mktemp -d)"
+trap 'rm -rf "${work}"' EXIT
+
+(cd "${dist}" && sha256sum -- "smith-${version}.tar.gz" smith-"${version}"-*-linux-musl.tar.gz) >"${work}/SHA256SUMS"
+usage_version="${version}" usage_sums="${work}/SHA256SUMS" bash mise-tasks/aur >/dev/null
+
+mkdir -p "${work}/bin"
+cp -r dist/aur/smith-cli-bin/. "${work}/bin/"
+cp "${dist}/smith-${version}-x86_64-linux-musl.tar.gz" "${dist}/smith-${version}-aarch64-linux-musl.tar.gz" "${work}/bin/"
+sed -e 's/^CARCH=.*/CARCH="aarch64"/' -e 's/^CHOST=.*/CHOST="aarch64-unknown-linux-gnu"/' \
+  /etc/makepkg.conf >"${work}/makepkg-aarch64.conf"
+(cd "${work}/bin" && PKGDEST="${dist}" makepkg --force --noconfirm)
+(cd "${work}/bin" && PKGDEST="${dist}" makepkg --force --noconfirm --config "${work}/makepkg-aarch64.conf")
+
+pinned="$(sed -n 's/^zig = "\([0-9]*\.[0-9]*\)\..*"$/\1/p' .mise.toml)"
+if [[ "$(zig version 2>/dev/null || true)" == "${pinned}".* ]]; then
+  mkdir -p "${work}/source"
+  cp -r dist/aur/smith-cli/. "${work}/source/"
+  cp "${dist}/smith-${version}.tar.gz" "${work}/source/smith-cli-${version}.tar.gz"
+  (cd "${work}/source" && PKGDEST="${dist}" makepkg --force --noconfirm)
+else
+  echo "warning: smith-cli not built: it needs Zig ${pinned}, this system has $(zig version 2>/dev/null || echo none)" >&2
+fi
+
+tar -C dist/aur -czf "${dist}/smith-${version}-pkgbuild.tar.gz" smith-cli smith-cli-bin
+rm -rf dist/aur
+ls -l "${dist}"/*.pkg.tar.zst "${dist}/smith-${version}-pkgbuild.tar.gz"
