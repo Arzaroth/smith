@@ -229,8 +229,9 @@ price of running a compiler Arch did not build. It runs the test suite in
 (`site-functions`, `%license`, `%doc`) and a file dependency for
 `secret-tool` (its package is `libsecret` on Fedora, `secret-tool` on
 openSUSE) where they differ from Debian's. The release archives are not
-byte-reproducible, so the PKGBUILDs are rendered after a release from its
-published `SHA256SUMS` (`mise run aur`), not at build time.
+byte-reproducible, so the PKGBUILDs are rendered from the very archives a
+release ships: in its `arch` job (attached as the PKGBUILD tarball), or
+after it from its published `SHA256SUMS` (`mise run aur`) for the AUR.
 Both package formats carry a changelog converted from `CHANGELOG.md`
 (`packaging/changelog.awk`, one entry per bullet; it stops on a heading
 without a date, a release without bullets or a line it cannot place, so
@@ -256,3 +257,24 @@ binary has none: `relro.protect`, first thing in `main`, finds the
 glibc's loader would. Debug builds use Zig's own linker, which emits no
 RELRO segment, so its test runs in ReleaseSafe in the gate. The binary grows
 by about 1.4%.
+
+## One release build on GitHub, for both forges (2026-10-16)
+
+The release builds, tests, signs and checks on GitHub's runners and then
+publishes the same files on GitHub and on Forgejo, instead of each forge
+building its own. Only GitHub has native arm64 Linux and macOS runners, and
+two builds would give two sets of bytes for one version, with signatures
+on one of them. Forgejo Actions still runs the gate on pull requests; its
+copy of the release workflow skips itself. The Forgejo upload needs a token
+on GitHub (`FORGEJO_RELEASE_TOKEN`), checked before either release is
+created, and each release is a draft until every file is up.
+
+## A signing key of smith's own (2026-10-16)
+
+Releases are signed with a key used for smith alone, not one shared with
+the other projects: its private half sits in two forges' secrets, so a
+leak, a rotation or a revocation stays within one project, and importing
+it into rpm or pacman trusts smith's packages and nothing else. A primary
+key with per-project subkeys would not give that last property. The public
+half is `packaging/smith.asc`; once it is committed a release refuses to
+go out unsigned.

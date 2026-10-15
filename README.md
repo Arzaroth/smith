@@ -53,8 +53,10 @@ sudo dnf install ./smith-cli-<version>-1.x86_64.rpm
 sudo zypper install --allow-unsigned-rpm ./smith-cli-<version>-1.x86_64.rpm
 ```
 
-For Arch, PKGBUILDs for `smith-cli` (built from source) and `smith-cli-bin`
-(the release binary) are in `packaging/arch`; they are not on the AUR yet.
+For Arch, each release carries `smith-cli-bin` packages for x86_64 and
+aarch64 (`sudo pacman -U` the file) and `smith-<version>-pkgbuild.tar.gz`
+with the PKGBUILDs for `smith-cli` (built from source) and `smith-cli-bin`
+(the release binary); they are not on the AUR yet.
 In a checkout, `mise run aur <version>` fills them in for a published release
 under `dist/aur`, ready for `makepkg -si`. They are `smith-cli` because the
 AUR's `smith` is an unrelated text editor with a `smith` of its own; the

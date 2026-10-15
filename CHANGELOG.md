@@ -6,6 +6,19 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Releases carry Arch packages: `smith-cli-bin` for x86_64 and aarch64,
+  and the rendered PKGBUILDs.
+- The release archives carry the shell completions next to the man page.
+
+### Changed
+
+- Every release is built and tested natively on x86_64 and arm64 Linux and
+  on Apple silicon and Intel macOS, and its packages are installed on
+  Debian, Fedora, Arch and macOS before it is published, on GitHub and on
+  Forgejo alike.
+
 ## [0.8.0] - 2026-10-15
 
 ### Added
