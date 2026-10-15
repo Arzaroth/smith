@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Per-user MSI, built by the release workflow with WiX 5:
+  `wix build -arch x64|arm64 -d Version=X.Y.Z -d StageDir=<unzipped archive> smith.wxs`.
+  It installs into the directory install.ps1 uses, so the two never leave
+  two copies on PATH.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="smith"
+      Manufacturer="Arzaroth"
+      Version="$(Version)"
+      UpgradeCode="ba8551e7-82ff-4e4c-b88f-ac175da28295"
+      Scope="perUser"
+      Compressed="yes"
+      Language="1033">
+
+    <SummaryInformation
+        Description="smith - a Forgejo CLI with gh's command surface"
+        Manufacturer="Arzaroth" />
+
+    <MajorUpgrade
+        AllowSameVersionUpgrades="yes"
+        DowngradeErrorMessage="A newer version of smith is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/Arzaroth/smith" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="smith" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="smith" Level="1" AllowAbsent="no">
+      <ComponentGroupRef Id="Files" />
+    </Feature>
+
+    <ComponentGroup Id="Files" Directory="INSTALLFOLDER">
+      <Component Id="SmithExe" Guid="*">
+        <File Id="SmithExeFile" Source="$(StageDir)\smith.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="Readme" Guid="*">
+        <File Id="ReadmeFile" Source="$(StageDir)\README.md" KeyPath="yes" />
+      </Component>
+      <Component Id="License" Guid="*">
+        <File Id="LicenseFile" Source="$(StageDir)\LICENSE" KeyPath="yes" />
+      </Component>
+      <Component Id="Changelog" Guid="*">
+        <File Id="ChangelogFile" Source="$(StageDir)\CHANGELOG.md" KeyPath="yes" />
+      </Component>
+      <!--
+        Part="last" appends to the user's PATH and uninstalling takes it back
+        out. An Environment element cannot be a keypath, so a registry value
+        is.
+      -->
+      <Component Id="PathEntry" Guid="*">
+        <Environment
+            Id="PathBin" Name="PATH" Value="[INSTALLFOLDER]"
+            Action="set" Part="last" System="no" Permanent="no" />
+        <RegistryValue
+            Root="HKCU" Key="Software\smith" Name="PathEntry"
+            Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Package>
+</Wix>

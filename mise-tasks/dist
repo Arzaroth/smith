@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-#MISE description="Release assets into dist/: archives for Linux (static musl) and macOS, x86_64 and aarch64, .deb and .rpm packages, and the source tarball; given targets, only theirs (plus the source tarball with --source)"
+#MISE description="Release assets into dist/: archives for Linux (static musl), macOS and Windows, x86_64 and aarch64, .deb and .rpm packages, and the source tarball; given targets, only theirs (plus the source tarball with --source)"
 set -euo pipefail
 
 version="$(sed -n 's/^    \.version = "\([^"]*\)",$/\1/p' build.zig.zon)"
-all=(x86_64-linux-musl aarch64-linux-musl x86_64-macos aarch64-macos)
+all=(x86_64-linux-musl aarch64-linux-musl x86_64-macos aarch64-macos x86_64-windows aarch64-windows)
 targets=()
 source=false
 for arg in "$@"; do
@@ -48,6 +48,12 @@ for target in "${targets[@]}"; do
   zig build -Doptimize=ReleaseSafe -Dtarget="${target}" --prefix "${prefix}"
   name="smith-${version}-${target}"
   mkdir -p "dist/${name}"
+  if [[ "${target}" == *-windows ]]; then
+    cp "${prefix}/bin/smith.exe" README.md LICENSE CHANGELOG.md "dist/${name}/"
+    (cd dist && zip -qrX "${name}.zip" "${name}")
+    rm -rf "dist/${name}"
+    continue
+  fi
   cp -r "${prefix}/bin/smith" dist/share/smith.1 dist/share/completions README.md LICENSE CHANGELOG.md "dist/${name}/"
   tar -C dist -czf "dist/${name}.tar.gz" "${name}"
   rm -rf "dist/${name}"
