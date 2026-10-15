@@ -32,7 +32,7 @@ pub fn run(ctx: *Ctx, args: []const []const u8) !void {
         .environ_map = ctx.env,
     }) catch |e|
         return ctx.fail("cannot run git: {t}", .{e});
-    platform.copyOut(ctx.io, &child, ctx.err);
+    platform.copyOut(ctx.io, &child);
     const term = try child.wait(ctx.io);
     if (term != .exited or term.exited != 0) {
         const joined = try std.mem.join(ctx.alloc, " ", args);

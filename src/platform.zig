@@ -82,18 +82,20 @@ pub fn findOnPath(alloc: Allocator, io: Io, env: *const std.process.Environ.Map,
 /// How a child's standard output goes to smith's standard error: handed
 /// over directly on POSIX; on Windows std reopens a `.file` by name, which
 /// fails for a pipe, so the output comes through one and `copyOut` passes it
-/// on.
+/// on to the process's standard error.
 pub fn stdoutToStderr() std.process.SpawnOptions.StdIo {
     return if (windows) .pipe else .{ .file = .stderr() };
 }
 
-pub fn copyOut(io: Io, child: *std.process.Child, to: *Io.Writer) void {
+pub fn copyOut(io: Io, child: *std.process.Child) void {
     if (!windows) return;
     const out = child.stdout orelse return;
     var buf: [4096]u8 = undefined;
     var r = out.readerStreaming(io, &buf);
-    _ = r.interface.streamRemaining(to) catch {};
-    to.flush() catch {};
+    var wbuf: [4096]u8 = undefined;
+    var w = Io.File.stderr().writerStreaming(io, &wbuf);
+    _ = r.interface.streamRemaining(&w.interface) catch {};
+    w.interface.flush() catch {};
 }
 
 /// The terminal's state before `echoOff`, for `restore`.

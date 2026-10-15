@@ -54,9 +54,14 @@ pub fn init(h: *Harness, routes: []const Mock.Route, opts: Options) !void {
     try h.env.put("HOME", h.root);
     try h.env.put("SMITH_CONFIG_DIR", try std.fs.path.join(a, &.{ h.root, "config" }));
     try h.env.put("PATH", std.testing.environ.getAlloc(a, "PATH") catch "/usr/bin:/bin");
-    if (platform.windows) for ([_][]const u8{ "SYSTEMROOT", "WINDIR", "PATHEXT", "COMSPEC", "TEMP", "TMP" }) |name| {
-        if (std.testing.environ.getAlloc(a, name)) |v| try h.env.put(name, v) else |_| {}
-    };
+    if (platform.windows) {
+        for ([_][]const u8{ "SYSTEMROOT", "WINDIR", "PATHEXT", "COMSPEC", "TEMP", "TMP", "USERNAME", "ProgramData", "ProgramFiles" }) |name| {
+            if (std.testing.environ.getAlloc(a, name)) |v| try h.env.put(name, v) else |_| {}
+        }
+        try h.env.put("USERPROFILE", h.root);
+        try h.env.put("APPDATA", h.root);
+        try h.env.put("LOCALAPPDATA", h.root);
+    }
     try h.env.put("GIT_CONFIG_NOSYSTEM", "1");
     try h.env.put("GIT_TERMINAL_PROMPT", "0");
     try h.env.put("GIT_AUTHOR_NAME", "Test");

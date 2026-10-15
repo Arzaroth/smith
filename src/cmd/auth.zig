@@ -695,6 +695,17 @@ fn uploadKey(ctx: *Ctx, client: *api.Client, host: config.Host, password: ?Passw
     try ctx.err.print("! {s} did not take the SSH key ({s}); add it with `smith ssh-key add {s} --hostname {s}` or under Settings > SSH / GPG Keys\n", .{ host.name, firstLine(why), key.path, host.name });
 }
 
+fn fmtTerm(t: std.process.Child.Term) std.fmt.Alt(std.process.Child.Term, writeTerm) {
+    return .{ .data = t };
+}
+
+fn writeTerm(t: std.process.Child.Term, w: *std.Io.Writer) std.Io.Writer.Error!void {
+    switch (t) {
+        .exited => |code| try w.print("exit {d}", .{code}),
+        else => try w.print("{t}", .{t}),
+    }
+}
+
 /// Runs ssh-keygen for a new ed25519 key; it asks for the passphrase itself,
 /// so the passphrase never appears in a command line. Null, with a warning,
 /// when it fails.
@@ -721,10 +732,10 @@ fn generateKey(ctx: *Ctx, ssh_dir: []const u8, path: []const u8) !?LocalKey {
         try ctx.err.print("! cannot run ssh-keygen: {t}\n", .{e});
         return null;
     };
-    platform.copyOut(ctx.io, &child, ctx.err);
+    platform.copyOut(ctx.io, &child);
     const exit = try child.wait(ctx.io);
     if (exit != .exited or exit.exited != 0) {
-        try ctx.err.print("! ssh-keygen did not create {s}\n", .{path});
+        try ctx.err.print("! ssh-keygen did not create {s} ({f})\n", .{ path, fmtTerm(exit) });
         return null;
     }
     const pub_path = try std.fmt.allocPrint(ctx.alloc, "{s}.pub", .{path});

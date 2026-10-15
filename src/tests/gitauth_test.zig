@@ -61,7 +61,7 @@ test "setup-git points git's helper for the host at smith, and running it again 
         var lines = std.mem.splitScalar(u8, std.mem.trimEnd(u8, values, "\n"), '\n');
         try std.testing.expectEqualStrings("", lines.next().?);
         const helper = lines.next().?;
-        try std.testing.expect(std.mem.startsWith(u8, helper, "!/") or std.mem.startsWith(u8, helper, "!'/"));
+        try std.testing.expect(std.mem.startsWith(u8, helper, "!/") or std.mem.startsWith(u8, helper, "!'"));
         try std.testing.expect(std.mem.endsWith(u8, helper, " auth git-credential"));
         try std.testing.expect(lines.next() == null);
     }
