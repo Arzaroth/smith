@@ -30,3 +30,30 @@ jobs:
 
       - name: Gate
         run: mise run check
+
+  native:
+    if: github.server_url == 'https://github.com'
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [ubuntu-24.04-arm, macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.runs-on }}
+    env:
+      MISE_YES: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: mise
+        run: |
+          curl -fsSL https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Zig
+        run: |
+          mise trust
+          mise install zig
+
+      - name: Test
+        run: mise exec -- zig build test
