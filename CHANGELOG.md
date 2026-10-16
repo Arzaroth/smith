@@ -9,9 +9,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Windows: `install.ps1`, a per-user `.msi` and a `.zip` in each
-  release, built for x64 and run under emulation on arm64. Settings and tokens go to `%APPDATA%\smith`, the local
-  day for due dates comes from Windows' time zone, and the browser opens
-  through the default handler.
+  release, built for x64 and run under emulation on arm64. Settings and
+  tokens go to `%APPDATA%\smith`, the local day for due dates comes from
+  Windows' time zone, and the browser opens through the default handler.
 - Releases are signed with smith's release key (`packaging/smith.asc`,
   fingerprint `32B7A2C3ED7783FC29CFE17740ED673184E5C6E9`): the `.rpm`s, the Arch
   packages and `SHA256SUMS`, which covers every other file.
@@ -31,11 +31,6 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 - Releases are published on GitHub only: git.arzaroth.com keeps the ones up
   to 0.8.0, and `install.sh` no longer takes `--from forgejo`.
-
-### Fixed
-
-- On Windows, a `TZ` naming a zone file by a drive path is read as that
-  file.
 
 ## [0.8.0] - 2026-10-15
 
