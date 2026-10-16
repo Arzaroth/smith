@@ -54,7 +54,7 @@
     elsewhere, `mise run dist <target>` (x86_64 Linux adds the source
     tarball), and the binary's `--version` against `build.zig.zon` (and the
     tag, when publishing).
-  - **windows**, on x64 and arm64 Windows: the tests, then a per-user MSI
+  - **windows**: the tests, then a per-user x64 MSI
     (`packaging/windows/smith.wxs`, WiX 5) from the zip x86_64 Linux
     cross-built, installing into `%LOCALAPPDATA%\Programs\smith` and
     adding it to the user `PATH`.
@@ -75,7 +75,9 @@
     the `.deb` on Debian 12, the `.rpm` on Fedora (`rpm -V`), the Arch
     package (`pacman -Qkk`), and `install.sh` against the files as a
     `file://` release. **verify-windows** (x64, arm64): `install.ps1`
-    against the files, and the MSI installed, run and uninstalled.
+    against the files, and the MSI installed, run and uninstalled. Both
+    install the x64 build: Zig 0.16.0's optimized aarch64 Windows builds
+    crash (`0xC0000005`), so arm64 Windows runs x64 under emulation.
   - **release**: notes from `CHANGELOG.md`; a GitHub draft with every file,
     then published as latest. Nothing is published on Forgejo
     ([decision](decisions.md#releases-on-github-only-2026-10-16)).

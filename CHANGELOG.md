@@ -8,8 +8,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Windows, x64 and arm64: `install.ps1`, a per-user `.msi` and a `.zip`
-  in each release. Settings and tokens go to `%APPDATA%\smith`, the local
+- Windows: `install.ps1`, a per-user `.msi` and a `.zip` in each
+  release, built for x64 and run under emulation on arm64. Settings and tokens go to `%APPDATA%\smith`, the local
   day for due dates comes from Windows' time zone, and the browser opens
   through the default handler.
 - Releases are signed with smith's release key (`packaging/smith.asc`,
@@ -22,7 +22,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - Every release is built and tested natively on x86_64 and arm64 Linux, on
-  Apple silicon and Intel macOS and on x64 and arm64 Windows, and its
+  Apple silicon and Intel macOS and on Windows, and its
   packages are installed on Debian, Fedora, Arch, macOS and Windows before
   it is published.
 

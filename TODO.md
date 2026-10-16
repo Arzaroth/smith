@@ -50,7 +50,12 @@ the Secret Service keyring were exercised on git.arzaroth.com on 2026-09-29; the
   6. The aarch64 Windows Zig 0.16.0 crashes (`0xC0000005`, no output)
      compiling on GitHub's arm64 Windows runner, even an empty `main`,
      most times but not every time; the tests there run from a binary
-     cross-compiled on Linux (`zig build test-exe`) instead.
+     cross-compiled on Linux (`zig build test-exe`) instead. The binaries
+     it builds in ReleaseSafe, ReleaseSmall and ReleaseFast crash the same
+     way on almost every run (Debug never does), so releases ship no
+     aarch64 Windows build: `install.ps1` and the MSI give arm64 Windows
+     the x64 one. Bring it back in `mise-tasks/dist`, `release.yml` and
+     `install.ps1` once a Zig release fixes it.
   7. Wine 11 lacks the AFD socket ioctls `Io/Threaded.zig` uses on Windows
      (`INVALID_DEVICE_REQUEST` on `setsockopt`), so Windows test binaries
      cannot listen under Wine. Wine's side, not Zig's.
