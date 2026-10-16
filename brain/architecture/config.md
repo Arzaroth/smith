@@ -1,9 +1,12 @@
 # Host configuration
 
 `$SMITH_CONFIG_DIR/hosts.zon` (default `$XDG_CONFIG_HOME/smith`, then
-`~/.config/smith`), ZON, written through a temporary file and renamed, mode
-0600. One entry per account; a host with several accounts has several
-entries, one of them `active`:
+`%APPDATA%\smith` on Windows, then `~/.config/smith` with `HOME`, or
+`USERPROFILE` on Windows), ZON, written through a temporary file and
+renamed, mode 0600 (on Windows the file takes the profile directory's
+ACL). Windows has no keyring backend, so tokens stay in the file there.
+One entry per account; a host with several accounts has several entries,
+one of them `active`:
 
 ```zig
 .{
@@ -71,6 +74,7 @@ rather than be followed), then renamed over `hosts.zon`.
 - `src/config.zig`
 - `src/cmd/auth.zig`
 - `src/api.zig`
+- `src/platform.zig`
 
 ## Keyring
 

@@ -25,7 +25,8 @@
   and a changelog made from `CHANGELOG.md` by `packaging/changelog.awk`, the source
   tarball `smith-<version>.tar.gz` (`git archive` of HEAD, without what
   `.gitattributes` marks `export-ignore`), and `SHA256SUMS` over
-  all of them; the archives carry `smith.1` and `completions/`; given
+  all of them; the archives carry `smith.1` and `completions/`, and
+  `smith-<version>-{x86_64,aarch64}-windows.zip` hold `smith.exe`; given
   targets it builds only theirs, and the source tarball with `--source`),
   `arch` (`mise-tasks/arch`, on Arch as a regular user after `dist`:
   `smith-cli-bin` for x86_64 and aarch64 from the musl archives, `smith-cli`
@@ -40,7 +41,12 @@
   `zig-out/coverage`).
 - **CI**: `.github/workflows/ci.yml` runs the gate on Forgejo Actions and,
   through the mirror, on GitHub Actions, where it also runs the tests on
-  arm64 Linux, Apple silicon and Intel macOS. `.github/workflows/release.yml`
+  arm64 Linux, Apple silicon and Intel macOS, and x64 and arm64 Windows
+  (Zig from `mlugg/setup-zig`, which reads `minimum_zig_version`; Zig
+  0.16.0 crashes when it compiles on arm64 Windows, so that runner runs a
+  test binary x86_64 Linux cross-compiled with `zig build test-exe`). The
+  GitHub-only jobs give mise the job's token against the API rate limit.
+  CI can be started by hand on any branch. `.github/workflows/release.yml`
   runs on GitHub only ([decision](decisions.md#releases-on-github-only-2026-10-16)),
   for a `v*` tag, `workflow_dispatch` with a tag, or, without publishing, a
   branch push touching the packaging:
@@ -48,6 +54,10 @@
     elsewhere, `mise run dist <target>` (x86_64 Linux adds the source
     tarball), and the binary's `--version` against `build.zig.zon` (and the
     tag, when publishing).
+  - **windows**, on x64 and arm64 Windows: the tests, then a per-user MSI
+    (`packaging/windows/smith.wxs`, WiX 5) from the zip x86_64 Linux
+    cross-built, installing into `%LOCALAPPDATA%\Programs\smith` and
+    adding it to the user `PATH`.
   - **arch**, in an `archlinux` container: `mise run arch` on the Linux
     archives, keeping `smith-cli-bin` and the PKGBUILD tarball.
   - **checksums**: with the `SMITH_GPG_KEY` and `SMITH_GPG_PASSPHRASE`
@@ -64,12 +74,18 @@
     signatures (`gpg --verify`, `rpm -K` on Fedora, `pacman-key --verify`),
     the `.deb` on Debian 12, the `.rpm` on Fedora (`rpm -V`), the Arch
     package (`pacman -Qkk`), and `install.sh` against the files as a
-    `file://` release.
+    `file://` release. **verify-windows** (x64, arm64): `install.ps1`
+    against the files, and the MSI installed, run and uninstalled.
   - **release**: notes from `CHANGELOG.md`; a GitHub draft with every file,
     then published as latest. Nothing is published on Forgejo
     ([decision](decisions.md#releases-on-github-only-2026-10-16)).
   `actions/checkout` is pinned to a commit that GitHub and Forgejo's action
   mirrors share.
+- **Windows installer**: `install.ps1` (PowerShell, https only) installs
+  `SMITH_VERSION` or the latest release's zip, checked against its
+  `SHA256SUMS`, into the MSI's directory and the user `PATH`;
+  `SMITH_INSTALL_FROM=forgejo`, `SMITH_INSTALL_DIR` and `SMITH_INSTALL_URL`
+  (a local directory, for the release checks) as `install.sh` has them.
 - **Installer**: `install.sh` (POSIX sh, curl or wget, https only) installs
   the latest release, or `--version`, for the machine's OS and architecture
   from GitHub, checked against the release's
@@ -88,7 +104,8 @@
 ## Sources
 
 - `.mise.toml`
-- `install.sh`, `mise-tasks/installer-check`
+- `install.sh`, `install.ps1`, `mise-tasks/installer-check`
+- `packaging/windows/smith.wxs`
 - `build.zig`, `build.zig.zon`
 - `src/main.zig`
 - `mise-tasks/release`

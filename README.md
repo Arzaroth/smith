@@ -36,10 +36,28 @@ curl -fsSL https://raw.githubusercontent.com/Arzaroth/smith/master/install.sh | 
 0.16.0: yours if it is on `PATH`, else through mise, else a download from
 ziglang.org checked against its published checksum; `smith --version` then
 says `<version>-dev+<commit>`. Releases are published on GitHub only; the
-Forgejo repository keeps the ones up to 0.8.0. Other systems (Windows,
-FreeBSD, 32-bit ARM) can build it (below). To uninstall, delete the
+Forgejo repository keeps the ones up to 0.8.0. Other systems (FreeBSD,
+32-bit ARM) can build it (below). To uninstall, delete the
 binary; `smith auth logout` first removes its tokens from the keyring, and
 `~/.config/smith` holds its settings.
+
+### Windows
+
+On Windows 10 and 11 (x64 and arm64), in PowerShell:
+
+```powershell
+powershell -c "irm https://raw.githubusercontent.com/Arzaroth/smith/master/install.ps1 | iex"
+```
+
+It installs `smith.exe` into `%LOCALAPPDATA%\Programs\smith`, checked against
+the release's `SHA256SUMS`, and adds that directory to your `PATH`;
+`SMITH_VERSION` picks a release and `SMITH_INSTALL_FROM=forgejo` downloads
+from git.arzaroth.com. Each release also has a per-user `.msi` for x64 and
+arm64 that installs into the same directory (unsigned, so SmartScreen asks
+once), and a `.zip`. The settings live in `%APPDATA%\smith`; tokens stay in
+`hosts.zon` there, as Windows has no keyring smith uses yet. `!` aliases
+need `sh` on `PATH` (Git for Windows has one), and the pager and editor
+settings are split into words rather than run by a shell.
 
 ### Packages
 

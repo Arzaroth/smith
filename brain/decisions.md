@@ -279,3 +279,16 @@ it into rpm or pacman trusts smith's packages and nothing else. A primary
 key with per-project subkeys would not give that last property. The public
 half is `packaging/smith.asc`; once it is committed a release refuses to
 go out unsigned.
+
+## Windows by word-splitting, not a shell (2026-10-16)
+
+On Windows smith runs the pager and editor settings by splitting them into
+words (double quotes keep a path with spaces together) instead of handing
+them to `sh -c`, since a Windows machine may have no `sh`; only `!`
+aliases, which are shell scripts by definition, need one (Git for Windows
+brings it). Tokens stay in `hosts.zon` there: a Credential Manager backend
+can come later. The binaries are cross-compiled on Linux like the macOS
+ones and only tested and packaged on Windows. The MSI is per-user, so it
+needs no elevation, and unsigned: Authenticode needs a paid certificate,
+and `SHA256SUMS.asc` already covers it.
+

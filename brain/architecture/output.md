@@ -34,21 +34,33 @@
   arena, freed before the next.
 - **Pager**: lists, views, `status` and `pr diff` on a terminal write
   through `SMITH_PAGER`, then `config set pager`, then `PAGER` (`cat`, or an
-  empty `SMITH_PAGER`, means none), run with `sh -c` and `LESS=FRX`,
+  empty `SMITH_PAGER`, means none), run with `sh -c` (split into words on
+  Windows, where there may be no `sh`) and `LESS=FRX`,
   `LV=-c` unless set, as gh does. The pager starts with the first output,
   so an error raised before it reaches the terminal directly; a pager
   whose program is not on `PATH` is skipped with a warning, and one that
   exits with a failure makes smith exit 1. Watch modes and prompts never
   page.
 - **Browser**: `--web` runs `$SMITH_BROWSER`, `$BROWSER`, else `xdg-open`
-  (`open` on macOS), detached so that a browser started directly does not
+  (`open` on macOS, `rundll32 url.dll,FileProtocolHandler` on Windows), detached so that a browser started directly does not
   hold smith, and only for http(s) URLs, since some come from the server.
+
+- **Windows**: `src/platform.zig` holds what differs there: home and
+  config directories, private file modes, the console's echo for secret
+  prompts and its escape sequences for colour (`SetConsoleMode`), command
+  lines split into words for the pager and editor (`notepad` last), `PATH`
+  with `;` and executable extensions, `COMPUTERNAME` for titles, and a
+  child's stdout piped back to smith's stderr, since std 0.16 reopens a
+  `.file` stdio by name on Windows, which fails for a pipe. The local day
+  comes from Windows' zone (`SystemTimeToTzSpecificLocalTime`) unless `TZ`
+  is set. `!` aliases still need an `sh` on `PATH`.
 
 ## Sources
 
 - `src/term.zig`
 - `src/localtime.zig`
 - `src/Ctx.zig`
+- `src/platform.zig`
 - **--jq / --template**: applied by `api.printJson` to anything a command
   would print as JSON; see [../features/tools.md](../features/tools.md#--jq-and---template).
 - **Confirmation**: destructive commands ask on a terminal (`Ctx.confirm`)

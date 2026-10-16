@@ -43,6 +43,17 @@ the Secret Service keyring were exercised on git.arzaroth.com on 2026-09-29; the
      already knows such answers have no body (a DELETE's 204 stalls every
      kept-alive request after it). Found after the upstream search; look
      for an existing report first.
+  5. `Io/Threaded.zig` Windows spawn: a `.file` stdio is reopened by name
+     (`OpenFile` relative to the handle), which fails with
+     `PIPE_NOT_AVAILABLE`, reported as `NoDevice`, when the handle is a
+     pipe, as stderr is under the test runner.
+  6. The aarch64 Windows Zig 0.16.0 crashes (`0xC0000005`, no output)
+     compiling on GitHub's arm64 Windows runner, even an empty `main`,
+     most times but not every time; the tests there run from a binary
+     cross-compiled on Linux (`zig build test-exe`) instead.
+  7. Wine 11 lacks the AFD socket ioctls `Io/Threaded.zig` uses on Windows
+     (`INVALID_DEVICE_REQUEST` on `setsockopt`), so Windows test binaries
+     cannot listen under Wine. Wine's side, not Zig's.
 - **`pr view` of a merged pull request** still says "wants to merge", and
   once its branch is deleted the head shows as `refs/pull/<n>/head`
   (Forgejo's ref then); gh says "merged" and keeps the branch name.
@@ -64,9 +75,10 @@ the Secret Service keyring were exercised on git.arzaroth.com on 2026-09-29; the
   drops the assignment where Go sets `$v`, and `color` gives up on a
   background attribute other than `h` (`red:blue+b`) where mgutz/ansi
   ignores it and keeps both colours.
-- **Verify installs beyond the same host's `SHA256SUMS`**: each forge builds
-  its own release archives, which differ byte for byte (tar mtimes, gzip
-  headers), so the installer cannot cross-check GitHub against Forgejo.
-  Reproducible archives (fixed mtime and owner, `gzip -n`) would allow that;
-  signing `SHA256SUMS` (minisign, key pinned in `install.sh`) would go
-  further.
+- **Check `SHA256SUMS.asc` in the installers**: releases are one build,
+  signed, on both forges, but `install.sh` and `install.ps1` only check
+  `SHA256SUMS`. With `gpg` available they could verify it against the key
+  fingerprint pinned in the script.
+- **Windows leftovers**: a Credential Manager keyring backend, PowerShell
+  completion (`smith completion powershell`, as gh has), an icon for the
+  MSI, and Authenticode signing if a certificate ever comes along.

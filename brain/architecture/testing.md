@@ -27,7 +27,12 @@ backend's debug info to the sources.
     `HOME` and config dir; an empty stdin; `SMITH_EDITOR=true`; a
     `hosts.zon` pointing at the mock, a fixed "now"
     (2026-09-29T12:00:00Z), a git identity, `GIT_CONFIG_NOSYSTEM`, and
-    `SMITH_BROWSER=true`. `clone()` makes a repo whose origin is the mock;
+    `SMITH_BROWSER=true`. On Windows the no-op editor and browser are
+    `cmd /c rem` and `where`, the system variables children need are passed
+    through, and `USERPROFILE`, `APPDATA` and `LOCALAPPDATA` point at the
+    temporary directory too. `script()` writes a `#!/bin/sh` fake tool and
+    skips the test on Windows; `slashPath()` gives a path with forward
+    slashes for JSON bodies and git URLs. `clone()` makes a repo whose origin is the mock;
     output is captured in memory; `stdin_data` stands in for stdin.
   - `pr checkout` tests fetch for real from a local bare repository that the
     clone reaches through `url.<bare>.insteadOf` (hence remotes being matched
