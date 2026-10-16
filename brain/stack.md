@@ -56,7 +56,10 @@
     `smith-release-key.asc`; then `SHA256SUMS` over everything and
     `SHA256SUMS.asc`. Without the key the files stay unsigned, which a
     release refuses once `packaging/smith.asc` is committed. Ubuntu's rpm
-    wants `/usr/bin/gpg2`, so `__gpg` points at `gpg`.
+    wants `/usr/bin/gpg2`, so `__gpg` points at `gpg`. The key's own home,
+    as for wyrmyon, is the maintainer's `~/.config/smith`: a `gnupg/`
+    keyring and `release-signing.{fingerprint,passphrase,public.asc,
+    secret.asc,revoke.asc}`, the last to publish if the key ever leaks.
   - **verify-linux** (x86_64, arm64) and **verify-macos** (both): the
     signatures (`gpg --verify`, `rpm -K` on Fedora, `pacman-key --verify`),
     the `.deb` on Debian 12, the `.rpm` on Fedora (`rpm -V`), the Arch

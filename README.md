@@ -50,7 +50,7 @@ on Fedora, openSUSE and other RPM systems an `.rpm` for x86_64 and aarch64
 ```sh
 sudo apt install ./smith-cli_<version>_amd64.deb
 sudo dnf install ./smith-cli-<version>-1.x86_64.rpm
-sudo zypper install --allow-unsigned-rpm ./smith-cli-<version>-1.x86_64.rpm
+sudo zypper install ./smith-cli-<version>-1.x86_64.rpm
 ```
 
 For Arch, each release carries `smith-cli-bin` packages for x86_64 and
@@ -61,6 +61,22 @@ In a checkout, `mise run aur <version>` fills them in for a published release
 under `dist/aur`, ready for `makepkg -si`. They are `smith-cli` because the
 AUR's `smith` is an unrelated text editor with a `smith` of its own; the
 command is `smith` either way.
+
+### Signatures
+
+Releases from 0.9.0 on are signed with smith's release key,
+[`packaging/smith.asc`](packaging/smith.asc), fingerprint
+`32B7A2C3ED7783FC29CFE17740ED673184E5C6E9`: the `.rpm`s, the Arch packages (a `.sig`
+next to each) and `SHA256SUMS` (`SHA256SUMS.asc`), which lists every other
+file of the release. Each release also carries the key as
+`smith-release-key.asc`. Trust it once:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Arzaroth/smith/master/packaging/smith.asc -o smith.asc
+gpg --import smith.asc && gpg --verify SHA256SUMS.asc SHA256SUMS   # any file
+sudo rpm --import smith.asc                                         # Fedora, openSUSE
+sudo pacman-key --add smith.asc && sudo pacman-key --lsign-key 32B7A2C3ED7783FC29CFE17740ED673184E5C6E9  # Arch
+```
 
 ## Getting started
 

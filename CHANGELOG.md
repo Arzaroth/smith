@@ -8,6 +8,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Releases are signed with smith's release key (`packaging/smith.asc`,
+  fingerprint `32B7A2C3ED7783FC29CFE17740ED673184E5C6E9`): the `.rpm`s, the Arch
+  packages and `SHA256SUMS`, which covers every other file.
 - Releases carry Arch packages: `smith-cli-bin` for x86_64 and aarch64,
   and the rendered PKGBUILDs.
 - The release archives carry the shell completions next to the man page.
