@@ -41,7 +41,7 @@
 - **CI**: `.github/workflows/ci.yml` runs the gate on Forgejo Actions and,
   through the mirror, on GitHub Actions, where it also runs the tests on
   arm64 Linux, Apple silicon and Intel macOS. `.github/workflows/release.yml`
-  runs on GitHub only ([decision](decisions.md#one-release-build-on-github-for-both-forges-2026-10-16)),
+  runs on GitHub only ([decision](decisions.md#releases-on-github-only-2026-10-16)),
   for a `v*` tag, `workflow_dispatch` with a tag, or, without publishing, a
   branch push touching the packaging:
   - **build**, one runner per target: the gate on x86_64 Linux, the tests
@@ -66,15 +66,13 @@
     package (`pacman -Qkk`), and `install.sh` against the files as a
     `file://` release.
   - **release**: notes from `CHANGELOG.md`; a GitHub draft with every file,
-    then published as latest; then the same on Forgejo with `smith release
-    create --draft` and `release edit --publish --latest`, using the
-    release's own x86_64 binary and the `FORGEJO_RELEASE_TOKEN` secret, which
-    is checked before anything is published.
+    then published as latest. Nothing is published on Forgejo
+    ([decision](decisions.md#releases-on-github-only-2026-10-16)).
   `actions/checkout` is pinned to a commit that GitHub and Forgejo's action
   mirrors share.
 - **Installer**: `install.sh` (POSIX sh, curl or wget, https only) installs
   the latest release, or `--version`, for the machine's OS and architecture
-  from GitHub or `--from forgejo`, checked against the release's
+  from GitHub, checked against the release's
   `SHA256SUMS` (corruption, not tampering: both come from the same place).
   It runs from `main` on its last line, so a cut download runs nothing, and
   stages the binary under a random name before renaming it into place.

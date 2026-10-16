@@ -19,8 +19,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 - Every release is built and tested natively on x86_64 and arm64 Linux and
   on Apple silicon and Intel macOS, and its packages are installed on
-  Debian, Fedora, Arch and macOS before it is published, on GitHub and on
-  Forgejo alike.
+  Debian, Fedora, Arch and macOS before it is published.
+
+### Removed
+
+- Releases are published on GitHub only: git.arzaroth.com keeps the ones up
+  to 0.8.0, and `install.sh` no longer takes `--from forgejo`.
 
 ## [0.8.0] - 2026-10-15
 

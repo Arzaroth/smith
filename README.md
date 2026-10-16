@@ -35,8 +35,8 @@ curl -fsSL https://raw.githubusercontent.com/Arzaroth/smith/master/install.sh | 
 `--dev` builds the tip of master from source (a minute or two) with Zig
 0.16.0: yours if it is on `PATH`, else through mise, else a download from
 ziglang.org checked against its published checksum; `smith --version` then
-says `<version>-dev+<commit>`. `--from forgejo` downloads from git.arzaroth.com
-(releases from 0.3.0 on) instead of GitHub. Other systems (Windows,
+says `<version>-dev+<commit>`. Releases are published on GitHub only; the
+Forgejo repository keeps the ones up to 0.8.0. Other systems (Windows,
 FreeBSD, 32-bit ARM) can build it (below). To uninstall, delete the
 binary; `smith auth logout` first removes its tokens from the keyring, and
 `~/.config/smith` holds its settings.

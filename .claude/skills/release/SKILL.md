@@ -52,12 +52,13 @@ uncommitted: `git checkout -- CHANGELOG.md build.zig.zon`, fix the cause, re-run
 
 - `git tag -l 'v*' | tail -1` and `grep '\.version' build.zig.zon` agree.
 - `zig-out/bin/smith --version` prints the new version.
-- The tag starts `.github/workflows/release.yml` on both forges. Follow the
-  Forgejo run with `smith run list -e push -L 1` then `smith run watch <id>`,
-  and the GitHub one with `gh run watch -R Arzaroth/smith`.
-- Check both releases carry the four archives, the two `.deb` and two
-  `.rpm` packages, the source tarball `smith-X.Y.Z.tar.gz` and `SHA256SUMS`:
-  `smith release view vX.Y.Z` and `gh release view vX.Y.Z -R Arzaroth/smith`.
-- If the Forgejo publish step fails with 403, the job token cannot create
-  releases there: set a `RELEASE_TOKEN` secret (`smith secret set
-  RELEASE_TOKEN`) and re-run the tag's workflow from the web UI.
+- The tag starts `.github/workflows/release.yml` on GitHub (releases are
+  GitHub's alone; Forgejo's copy skips itself): `gh run watch -R
+  Arzaroth/smith`. It builds and tests on every platform, signs, installs the
+  packages, then publishes a draft and makes it latest once every file is up.
+- Check the release carries the archives (Linux, macOS, Windows zips), the
+  `.deb`, `.rpm`, `.msi` and Arch packages with their `.sig`s, the PKGBUILD
+  and source tarballs, `SHA256SUMS`, `SHA256SUMS.asc` and
+  `smith-release-key.asc`: `gh release view vX.Y.Z -R Arzaroth/smith`.
+- If signing fails, check the `SMITH_GPG_KEY` and `SMITH_GPG_PASSPHRASE`
+  secrets against `~/.config/smith/release-signing.*`.

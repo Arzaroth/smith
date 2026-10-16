@@ -258,16 +258,17 @@ glibc's loader would. Debug builds use Zig's own linker, which emits no
 RELRO segment, so its test runs in ReleaseSafe in the gate. The binary grows
 by about 1.4%.
 
-## One release build on GitHub, for both forges (2026-10-16)
+## Releases on GitHub only (2026-10-16)
 
-The release builds, tests, signs and checks on GitHub's runners and then
-publishes the same files on GitHub and on Forgejo, instead of each forge
-building its own. Only GitHub has native arm64 Linux and macOS runners, and
-two builds would give two sets of bytes for one version, with signatures
-on one of them. Forgejo Actions still runs the gate on pull requests; its
-copy of the release workflow skips itself. The Forgejo upload needs a token
-on GitHub (`FORGEJO_RELEASE_TOKEN`), checked before either release is
-created, and each release is a draft until every file is up.
+The release builds, tests, signs and checks on GitHub's runners and is
+published there alone, as wyrmyon's are; the Forgejo repository keeps its
+releases up to 0.8.0 and `install.sh` lost `--from forgejo`. Only GitHub
+has native arm64 Linux, macOS and Windows runners, a Forgejo build would
+give a second set of bytes for the same version, and copying GitHub's files
+to Forgejo needs a Forgejo token kept on GitHub, one more credential for a
+mirror nobody installed from. Forgejo Actions still runs the gate on pull
+requests; its copy of the release workflow skips itself. Each release is a
+draft until every file is up.
 
 ## A signing key of smith's own (2026-10-16)
 
