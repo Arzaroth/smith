@@ -177,16 +177,18 @@ test "an environment token never goes over plain http to a host nobody configure
     for (h.mock.requests.items) |r| try std.testing.expect(r.authorization == null);
 }
 
-test "the config directory: XDG_CONFIG_HOME, then HOME, and an error without either" {
+test "the config directory: XDG_CONFIG_HOME, then HOME (%APPDATA% on Windows), and an error without either" {
     var h: Harness = undefined;
     try h.init(&.{}, .{ .config = false });
     defer h.deinit();
     const io = std.testing.io;
+    const windows = @import("../platform.zig").windows;
     _ = h.env.swapRemove("SMITH_CONFIG_DIR");
     try h.tmp.dir.createDirPath(io, "xdg/smith");
     try h.tmp.dir.writeFile(io, .{ .sub_path = "xdg/smith/hosts.zon", .data = ".{ .hosts = .{ .{ .name = \"xdg.test\", .token = \"t-xdg\" } } }\n" });
-    try h.tmp.dir.createDirPath(io, ".config/smith");
-    try h.tmp.dir.writeFile(io, .{ .sub_path = ".config/smith/hosts.zon", .data = ".{ .hosts = .{ .{ .name = \"home.test\", .token = \"t-home\" } } }\n" });
+    const native = if (windows) "smith" else ".config/smith";
+    try h.tmp.dir.createDirPath(io, native);
+    try h.tmp.dir.writeFile(io, .{ .sub_path = native ++ "/hosts.zon", .data = ".{ .hosts = .{ .{ .name = \"home.test\", .token = \"t-home\" } } }\n" });
 
     try h.env.put("XDG_CONFIG_HOME", try h.path("xdg"));
     try h.expectRun(0, &.{ "auth", "token" });
@@ -197,6 +199,10 @@ test "the config directory: XDG_CONFIG_HOME, then HOME, and an error without eit
     try std.testing.expectEqualStrings("t-home\n", h.stdout());
 
     _ = h.env.swapRemove("HOME");
+    if (windows) {
+        _ = h.env.swapRemove("APPDATA");
+        _ = h.env.swapRemove("USERPROFILE");
+    }
     try h.expectRun(1, &.{ "auth", "token" });
     try h.expectErr("cannot find the config directory: HOME is not set");
 }
