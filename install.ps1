@@ -4,8 +4,7 @@
 #
 # into %LOCALAPPDATA%\Programs\smith (the MSI's directory, or SMITH_INSTALL_DIR),
 # added to the user PATH, after checking the archive against the release's
-# SHA256SUMS. SMITH_VERSION picks a release (default: the latest);
-# SMITH_INSTALL_FROM=forgejo downloads from git.arzaroth.com instead of GitHub.
+# SHA256SUMS. SMITH_VERSION picks a release (default: the latest).
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -13,13 +12,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 function Install-Smith {
     $repo = 'Arzaroth/smith'
-    $from = if ($env:SMITH_INSTALL_FROM) { $env:SMITH_INSTALL_FROM } else { 'github' }
-    $web = switch ($from) {
-        'github' { "https://github.com/$repo" }
-        'forgejo' { "https://git.arzaroth.com/$repo" }
-        default { throw "install: SMITH_INSTALL_FROM must be github or forgejo" }
-    }
-    if ($env:SMITH_INSTALL_URL) { $web = $env:SMITH_INSTALL_URL }
+    $web = if ($env:SMITH_INSTALL_URL) { $env:SMITH_INSTALL_URL } else { "https://github.com/$repo" }
     $installDir = if ($env:SMITH_INSTALL_DIR) { $env:SMITH_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\smith' }
 
     $machine = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
@@ -32,8 +25,7 @@ function Install-Smith {
     $version = $env:SMITH_VERSION
     if (-not $version) {
         if ($env:SMITH_INSTALL_URL) { throw "install: set SMITH_VERSION along with SMITH_INSTALL_URL" }
-        $api = if ($from -eq 'github') { "https://api.github.com/repos/$repo/releases/latest" } else { "https://git.arzaroth.com/api/v1/repos/$repo/releases/latest" }
-        $version = (Invoke-RestMethod $api).tag_name
+        $version = (Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest").tag_name
     }
     $version = $version.TrimStart('v')
     if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "install: SMITH_VERSION takes X.Y.Z, not $version" }
@@ -53,7 +45,7 @@ function Install-Smith {
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ([IO.Path]::GetRandomFileName())
     New-Item -ItemType Directory $tmp | Out-Null
     try {
-        Write-Host "Downloading smith $version for $arch Windows from $from"
+        Write-Host "Downloading smith $version for $arch Windows"
         Fetch 'SHA256SUMS' "$tmp\SHA256SUMS"
         $line = Get-Content "$tmp\SHA256SUMS" | Where-Object { $_ -match "^[0-9a-f]{64}  \*?$([regex]::Escape("$name.zip"))$" } | Select-Object -First 1
         if (-not $line) { throw "install: release v$version has no build for $arch Windows" }
