@@ -84,8 +84,8 @@
 - **Windows installer**: `install.ps1` (PowerShell, https only) installs
   `SMITH_VERSION` or the latest release's zip, checked against its
   `SHA256SUMS`, into the MSI's directory and the user `PATH`;
-  `SMITH_INSTALL_FROM=forgejo`, `SMITH_INSTALL_DIR` and `SMITH_INSTALL_URL`
-  (a local directory, for the release checks) as `install.sh` has them.
+  `SMITH_INSTALL_DIR` and `SMITH_INSTALL_URL` (a local directory, for the
+  release checks) as `install.sh` has them.
 - **Installer**: `install.sh` (POSIX sh, curl or wget, https only) installs
   the latest release, or `--version`, for the machine's OS and architecture
   from GitHub, checked against the release's

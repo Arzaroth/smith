@@ -51,8 +51,7 @@ powershell -c "irm https://raw.githubusercontent.com/Arzaroth/smith/master/insta
 
 It installs `smith.exe` into `%LOCALAPPDATA%\Programs\smith`, checked against
 the release's `SHA256SUMS`, and adds that directory to your `PATH`;
-`SMITH_VERSION` picks a release and `SMITH_INSTALL_FROM=forgejo` downloads
-from git.arzaroth.com. Each release also has a per-user `.msi` for x64 and
+`SMITH_VERSION` picks a release. Each release also has a per-user `.msi` for x64 and
 arm64 that installs into the same directory (unsigned, so SmartScreen asks
 once), and a `.zip`. The settings live in `%APPDATA%\smith`; tokens stay in
 `hosts.zon` there, as Windows has no keyring smith uses yet. `!` aliases
