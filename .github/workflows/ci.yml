@@ -41,6 +41,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     env:
       MISE_YES: "1"
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -61,11 +62,7 @@ jobs:
 
   windows:
     if: github.server_url == 'https://github.com'
-    strategy:
-      fail-fast: false
-      matrix:
-        runs-on: [windows-latest, windows-11-arm]
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -75,3 +72,54 @@ jobs:
 
       - name: Test
         run: zig build test
+
+  # Zig 0.16.0 crashes (0xC0000005) when it compiles on arm64 Windows, so the
+  # test binary for that runner is cross-compiled here and only run there.
+  windows-arm64-tests:
+    if: github.server_url == 'https://github.com'
+    runs-on: ubuntu-latest
+    env:
+      MISE_YES: "1"
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: mise
+        run: |
+          curl -fsSL https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: |
+          mise trust
+          mise install zig
+          mise exec -- zig build test-exe -Dtarget=aarch64-windows
+
+      - name: Upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-arm64-tests
+          path: zig-out/bin/test.exe
+          if-no-files-found: error
+
+  windows-arm64:
+    needs: windows-arm64-tests
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Download
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-arm64-tests
+          path: ${{ runner.temp }}
+
+      - name: Test
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP\test.exe"
+          exit $LASTEXITCODE

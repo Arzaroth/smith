@@ -34,6 +34,7 @@ pub fn build(b: *std.Build) void {
     unit_tests.pie = exe.pie;
     const tests = b.addRunArtifact(unit_tests);
     b.step("test", "Run unit tests").dependOn(&tests.step);
+    b.step("test-exe", "Install the test binary to zig-out/bin, to run on another machine").dependOn(&b.addInstallArtifact(unit_tests, .{}).step);
 
     // kcov cannot map the self-hosted backend's debug info to the sources.
     const coverage_tests = b.addTest(.{
