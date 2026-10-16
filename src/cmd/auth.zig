@@ -723,7 +723,7 @@ fn generateKey(ctx: *Ctx, ssh_dir: []const u8, path: []const u8) !?LocalKey {
     if (ctx.stdin_data != null) try argv.appendSlice(ctx.alloc, &.{ "-N", "" });
     try ctx.out.flush();
     try ctx.err.flush();
-    var child = std.process.spawn(ctx.io, .{
+    var child = ctx.spawn(.{
         .argv = argv.items,
         .stdin = if (ctx.stdin_data != null) .ignore else .inherit,
         .stdout = platform.stdoutToStderr(),

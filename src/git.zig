@@ -14,7 +14,7 @@ fn argv(ctx: *const Ctx, args: []const []const u8) ![]const []const u8 {
 
 /// Runs git and returns its trimmed stdout, or null when it exits non-zero.
 pub fn capture(ctx: *Ctx, args: []const []const u8) !?[]const u8 {
-    const result = std.process.run(ctx.alloc, ctx.io, .{ .argv = try argv(ctx, args), .environ_map = ctx.env }) catch |e|
+    const result = ctx.run(.{ .argv = try argv(ctx, args), .environ_map = ctx.env }) catch |e|
         return ctx.fail("cannot run git: {t}", .{e});
     if (result.term != .exited or result.term.exited != 0) return null;
     return std.mem.trim(u8, result.stdout, " \r\n\t");
@@ -25,7 +25,7 @@ pub fn capture(ctx: *Ctx, args: []const []const u8) !?[]const u8 {
 pub fn run(ctx: *Ctx, args: []const []const u8) !void {
     try ctx.out.flush();
     try ctx.err.flush();
-    var child = std.process.spawn(ctx.io, .{
+    var child = ctx.spawn(.{
         .argv = try argv(ctx, args),
         .stdin = .ignore,
         .stdout = platform.stdoutToStderr(),

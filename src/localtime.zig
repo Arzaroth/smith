@@ -20,7 +20,7 @@ pub fn offset(ctx: *Ctx, unix: i64) i32 {
     else
         "";
     if (path.len > 0) if (fromFile(ctx, path, unix)) |o| return o;
-    return rule(spec, unix) orelse 0;
+    return rule(spec, unix) orelse (if (windows) windowsOffset(unix) else null) orelse 0;
 }
 
 /// `YYYY-MM-DD` of the local day `unix` falls on.

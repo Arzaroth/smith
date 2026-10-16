@@ -147,7 +147,7 @@ fn shellAlias(ctx: *Ctx, script: []const u8, args: []const []const u8) !u8 {
     try argv.appendSlice(ctx.alloc, args);
     try ctx.out.flush();
     try ctx.err.flush();
-    var child = std.process.spawn(ctx.io, .{ .argv = argv.items, .environ_map = ctx.env }) catch |e|
+    var child = ctx.spawn(.{ .argv = argv.items, .environ_map = ctx.env }) catch |e|
         return ctx.fail("cannot run sh: {t}", .{e});
     const term = try child.wait(ctx.io);
     return switch (term) {

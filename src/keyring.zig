@@ -34,7 +34,7 @@ pub const Kind = enum { token, refresh };
 const Result = struct { ok: bool, stdout: []const u8 };
 
 fn run(ctx: *Ctx, argv: []const []const u8, input: ?[]const u8) Result {
-    var child = std.process.spawn(ctx.io, .{
+    var child = ctx.spawn(.{
         .argv = argv,
         .stdin = if (input != null) .pipe else .ignore,
         .stdout = .pipe,

@@ -105,7 +105,7 @@ const Pager = struct {
             platform.words(ctx.alloc, p.program) catch return error.WriteFailed
         else
             &.{ "sh", "-c", p.program };
-        p.child = std.process.spawn(ctx.io, .{
+        p.child = ctx.spawn(.{
             .argv = argv,
             .stdin = .pipe,
             .environ_map = &env,
@@ -138,6 +138,27 @@ const Pager = struct {
         try t.flush();
     }
 };
+
+/// `std.process.spawn` with the program resolved by `platform.executable`.
+pub fn spawn(ctx: *const Ctx, options: std.process.SpawnOptions) !std.process.Child {
+    var o = options;
+    o.argv = try ctx.resolve(o.argv);
+    return std.process.spawn(ctx.io, o);
+}
+
+/// `std.process.run` with the program resolved by `platform.executable`.
+pub fn run(ctx: *const Ctx, options: std.process.RunOptions) !std.process.RunResult {
+    var o = options;
+    o.argv = try ctx.resolve(o.argv);
+    return std.process.run(ctx.alloc, ctx.io, o);
+}
+
+fn resolve(ctx: *const Ctx, argv: []const []const u8) ![]const []const u8 {
+    if (!platform.windows) return argv;
+    const out = try ctx.alloc.dupe([]const u8, argv);
+    out[0] = try platform.executable(ctx.alloc, ctx.io, ctx.env, argv[0]);
+    return out;
+}
 
 /// Whether the first word of a shell command names a program that exists.
 pub fn onPath(ctx: *const Ctx, command: []const u8) bool {
@@ -226,7 +247,7 @@ pub fn promptSecret(ctx: *Ctx, label: []const u8) ![]const u8 {
 pub fn editText(ctx: *Ctx, name: []const u8, initial: []const u8) ![]const u8 {
     const editor = ctx.getenv("SMITH_EDITOR") orelse ctx.editor orelse ctx.getenv("VISUAL") orelse ctx.getenv("EDITOR") orelse
         if (platform.windows) "notepad" else "vi";
-    const dir = ctx.getenv("TMPDIR") orelse (if (platform.windows) ctx.getenv("TEMP") else null) orelse "/tmp";
+    const dir = ctx.getenv("TMPDIR") orelse (if (platform.windows) ctx.getenv("TEMP") orelse ctx.getenv("TMP") else null) orelse "/tmp";
     const path = try std.fmt.allocPrint(ctx.alloc, "{s}/smith-{s}-{s}", .{ dir, try ctx.nonce(), name });
     const cwd = Io.Dir.cwd();
     try cwd.writeFile(ctx.io, .{ .sub_path = path, .data = initial, .flags = .{ .permissions = platform.private_file, .exclusive = true } });
@@ -238,7 +259,7 @@ pub fn editText(ctx: *Ctx, name: []const u8, initial: []const u8) ![]const u8 {
         try std.mem.concat(ctx.alloc, []const u8, &.{ try platform.words(ctx.alloc, editor), &.{path} })
     else
         &.{ "sh", "-c", "exec $0 \"$1\"", editor, path };
-    var child = try std.process.spawn(ctx.io, .{ .argv = argv, .environ_map = ctx.env });
+    var child = try ctx.spawn(.{ .argv = argv, .environ_map = ctx.env });
     const term = try child.wait(ctx.io);
     if (term != .exited or term.exited != 0) return ctx.fail("editor exited with an error", .{});
     return cwd.readFileAlloc(ctx.io, path, ctx.alloc, .limited(16 * 1024 * 1024));
@@ -281,7 +302,7 @@ pub fn launchBrowser(ctx: *Ctx, url: []const u8) !bool {
         &.{ opener, "url.dll,FileProtocolHandler", url }
     else
         &.{ opener, url };
-    _ = std.process.spawn(ctx.io, .{
+    _ = ctx.spawn(.{
         .argv = argv,
         .stdin = .ignore,
         .stdout = .ignore,

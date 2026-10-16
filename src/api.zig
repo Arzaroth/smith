@@ -410,7 +410,7 @@ const Head = struct {
 
 fn jqFilter(ctx: *Ctx, text: []const u8, expr: []const u8) !void {
     try ctx.out.flush();
-    var child = std.process.spawn(ctx.io, .{
+    var child = ctx.spawn(.{
         .argv = &.{ ctx.getenv("SMITH_JQ") orelse "jq", "-r", expr },
         .stdin = .pipe,
         .stdout = .pipe,

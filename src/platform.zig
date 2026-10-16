@@ -64,19 +64,39 @@ pub fn words(alloc: Allocator, line: []const u8) ![]const []const u8 {
     return out.items;
 }
 
-/// The path of `program` in one of `PATH`'s directories, trying Windows'
-/// executable extensions there; null when none has it.
+/// The path of `program` in one of `PATH`'s directories, trying `PATHEXT`'s
+/// extensions on Windows; null when none has it. Relative `PATH` entries
+/// are skipped there, as they name the current directory's contents.
 pub fn findOnPath(alloc: Allocator, io: Io, env: *const std.process.Environ.Map, program: []const u8) !?[]const u8 {
-    const extensions: []const []const u8 = if (windows) &.{ "", ".exe", ".cmd", ".bat", ".com" } else &.{""};
+    var extensions: std.ArrayList([]const u8) = .empty;
+    defer extensions.deinit(alloc);
+    if (!windows or std.fs.path.extension(program).len > 0) try extensions.append(alloc, "");
+    if (windows) {
+        var it = std.mem.tokenizeScalar(u8, get(env, "PATHEXT") orelse ".COM;.EXE;.BAT;.CMD", ';');
+        while (it.next()) |ext| try extensions.append(alloc, ext);
+    }
     var dirs = std.mem.tokenizeScalar(u8, get(env, "PATH") orelse return null, std.fs.path.delimiter);
     while (dirs.next()) |dir| {
-        for (extensions) |ext| {
+        if (windows and !std.fs.path.isAbsolute(dir)) continue;
+        for (extensions.items) |ext| {
             const candidate = try std.fmt.allocPrint(alloc, "{s}{c}{s}{s}", .{ dir, std.fs.path.sep, program, ext });
-            Io.Dir.cwd().access(io, candidate, .{}) catch continue;
-            return candidate;
+            const stat = Io.Dir.cwd().statFile(io, candidate, .{}) catch {
+                alloc.free(candidate);
+                continue;
+            };
+            if (stat.kind == .file) return candidate;
+            alloc.free(candidate);
         }
     }
     return null;
+}
+
+/// What to spawn for `name`. Windows looks for a bare program name in the
+/// current directory before `PATH`, which would run a `git.cmd` planted in a
+/// cloned repository, so there it is resolved on `PATH` alone.
+pub fn executable(alloc: Allocator, io: Io, env: *const std.process.Environ.Map, name: []const u8) ![]const u8 {
+    if (!windows or std.mem.indexOfAny(u8, name, "/\\:") != null) return name;
+    return try findOnPath(alloc, io, env, name) orelse error.FileNotFound;
 }
 
 /// How a child's standard output goes to smith's standard error: handed
@@ -94,7 +114,9 @@ pub fn copyOut(io: Io, child: *std.process.Child) void {
     var r = out.readerStreaming(io, &buf);
     var wbuf: [4096]u8 = undefined;
     var w = Io.File.stderr().writerStreaming(io, &wbuf);
-    _ = r.interface.streamRemaining(&w.interface) catch {};
+    _ = r.interface.streamRemaining(&w.interface) catch {
+        _ = r.interface.discardRemaining() catch {};
+    };
     w.interface.flush() catch {};
 }
 
