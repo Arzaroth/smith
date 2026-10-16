@@ -172,3 +172,24 @@ test "words keeps quoted runs together" {
     try std.testing.expectEqualStrings("--wait", w[1]);
     try std.testing.expectEqualStrings("-n", w[2]);
 }
+
+test "findOnPath passes over a directory named like the program" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const name = if (windows) "tool.exe" else "tool";
+    try tmp.dir.createDirPath(std.testing.io, "a/" ++ name);
+    try tmp.dir.createDirPath(std.testing.io, "b");
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "b/" ++ name, .data = "" });
+    var buf: [Io.Dir.max_path_bytes]u8 = undefined;
+    const root = buf[0..try tmp.dir.realPath(std.testing.io, &buf)];
+    const dir_a = try std.fs.path.join(a, &.{ root, "a" });
+    const dir_b = try std.fs.path.join(a, &.{ root, "b" });
+    var env: std.process.Environ.Map = .init(a);
+    try env.put("PATH", try std.fmt.allocPrint(a, "{s}{c}{s}", .{ dir_a, std.fs.path.delimiter, dir_b }));
+    try env.put("PATHEXT", ".com;.exe");
+    const found = try findOnPath(a, std.testing.io, &env, "tool") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(try std.fs.path.join(a, &.{ dir_b, name }), found);
+}
