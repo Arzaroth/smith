@@ -23,11 +23,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.event.inputs.tag || github.ref }}
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && github.event_name != 'workflow_dispatch' }}
 
 env:
-  REF: ${{ github.event.inputs.tag || github.ref }}
+  REF: ${{ github.event.inputs.tag && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}
   PUBLISH: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
   MISE_YES: "1"
 
@@ -203,8 +203,8 @@ jobs:
       - name: Signing key
         id: key
         env:
-          KEY: ${{ secrets.SMITH_GPG_KEY }}
-          PASSPHRASE: ${{ secrets.SMITH_GPG_PASSPHRASE }}
+          KEY: ${{ env.PUBLISH == 'true' && secrets.SMITH_GPG_KEY || '' }}
+          PASSPHRASE: ${{ env.PUBLISH == 'true' && secrets.SMITH_GPG_PASSPHRASE || '' }}
         run: |
           fpr=""
           if [[ -f packaging/smith.asc ]]; then
@@ -215,7 +215,7 @@ jobs:
               echo "::error::packaging/smith.asc is committed, so a release needs the SMITH_GPG_KEY secret"
               exit 1
             fi
-            echo "No signing key here: the files stay unsigned"
+            echo "No signing key in this run (only tag releases get it): the files stay unsigned"
             exit 0
           fi
           if [[ -z "$fpr" ]]; then
@@ -296,6 +296,9 @@ jobs:
           name: release
           path: dist
 
+      - name: The checksums
+        run: cd dist && sha256sum -c SHA256SUMS
+
       - name: The signatures
         if: hashFiles('dist/SHA256SUMS.asc') != ''
         run: |
@@ -303,7 +306,6 @@ jobs:
           export GNUPGHOME
           gpg --batch --import packaging/smith.asc
           gpg --batch --verify dist/SHA256SUMS.asc dist/SHA256SUMS
-          (cd dist && sha256sum -c SHA256SUMS)
           docker run --rm -v "$PWD/dist:/d:ro" fedora:latest sh -ec '
             rpm --import /d/smith-release-key.asc
             rpm -K /d/smith-cli-*.${{ matrix.rpm }}.rpm | tee /dev/stderr | grep -q "signatures OK"'
@@ -433,8 +435,11 @@ jobs:
           $msi = (Get-Item "dist/smith-*-x86_64-windows.msi").FullName
           $p = Start-Process msiexec -ArgumentList '/i', "`"$msi`"", '/qn', '/l*v', 'msi.log' -Wait -PassThru
           if ($p.ExitCode -ne 0) { Get-Content msi.log -Tail 50; exit $p.ExitCode }
-          & "$env:LOCALAPPDATA\Programs\smith\smith.exe" --version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = ((Get-Item $msi).BaseName -split '-')[1]
+          $printed = & "$env:LOCALAPPDATA\Programs\smith\smith.exe" --version
+          if ($printed -ne "smith $version") { throw "the MSI installed $printed" }
+          $path = [Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | ForEach-Object { $_.TrimEnd('\') }
+          if ($path -notcontains "$env:LOCALAPPDATA\Programs\smith") { throw 'the MSI did not add its directory to the user PATH' }
           $p = Start-Process msiexec -ArgumentList '/x', "`"$msi`"", '/qn' -Wait -PassThru
           if ($p.ExitCode -ne 0) { exit $p.ExitCode }
           if (Test-Path "$env:LOCALAPPDATA\Programs\smith\smith.exe") { throw 'the MSI left smith.exe behind' }
@@ -471,6 +476,15 @@ jobs:
       - name: Publish on GitHub
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
-          gh release create "$TAG" dist/* --draft --title "smith ${TAG#v}" --notes-file notes.md --repo "${{ github.repository }}"
-          gh release edit "$TAG" --draft=false --latest --repo "${{ github.repository }}"
+          if draft="$(gh release view "$TAG" --repo "$REPO" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [[ "$draft" != true ]]; then
+              echo "::error::$TAG is already published"
+              exit 1
+            fi
+            gh release delete "$TAG" --yes --repo "$REPO"
+          fi
+          newest="$({ gh release list --repo "$REPO" --exclude-drafts --exclude-pre-releases --limit 1000 --json tagName --jq '.[].tagName'; echo "$TAG"; } | sort -V | tail -1)"
+          gh release create "$TAG" dist/* --draft --verify-tag --title "smith ${TAG#v}" --notes-file notes.md --repo "$REPO"
+          gh release edit "$TAG" --draft=false --latest="$([[ "$newest" == "$TAG" ]] && echo true || echo false)" --repo "$REPO"

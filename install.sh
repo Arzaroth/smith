@@ -222,6 +222,7 @@ main() {
   case "$(uname -s)" in
     Linux) os="linux" ;;
     Darwin) os="macos" ;;
+    MINGW* | MSYS* | CYGWIN*) die "on Windows, install smith from PowerShell with install.ps1 or the release's .msi (see the README)" ;;
     *) die "no build for $(uname -s): smith is released for Linux and macOS; build it from source (see the README)" ;;
   esac
   case "$(uname -m)" in

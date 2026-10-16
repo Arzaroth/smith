@@ -13,7 +13,7 @@ $ProgressPreference = 'SilentlyContinue'
 function Install-Smith {
     $repo = 'Arzaroth/smith'
     $web = if ($env:SMITH_INSTALL_URL) { $env:SMITH_INSTALL_URL } else { "https://github.com/$repo" }
-    $installDir = if ($env:SMITH_INSTALL_DIR) { $env:SMITH_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\smith' }
+    $installDir = [IO.Path]::GetFullPath($(if ($env:SMITH_INSTALL_DIR) { $env:SMITH_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\smith' }))
 
     $machine = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
     $arch = switch ($machine) {
@@ -25,7 +25,11 @@ function Install-Smith {
     $version = $env:SMITH_VERSION
     if (-not $version) {
         if ($env:SMITH_INSTALL_URL) { throw "install: set SMITH_VERSION along with SMITH_INSTALL_URL" }
-        $version = (Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest").tag_name
+        try {
+            $version = (Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest").tag_name
+        } catch {
+            throw "install: cannot look up the latest release ($($_.Exception.Message)); set SMITH_VERSION to the version you want"
+        }
     }
     $version = $version.TrimStart('v')
     if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "install: SMITH_VERSION takes X.Y.Z, not $version" }
@@ -46,9 +50,13 @@ function Install-Smith {
     New-Item -ItemType Directory $tmp | Out-Null
     try {
         Write-Host "Downloading smith $version for $arch Windows"
-        Fetch 'SHA256SUMS' "$tmp\SHA256SUMS"
+        try {
+            Fetch 'SHA256SUMS' "$tmp\SHA256SUMS"
+        } catch {
+            throw "install: cannot download release v$version's SHA256SUMS ($($_.Exception.Message)); check the version on $web/releases"
+        }
         $line = Get-Content "$tmp\SHA256SUMS" | Where-Object { $_ -match "^[0-9a-f]{64}  \*?$([regex]::Escape("$name.zip"))$" } | Select-Object -First 1
-        if (-not $line) { throw "install: release v$version has no build for $arch Windows" }
+        if (-not $line) { throw "install: release v$version has no build for $arch Windows (the first is 0.9.0)" }
         $expected = ($line -split '  ', 2)[0]
         Fetch "$name.zip" "$tmp\$name.zip"
         $actual = (Get-FileHash -Algorithm SHA256 "$tmp\$name.zip").Hash.ToLower()
@@ -70,7 +78,7 @@ function Install-Smith {
     $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
     try {
         $userPath = $key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
-        $entries = $userPath -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }
+        $entries = $userPath -split ';' | Where-Object { $_ } | ForEach-Object { [Environment]::ExpandEnvironmentVariables($_).TrimEnd('\') }
         if ($entries -notcontains $installDir.TrimEnd('\')) {
             $joined = if ($userPath) { "$($userPath.TrimEnd(';'));$installDir" } else { $installDir }
             $key.SetValue('Path', $joined, [Microsoft.Win32.RegistryValueKind]::ExpandString)
