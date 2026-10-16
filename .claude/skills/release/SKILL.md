@@ -61,4 +61,6 @@ uncommitted: `git checkout -- CHANGELOG.md build.zig.zon`, fix the cause, re-run
   and source tarballs, `SHA256SUMS`, `SHA256SUMS.asc` and
   `smith-release-key.asc`: `gh release view vX.Y.Z -R Arzaroth/smith`.
 - If signing fails, check the `SMITH_GPG_KEY` and `SMITH_GPG_PASSPHRASE`
-  secrets against `~/.config/smith/release-signing.*`.
+  secrets against `~/.config/smith/release-signing.*`. Branch dry runs never
+  get the key, so the tag run is the first to sign. A failed run can be
+  re-dispatched with the tag: it replaces its own draft.

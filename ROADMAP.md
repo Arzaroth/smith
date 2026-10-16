@@ -100,11 +100,8 @@ API reference: `https://<host>/swagger.v1.json`. Developed against Forgejo
 - [x] Release pipeline: `mise run dist` cross-compiles stripped static
       binaries for x86_64/aarch64 Linux (musl) and macOS, `.deb` and `.rpm` packages and
       a source tarball, with `SHA256SUMS`; a
-      `v*` tag runs `.github/workflows/release.yml`, which publishes with `gh
-      release create` on GitHub and with smith's own `release create` on
-      Forgejo. Open question: whether Forgejo's job token may create
-      releases, or a `RELEASE_TOKEN` secret is needed (the workflow uses it
-      when set).
+      `v*` tag runs `.github/workflows/release.yml`, which builds natively,
+      signs, checks the installs and publishes on GitHub.
 
 ## P2 - gh parity
 

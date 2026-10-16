@@ -21,10 +21,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Every release is built and tested natively on x86_64 and arm64 Linux, on
-  Apple silicon and Intel macOS and on Windows, and its
-  packages are installed on Debian, Fedora, Arch, macOS and Windows before
-  it is published.
+- Every release is built and tested natively on x86_64 and arm64 Linux and
+  on Apple silicon and Intel macOS, tested on Windows, and installed on
+  Debian, Fedora, Arch, macOS and Windows before it is published.
+- `install.sh` run from Git Bash or MSYS on Windows points at
+  `install.ps1`.
 
 ### Removed
 
@@ -33,8 +34,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- A `TZ` naming a zone file by any absolute path, not only one starting
-  with `/`, is read as that file.
+- On Windows, a `TZ` naming a zone file by a drive path is read as that
+  file.
 
 ## [0.8.0] - 2026-10-15
 

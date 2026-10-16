@@ -80,10 +80,21 @@ the Secret Service keyring were exercised on git.arzaroth.com on 2026-09-29; the
   drops the assignment where Go sets `$v`, and `color` gives up on a
   background attribute other than `h` (`red:blue+b`) where mgutz/ansi
   ignores it and keeps both colours.
-- **Check `SHA256SUMS.asc` in the installers**: releases are one build,
-  signed, on both forges, but `install.sh` and `install.ps1` only check
+- **Check `SHA256SUMS.asc` in the installers**: releases are signed, but `install.sh` and `install.ps1` only check
   `SHA256SUMS`. With `gpg` available they could verify it against the key
   fingerprint pinned in the script.
-- **Windows leftovers**: a Credential Manager keyring backend, PowerShell
+- **Windows leftovers**: a Credential Manager keyring backend (until then
+  `hosts.zon` holds tokens with its directory's ACL, private under
+  `%APPDATA%` but not under an `XDG_CONFIG_HOME` elsewhere), PowerShell
   completion (`smith completion powershell`, as gh has), an icon for the
-  MSI, and Authenticode signing if a certificate ever comes along.
+  MSI, and Authenticode signing if a certificate ever comes along. The
+  harness's `script()` skips on Windows, so the editor, pager and browser
+  argv there (`words`, `rundll32`) and `localtime.windowsOffset` (the
+  harness sets `TZ`) run in no test. The SSH key step uses `HOME\.ssh`
+  before `USERPROFILE\.ssh`, which Windows' own OpenSSH reads when `HOME`
+  points elsewhere.
+- **Release supply chain**: the workflows install mise with
+  `curl https://mise.run | sh` and the Arch jobs use `archlinux:latest`;
+  pin mise by version and checksum and the images by digest. The signing
+  secrets could move to a `release` environment limited to `v*` tags, so a
+  pushed branch's workflow cannot read them.

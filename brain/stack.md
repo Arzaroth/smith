@@ -26,7 +26,7 @@
   tarball `smith-<version>.tar.gz` (`git archive` of HEAD, without what
   `.gitattributes` marks `export-ignore`), and `SHA256SUMS` over
   all of them; the archives carry `smith.1` and `completions/`, and
-  `smith-<version>-{x86_64,aarch64}-windows.zip` hold `smith.exe`; given
+  `smith-<version>-x86_64-windows.zip` holds `smith.exe`; given
   targets it builds only theirs, and the source tarball with `--source`),
   `arch` (`mise-tasks/arch`, on Arch as a regular user after `dist`:
   `smith-cli-bin` for x86_64 and aarch64 from the musl archives, `smith-cli`
@@ -64,30 +64,36 @@
     secrets and `packaging/smith.asc` committed, `rpmsign` signs the rpms,
     the Arch packages get detached `.sig`s and the public key goes along as
     `smith-release-key.asc`; then `SHA256SUMS` over everything and
-    `SHA256SUMS.asc`. Without the key the files stay unsigned, which a
-    release refuses once `packaging/smith.asc` is committed. Ubuntu's rpm
+    `SHA256SUMS.asc`. Only tag releases get the key: branch dry runs stay
+    unsigned, and a release refuses to go out unsigned once
+    `packaging/smith.asc` is committed. Ubuntu's rpm
     wants `/usr/bin/gpg2`, so `__gpg` points at `gpg`. The key's own home,
     as for wyrmyon, is the maintainer's `~/.config/smith`: a `gnupg/`
     keyring and `release-signing.{fingerprint,passphrase,public.asc,
     secret.asc,revoke.asc}`, the last to publish if the key ever leaks.
-  - **verify-linux** (x86_64, arm64) and **verify-macos** (both): the
-    signatures (`gpg --verify`, `rpm -K` on Fedora, `pacman-key --verify`),
-    the `.deb` on Debian 12, the `.rpm` on Fedora (`rpm -V`), the Arch
-    package (`pacman -Qkk`), and `install.sh` against the files as a
-    `file://` release. **verify-windows** (x64, arm64): `install.ps1`
-    against the files, and the MSI installed, run and uninstalled. Both
+  - **verify-linux** (x86_64, arm64): `SHA256SUMS`, the signatures when
+    there are some (`gpg --verify`, `rpm -K` on Fedora, `pacman-key
+    --verify`), the `.deb` on Debian 12, the `.rpm` on Fedora (`rpm -V`),
+    the Arch package (`pacman -Qkk`), and `install.sh` against the files as
+    a `file://` release. **verify-macos** (both): `install.sh` the same
+    way. **verify-windows** (x64, arm64): `install.ps1`
+    against the files, and the MSI installed, its version and `PATH` entry
+    checked, and uninstalled. Both
     install the x64 build: Zig 0.16.0's optimized aarch64 Windows builds
     crash (`0xC0000005`), so arm64 Windows runs x64 under emulation.
-  - **release**: notes from `CHANGELOG.md`; a GitHub draft with every file,
-    then published as latest. Nothing is published on Forgejo
+  - **release**: notes from `CHANGELOG.md`; a GitHub draft with every file
+    (`--verify-tag`, replacing a draft a failed run left), then published,
+    as latest only when no published release has a higher version. A
+    dispatch builds `refs/tags/<tag>`, so a branch of the same name cannot
+    stand in for it. Nothing is published on Forgejo
     ([decision](decisions.md#releases-on-github-only-2026-10-16)).
   `actions/checkout` is pinned to a commit that GitHub and Forgejo's action
   mirrors share.
 - **Windows installer**: `install.ps1` (PowerShell, https only) installs
   `SMITH_VERSION` or the latest release's zip, checked against its
   `SHA256SUMS`, into the MSI's directory and the user `PATH`;
-  `SMITH_INSTALL_DIR` and `SMITH_INSTALL_URL` (a local directory, for the
-  release checks) as `install.sh` has them.
+  `SMITH_INSTALL_DIR`, and `SMITH_INSTALL_URL` for the release checks: a
+  local directory, where `install.sh` takes a `file://` URL.
 - **Installer**: `install.sh` (POSIX sh, curl or wget, https only) installs
   the latest release, or `--version`, for the machine's OS and architecture
   from GitHub, checked against the release's

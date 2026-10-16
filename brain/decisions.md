@@ -273,7 +273,7 @@ draft until every file is up.
 ## A signing key of smith's own (2026-10-16)
 
 Releases are signed with a key used for smith alone, not one shared with
-the other projects: its private half sits in two forges' secrets, so a
+the other projects: its private half sits in GitHub's secrets, so a
 leak, a rotation or a revocation stays within one project, and importing
 it into rpm or pacman trusts smith's packages and nothing else. A primary
 key with per-project subkeys would not give that last property. The public
@@ -286,9 +286,13 @@ On Windows smith runs the pager and editor settings by splitting them into
 words (double quotes keep a path with spaces together) instead of handing
 them to `sh -c`, since a Windows machine may have no `sh`; only `!`
 aliases, which are shell scripts by definition, need one (Git for Windows
-brings it). Tokens stay in `hosts.zon` there: a Credential Manager backend
-can come later. The binaries are cross-compiled on Linux like the macOS
-ones and only tested and packaged on Windows. The MSI is per-user, so it
+brings it). Every program smith starts is looked up on `PATH` first
+(`platform.executable`), as Windows would otherwise try the current
+directory before it and run a `git.cmd` a cloned repository planted.
+Tokens stay in `hosts.zon` there: a Credential Manager backend can come
+later. The x64 binary is cross-compiled on Linux and only tested and
+packaged on Windows; arm64 Windows runs it under emulation, since Zig
+0.16.0's optimized aarch64 Windows builds crash. The MSI is per-user, so it
 needs no elevation, and unsigned: Authenticode needs a paid certificate,
 and `SHA256SUMS.asc` already covers it.
 

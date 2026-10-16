@@ -250,7 +250,7 @@ smith completion fish > ~/.config/fish/completions/smith.fish
 
 ## Man page
 
-The packages install `smith(1)` and the release archives carry `smith.1`.
+The packages install `smith(1)` and the Linux and macOS archives carry `smith.1`.
 `smith help man` prints it anywhere:
 
 ```sh
@@ -268,7 +268,7 @@ mise run build        # zig-out/bin/smith
 mise run test         # unit and invocation tests (-Dtest-filter=... for a subset)
 mise run check        # the gate: zig fmt --check, shellcheck, installer and packaging checks, tests, ReleaseSafe build
 mise run dist         # release archives, .deb and .rpm packages and the source tarball in dist/
-mise run aur 0.5.0    # the Arch PKGBUILDs for a published release, in dist/aur
+mise run aur 0.9.0    # the Arch PKGBUILDs for a published release (0.9.0 or later), in dist/aur
 mise run coverage     # line coverage under kcov (needs kcov installed)
 ```
 
