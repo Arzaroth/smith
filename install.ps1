@@ -18,7 +18,7 @@ function Install-Smith {
     $machine = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
     $arch = switch ($machine) {
         'AMD64' { 'x86_64' }
-        'ARM64' { 'aarch64' }
+        'ARM64' { 'x86_64' }
         default { throw "install: no release for $machine" }
     }
 

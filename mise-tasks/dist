@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-#MISE description="Release assets into dist/: archives for Linux (static musl), macOS and Windows, x86_64 and aarch64, .deb and .rpm packages, and the source tarball; given targets, only theirs (plus the source tarball with --source)"
+#MISE description="Release assets into dist/: archives for Linux (static musl) and macOS, x86_64 and aarch64, and x64 Windows, .deb and .rpm packages, and the source tarball; given targets, only theirs (plus the source tarball with --source)"
 set -euo pipefail
 
 version="$(sed -n 's/^    \.version = "\([^"]*\)",$/\1/p' build.zig.zon)"
-all=(x86_64-linux-musl aarch64-linux-musl x86_64-macos aarch64-macos x86_64-windows aarch64-windows)
+all=(x86_64-linux-musl aarch64-linux-musl x86_64-macos aarch64-macos x86_64-windows)
 targets=()
 source=false
 for arg in "$@"; do

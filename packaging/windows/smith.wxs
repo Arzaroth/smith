@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Per-user MSI, built by the release workflow with WiX 5:
-  `wix build -arch x64|arm64 -d Version=X.Y.Z -d StageDir=<unzipped archive> smith.wxs`.
+  `wix build -arch x64 -d Version=X.Y.Z -d StageDir=<unzipped archive> smith.wxs`.
   It installs into the directory install.ps1 uses, so the two never leave
   two copies on PATH.
 -->
