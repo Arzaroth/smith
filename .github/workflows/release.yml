@@ -352,7 +352,6 @@ jobs:
       contents: write
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
-      FORGEJO: git.arzaroth.com
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -374,32 +373,9 @@ jobs:
             exit 1
           fi
 
-      - name: smith, for the Forgejo release
-        env:
-          FORGEJO_TOKEN: ${{ secrets.FORGEJO_RELEASE_TOKEN }}
-        run: |
-          if [[ -z "$FORGEJO_TOKEN" ]]; then
-            echo "::error::the FORGEJO_RELEASE_TOKEN secret is needed to publish on $FORGEJO"
-            exit 1
-          fi
-          name="smith-${TAG#v}-x86_64-linux-musl"
-          tar -xzf "dist/$name.tar.gz" -C "$RUNNER_TEMP"
-          echo "SMITH=$RUNNER_TEMP/$name/smith" >>"$GITHUB_ENV"
-
       - name: Publish on GitHub
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$TAG" dist/* --draft --title "smith ${TAG#v}" --notes-file notes.md --repo "${{ github.repository }}"
           gh release edit "$TAG" --draft=false --latest --repo "${{ github.repository }}"
-
-      - name: Publish on Forgejo
-        env:
-          SMITH_TOKEN: ${{ secrets.FORGEJO_RELEASE_TOKEN }}
-          SMITH_KEYRING: none
-        run: |
-          SMITH_CONFIG_DIR="$(mktemp -d)"
-          export SMITH_HOST="$FORGEJO" SMITH_CONFIG_DIR
-          printf '.{ .default_host = "%s", .hosts = .{ .{ .name = "%s" } } }\n' "$FORGEJO" "$FORGEJO" > "$SMITH_CONFIG_DIR/hosts.zon"
-          "$SMITH" release create "$TAG" dist/* --draft --title "smith ${TAG#v}" --notes-file notes.md -R "$FORGEJO/${{ github.repository }}"
-          "$SMITH" release edit "$TAG" --publish --latest -R "$FORGEJO/${{ github.repository }}"

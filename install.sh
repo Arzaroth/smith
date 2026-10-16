@@ -15,15 +15,13 @@ usage() {
   cat <<'EOF'
 Install smith, the Forgejo CLI.
 
-Usage: install.sh [--version X.Y.Z | --dev] [--dir DIR] [--from github|forgejo]
+Usage: install.sh [--version X.Y.Z | --dev] [--dir DIR]
 
   --version X.Y.Z  Install that release instead of the latest one
   --dev            Build the tip of master from source, with Zig 0.16.0: the
                    one on PATH, else mise's, else a checked download
   --dir DIR        Where to put the binary (default: $SMITH_INSTALL_DIR, or
                    ~/.local/bin)
-  --from FORGE     Download from github (default) or forgejo (git.arzaroth.com,
-                   releases from 0.3.0 on)
   -h, --help       Show this help
 
 To uninstall, delete the binary; smith keeps its settings in
@@ -82,13 +80,11 @@ is_version() {
 latest() {
   if [ -n "${SMITH_INSTALL_URL:-}" ]; then
     tag=""
-  elif [ "$from" = github ] && [ "$downloader" = curl ]; then
+  elif [ "$downloader" = curl ]; then
     url="$(curl -fsIL --proto "$protocols" --proto-redir "$protocols" -o /dev/null -w '%{url_effective}' "$web/releases/latest" || true)"
     tag="${url##*/}"
-  elif [ "$from" = github ]; then
-    tag="$(fetch "https://api.github.com/repos/$repo/releases/latest" | sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1 || true)"
   else
-    tag="$(fetch "https://git.arzaroth.com/api/v1/repos/$repo/releases/latest" | sed -n 's/.*"tag_name":"\([^"]*\)".*/\1/p' || true)"
+    tag="$(fetch "https://api.github.com/repos/$repo/releases/latest" | sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1 || true)"
   fi
   is_version "${tag#v}" || die "cannot find the latest release on $web/releases${hint_github_api}"
   printf '%s\n' "${tag#v}"
@@ -104,13 +100,8 @@ install_release() {
   [ "$os" = linux ] && target="$target-musl"
   name="smith-$version-$target"
   base="$web/releases/download/v$version"
-  say "Downloading smith $version for $target from $from"
-  if ! fetch_to "$base/SHA256SUMS" "$tmp/SHA256SUMS"; then
-    if [ "$from" = forgejo ]; then
-      die "no release v$version on $web/releases (Forgejo has releases from 0.3.0 on; try --from github)"
-    fi
-    die "no release v$version on $web/releases"
-  fi
+  say "Downloading smith $version for $target"
+  fetch_to "$base/SHA256SUMS" "$tmp/SHA256SUMS" || die "no release v$version on $web/releases"
   want="$(awk -v n="$name.tar.gz" '$2 == n || $2 == "*" n { print $1 }' "$tmp/SHA256SUMS")"
   [ -n "$want" ] || die "release v$version has no build for $target"
   fetch_to "$base/$name.tar.gz" "$tmp/$name.tar.gz" || die "cannot download $name.tar.gz from release v$version"
@@ -155,17 +146,13 @@ run_zig() {
 }
 
 install_dev() {
-  if [ "$from" = github ]; then
-    sha="$(fetch -H 'Accept: application/vnd.github.sha' "https://api.github.com/repos/$repo/commits/master" || true)"
-  else
-    sha="$(fetch "https://git.arzaroth.com/api/v1/repos/$repo/branches/master" | sed -n 's/.*"commit":{"id":"\([0-9a-f]*\)".*/\1/p' || true)"
-  fi
+  sha="$(fetch -H 'Accept: application/vnd.github.sha' "https://api.github.com/repos/$repo/commits/master" || true)"
   case "$sha" in
     *[!0-9a-f]* | "") die "cannot find the tip of master on $web${hint_github_api}" ;;
   esac
   [ "${#sha}" = 40 ] || die "cannot find the tip of master on $web"
   short="$(printf '%.7s' "$sha")"
-  say "Downloading smith at master ($short) from $from"
+  say "Downloading smith at master ($short)"
   fetch_to "$web/archive/$sha.tar.gz" "$tmp/source.tar.gz" || die "cannot download the source of $short"
   mkdir "$tmp/source"
   tar -xzf "$tmp/source.tar.gz" -C "$tmp/source" </dev/null
@@ -183,16 +170,15 @@ main() {
   version=""
   dev=0
   dir="${SMITH_INSTALL_DIR:-}"
-  from="github"
   while [ $# -gt 0 ]; do
     case "$1" in
-      --version | --dir | --from)
+      --version | --dir)
         [ $# -ge 2 ] && [ -n "$2" ] && [ "${2#-}" = "$2" ] || die "$1 needs a value"
         value="$2"
         flag="$1"
         shift 2
         ;;
-      --version=* | --dir=* | --from=*)
+      --version=* | --dir=*)
         flag="${1%%=*}"
         value="${1#*=}"
         [ -n "$value" ] || die "$flag needs a value"
@@ -205,7 +191,6 @@ main() {
     case "$flag" in
       --version) version="${value#v}"; is_version "$version" || die "--version takes X.Y.Z, not $value" ;;
       --dir) dir="$value" ;;
-      --from) from="$value" ;;
     esac
   done
   [ "$dev" = 1 ] && [ -n "$version" ] && die "choose --version or --dev, not both"
@@ -216,15 +201,8 @@ main() {
   esac
 
   protocols="=https"
-  hint_github_api=""
-  case "$from" in
-    github)
-      web="https://github.com/$repo"
-      hint_github_api=" (GitHub may be rate-limiting this address; try again later or pass --from forgejo)"
-      ;;
-    forgejo) web="https://git.arzaroth.com/$repo" ;;
-    *) die "--from must be github or forgejo" ;;
-  esac
+  web="https://github.com/$repo"
+  hint_github_api=" (GitHub may be rate-limiting this address; try again later)"
   if [ -n "${SMITH_INSTALL_URL:-}" ]; then
     web="$SMITH_INSTALL_URL"
     protocols="=https,file"
