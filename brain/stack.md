@@ -85,7 +85,8 @@
     (`--verify-tag`, replacing a draft a failed run left), then published,
     as latest only when no published release has a higher version. A
     dispatch builds `refs/tags/<tag>`, so a branch of the same name cannot
-    stand in for it. Nothing is published on Forgejo
+    stand in for it; a branch dry run checks out the commit that started
+    it in every job, so a push during the run cannot mix two versions. Nothing is published on Forgejo
     ([decision](decisions.md#releases-on-github-only-2026-10-16)).
   `actions/checkout` is pinned to a commit that GitHub and Forgejo's action
   mirrors share.
