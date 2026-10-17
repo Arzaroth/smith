@@ -27,7 +27,7 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && github.event_name != 'workflow_dispatch' }}
 
 env:
-  REF: ${{ github.event.inputs.tag && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}
+  REF: ${{ github.event.inputs.tag && format('refs/tags/{0}', github.event.inputs.tag) || startsWith(github.ref, 'refs/tags/') && github.ref || github.sha }}
   PUBLISH: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
   MISE_YES: "1"
 
